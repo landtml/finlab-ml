@@ -10,12 +10,39 @@ readme = "README.md"
 license = { text = "MIT" }
 authors = [{ name = "landtml" }]
 requires-python = ">=3.10"
+keywords = [
+    "financial machine learning",
+    "quantitative finance",
+    "algorithmic trading",
+    "backtesting",
+    "purged cross-validation",
+    "combinatorial purged cross-validation",
+    "triple barrier",
+    "meta-labeling",
+    "fractional differentiation",
+    "bet sizing",
+    "deflated sharpe ratio",
+    "probability of backtest overfitting",
+    "hierarchical risk parity",
+    "Advances in Financial Machine Learning",
+    "Lopez de Prado",
+    "numba",
+    "MCP",
+]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
+    "Intended Audience :: Financial and Insurance Industry",
     "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Office/Business :: Financial :: Investment",
     "Topic :: Scientific/Engineering",
+    "Typing :: Typed",
 ]
 dependencies = [
     "numpy>=1.24",
@@ -32,7 +59,11 @@ bench = ["pytest-benchmark>=4.0"]
 finlab-mcp = "finlab.agent.server:main"
 
 [project.urls]
+Homepage = "https://github.com/landtml/finlab-ml"
 Repository = "https://github.com/landtml/finlab-ml"
+Documentation = "https://github.com/landtml/finlab-ml/tree/main/docs"
+Issues = "https://github.com/landtml/finlab-ml/issues"
+Changelog = "https://github.com/landtml/finlab-ml/releases"
 
 [tool.setuptools.packages.find]
 where = ["src"]
