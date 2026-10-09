@@ -7,6 +7,8 @@ Implements:
   sweep computes all counts in one pass.
 * Section 4.4, Snippet 4.2 -- :func:`average_uniqueness`, the mean of
   ``1 / c_t`` over each label's lifespan.
+* Snippet 4.4 -- :func:`sample_average_uniqueness`, the average uniqueness of a
+  bootstrap sample, counting repeated draws.
 * Snippet 4.3 -- :func:`indicator_matrix`, the bar-by-label matrix ``1_{t,i}``.
 * Snippet 4.5 -- :func:`sequential_bootstrap`, the uniqueness-driven draw of
   labels, with the inner loop in numba.
@@ -38,6 +40,7 @@ from ._jit import jit, pjit
 __all__ = [
     "num_co_events",
     "average_uniqueness",
+    "sample_average_uniqueness",
     "indicator_matrix",
     "sequential_bootstrap",
     "sample_weight_by_return",
@@ -202,6 +205,77 @@ def average_uniqueness(
     with np.errstate(invalid="ignore", divide="ignore"):
         avg = np.where(lengths > 0, sums / np.maximum(lengths, 1.0), np.nan)
     return pd.Series(avg, index=t1.index, name="avg_u")
+
+
+def sample_average_uniqueness(
+    index_matrix: pd.DataFrame | np.ndarray,
+    draws: Sequence[int] | np.ndarray | None = None,
+) -> float:
+    """Average uniqueness of a bootstrap sample, repeats included (Snippet 4.4).
+
+    Parameters
+    ----------
+    index_matrix : pd.DataFrame or 2-D array
+        Indicator matrix with bars as rows and labels as columns, as returned by
+        :func:`indicator_matrix`. Non-zero entries count as 1.
+    draws : 1-D integer array, optional
+        Column positions of the sampled labels, possibly with repeats. ``None``
+        means every column once, in order.
+
+    Returns
+    -------
+    float
+        Mean over the drawn labels of their average uniqueness. Each repeat of a
+        label counts separately.
+
+    Raises
+    ------
+    ValueError
+        If ``index_matrix`` is not two-dimensional, if ``draws`` is empty, not
+        one-dimensional, not integer-valued, or has a position outside the
+        columns, or if a drawn label covers no bar.
+
+    Notes
+    -----
+    Concurrency is taken over the sample: ``c_t = sum_k 1_{t, d_k}``, where
+    ``d_k`` runs over the draws, so a label drawn twice covers each of its bars
+    twice. For a drawn label ``d``, its uniqueness is
+    ``ū_d = (1 / |L_d|) sum_{t in L_d} 1 / c_t``, and the result is
+    ``(1/n) sum_k ū_{d_k}`` over the ``n`` draws.
+
+    With ``draws=None`` the sample is the full set of labels, so the result equals
+    ``average_uniqueness(index, t1, num_co_events(index, t1)).mean()``. The sum over
+    draws is computed with one dense matrix product, so the cost is
+    O(n_bars * n_draws).
+    """
+    if isinstance(index_matrix, pd.DataFrame):
+        m = index_matrix.to_numpy(dtype=np.float64)
+    else:
+        m = np.asarray(index_matrix, dtype=np.float64)
+    if m.ndim != 2:
+        raise ValueError("index_matrix must be two-dimensional.")
+    n_bars, n_ev = m.shape
+    if draws is None:
+        pos = np.arange(n_ev, dtype=np.int64)
+    else:
+        pos = np.asarray(draws)
+        if pos.ndim != 1:
+            raise ValueError("draws must be one-dimensional.")
+    if pos.size == 0:
+        raise ValueError("draws must not be empty.")
+    if draws is not None and not np.issubdtype(pos.dtype, np.integer):
+        raise ValueError("draws must contain integer column positions.")
+    if pos.min() < 0 or pos.max() >= n_ev:
+        raise ValueError("draws contains a position outside the columns of index_matrix.")
+    sub = (m[:, pos] != 0.0).astype(np.float64)  # one column per draw, repeats kept
+    span_len = sub.sum(axis=0)
+    if np.any(span_len == 0.0):
+        raise ValueError("a drawn label covers no bar.")
+    c = sub.sum(axis=1)
+    inv = np.zeros(n_bars, dtype=np.float64)
+    np.divide(1.0, c, out=inv, where=c > 0)
+    u = (inv @ sub) / span_len
+    return float(np.mean(u))
 
 
 # ---------------------------------------------------------------------------

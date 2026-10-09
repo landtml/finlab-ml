@@ -16,6 +16,7 @@ from finlab.weights import (
     average_uniqueness,
     indicator_matrix,
     num_co_events,
+    sample_average_uniqueness,
     sample_weight_by_return,
     sequential_bootstrap,
     time_decay,
@@ -174,6 +175,95 @@ def test_average_uniqueness_is_reciprocal_harmonic_mean_of_concurrency():
         span_c = c[(index >= t0) & (index <= t_end)].to_numpy().astype(float)
         harmonic = len(span_c) / np.sum(1.0 / span_c)
         assert avg[k] == pytest.approx(1.0 / harmonic, rel=1e-12)
+
+
+@pytest.mark.parametrize("seed", range(5))
+def test_sample_average_uniqueness_matches_naive_with_repeats(seed):
+    index, t1 = _random_labels(140, 20, max_span=18, seed=70 + seed)
+    m = indicator_matrix(index, t1).to_numpy()
+    rng = np.random.default_rng(200 + seed)
+    draws = rng.integers(0, m.shape[1], size=2 * m.shape[1])  # 40 draws from 20 labels
+    assert len(np.unique(draws)) < len(draws)  # repeats are present
+    got = sample_average_uniqueness(m, draws)
+    assert got == pytest.approx(sample_avg_uniqueness(m, draws), rel=1e-12)
+    assert 0.0 < got <= 1.0
+
+
+def test_sample_average_uniqueness_full_sample_equals_average_uniqueness_mean():
+    index, t1 = _random_labels(120, 25, max_span=15, seed=80)
+    m = indicator_matrix(index, t1)
+    got = sample_average_uniqueness(m)
+    expected = average_uniqueness(index, t1, num_co_events(index, t1)).mean()
+    assert got == pytest.approx(expected, rel=1e-12)
+    assert got == pytest.approx(sample_average_uniqueness(m, np.arange(len(t1))), rel=1e-12)
+
+
+def test_sample_average_uniqueness_single_label_is_one():
+    m = np.zeros((6, 4))
+    m[1:4, 2] = 1.0  # only label 2 is active, on bars 1..3
+    assert sample_average_uniqueness(m, [2]) == pytest.approx(1.0, rel=0, abs=1e-15)
+    # Three copies of the same label: c = 3 on its span, so each uniqueness is 1/3.
+    assert sample_average_uniqueness(m, [2, 2, 2]) == pytest.approx(1.0 / 3.0, rel=1e-15)
+
+
+def test_sample_average_uniqueness_identical_spans_give_one_over_n():
+    rng = np.random.default_rng(7)
+    col = np.zeros(9)
+    col[2:7] = 1.0
+    m = np.tile(col[:, None], (1, 5))  # five labels, same span
+    for n in (1, 3, 8):
+        draws = rng.integers(0, 5, size=n)  # any sample of size n, repeats allowed
+        assert sample_average_uniqueness(m, draws) == pytest.approx(1.0 / n, rel=1e-12)
+
+
+def test_sample_average_uniqueness_hand_computed_repeat_case():
+    # Bars 0..2. Label 0 covers bars {0, 1}; label 1 covers bars {1, 2}.
+    m = np.array([[1, 0], [1, 1], [0, 1]], dtype=float)
+    # Sample [0, 1]: c = [1, 2, 1]. Label 0: mean(1, 1/2) = 3/4. Label 1: mean(1/2, 1) = 3/4.
+    assert sample_average_uniqueness(m, [0, 1]) == pytest.approx(0.75, rel=1e-15)
+    # Sample [0, 0, 1]: c = [2, 2 + 1, 1] = [2, 3, 1]. Label 0 twice: 5/12 each.
+    # Label 1: mean(1/3, 1) = 2/3. Mean over the three draws: (5/12 + 5/12 + 2/3) / 3 = 1/2.
+    assert sample_average_uniqueness(m, [0, 0, 1]) == pytest.approx(0.5, rel=1e-15)
+
+
+def test_sample_average_uniqueness_does_not_depend_on_draw_order():
+    index, t1 = _random_labels(90, 14, max_span=12, seed=90)
+    m = indicator_matrix(index, t1).to_numpy()
+    rng = np.random.default_rng(91)
+    draws = rng.integers(0, m.shape[1], size=20)
+    assert sample_average_uniqueness(m, draws) == pytest.approx(
+        sample_average_uniqueness(m, rng.permutation(draws)), rel=1e-12
+    )
+
+
+def test_sample_average_uniqueness_dataframe_and_array_agree():
+    index, t1 = _random_labels(70, 11, max_span=9, seed=95)
+    df = indicator_matrix(index, t1)
+    draws = np.array([0, 3, 3, 7, 10])
+    assert sample_average_uniqueness(df, draws) == sample_average_uniqueness(df.to_numpy(), draws)
+    assert sample_average_uniqueness(df) == sample_average_uniqueness(df.to_numpy())
+
+
+def test_sample_average_uniqueness_rejects_bad_input():
+    m = np.array([[1, 0], [1, 1], [0, 1]], dtype=float)
+    with pytest.raises(ValueError):
+        sample_average_uniqueness(np.ones(4), [0])  # not 2-D
+    with pytest.raises(ValueError):
+        sample_average_uniqueness(np.ones((2, 2, 2)), [0])
+    with pytest.raises(ValueError):
+        sample_average_uniqueness(m, [2])  # out of range
+    with pytest.raises(ValueError):
+        sample_average_uniqueness(m, [0, -1])  # negative positions are not wrapped
+    with pytest.raises(ValueError):
+        sample_average_uniqueness(m, np.array([], dtype=np.int64))  # empty draws
+    with pytest.raises(ValueError):
+        sample_average_uniqueness(m, [])
+    with pytest.raises(ValueError):
+        sample_average_uniqueness(m, np.array([[0, 1]]))  # draws not 1-D
+    with pytest.raises(ValueError):
+        sample_average_uniqueness(m, np.array([0.0, 1.0]))  # not integer positions
+    with pytest.raises(ValueError):
+        sample_average_uniqueness(np.zeros((3, 2)), [0])  # drawn label has no bar
 
 
 def test_indicator_matrix_matches_naive():

@@ -56,6 +56,68 @@ mean of `c_t` over `L_i`.
   labels give exactly 1), `test_average_uniqueness_matches_naive` (3 seeds), and
   `test_average_uniqueness_is_reciprocal_harmonic_mean_of_concurrency`.
 
+## 2a. Snippet 4.4: sample average uniqueness
+
+**Definition.** Let `d_1, ..., d_n` be a bootstrap sample of label positions, with
+repeats. Concurrency is taken over the sample, `c_t = sum_k 1_{t, d_k}`, so a label
+drawn twice covers each of its bars twice. For a drawn label `d`,
+`ū_d = (1/|L_d|) sum_{t in L_d} 1/c_t`. The sample statistic is
+`S = (1/n) sum_k ū_{d_k}`. The function `sample_average_uniqueness` computes `S`.
+The definition follows the task specification. The book's text was not consulted.
+
+**Proposition 2a.1 (range).** `0 < S <= 1`, provided every drawn label covers at
+least one bar.
+
+*Proof.* Each drawn label `d_k` is active on its own span, so `c_t >= 1` there. Each
+`ū_{d_k}` is a mean of values `1/c_t` in `(0, 1]`, hence lies in `(0, 1]`. So does
+their mean `S`. *(Proved here.)* A drawn label with an empty span would give a NaN
+mean, and the function raises for that case instead.
+
+**Proposition 2a.2 (single draw).** A sample of size 1 gives `S = 1`.
+
+*Proof.* With `n = 1`, `c_t = 1` on the span of the one drawn label, so every term
+`1/c_t` equals 1 and `S = 1`. *(Proved here.)*
+
+**Proposition 2a.3 (identical spans).** If all `n` draws have the same span `L` with
+`|L| = ell`, whether or not they are distinct, then `S = 1/n`.
+
+*Proof.* On `L`, every draw covers every bar, so `c_t = n` for `t in L`. Each drawn
+label has `ū = (1/ell) * ell * (1/n) = 1/n`. The mean over `n` equal values is
+`1/n`. *(Proved here.)*
+
+**Proposition 2a.4 (full sample).** With every label drawn once, `c_t` equals
+`num_co_events` and `S` equals `average_uniqueness(...).mean()`.
+
+*Proof.* Each label appears once, so `sum_k 1_{t, d_k}` is the sum of all indicator
+columns, which is `c_t` from Snippet 4.1. The per-label means are the values of
+Snippet 4.2 and the mean over labels is `S`. *(Proved here.)*
+
+**Proposition 2a.5 (order invariance).** `S` depends only on the multiset of draws.
+
+*Proof.* `c_t` is a sum over the draws, and `S` is an average over them. Both are
+unchanged by a permutation of the draws. *(Proved here.)*
+
+* **Checked by test.** `test_sample_average_uniqueness_matches_naive_with_repeats`
+  (5 seeds, 40 draws from 20 labels, repeats present) compares with the naive
+  reference `sample_avg_uniqueness` at `rtol = 1e-12`. The same test checks the
+  range `(0, 1]`.
+* **Checked by test.** `test_sample_average_uniqueness_full_sample_equals_average_uniqueness_mean`
+  checks Proposition 2a.4 numerically. `test_sample_average_uniqueness_single_label_is_one`
+  checks Proposition 2a.2 and the repeat case `[2, 2, 2]`, which gives `1/3`.
+* **Checked by test.** `test_sample_average_uniqueness_identical_spans_give_one_over_n`
+  checks Proposition 2a.3 for sample sizes 1, 3 and 8, with repeats.
+* **Checked by test (hand-computed value).**
+  `test_sample_average_uniqueness_hand_computed_repeat_case`. Labels cover bars
+  `{0, 1}` and `{1, 2}`. The sample `[0, 0, 1]` has `c = [2, 3, 1]` and gives
+  `S = 1/2`. The sample `[0, 1]` gives `3/4`.
+* **Checked by test.** `test_sample_average_uniqueness_does_not_depend_on_draw_order`
+  (Proposition 2a.5). `test_sample_average_uniqueness_dataframe_and_array_agree`
+  checks that DataFrame and ndarray inputs match. `test_sample_average_uniqueness_rejects_bad_input`
+  checks the `ValueError` cases: non-2-D input, out-of-range or negative positions,
+  empty or non-1-D or non-integer draws, and a drawn label with no bar.
+* **Not verified.** Whether this matches the listing of Snippet 4.4 in the book.
+  The book's text was not consulted, so no book figure or wording is reproduced.
+
 ## 3. Indicator matrix (Snippet 4.3)
 
 `indicator_matrix` returns the `T x I` matrix with entries `1_{t,i}`. It is
