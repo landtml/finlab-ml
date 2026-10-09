@@ -7,8 +7,8 @@ Implements:
   sweep computes all counts in one pass.
 * Section 4.4, Snippet 4.2 -- :func:`average_uniqueness`, the mean of
   ``1 / c_t`` over each label's lifespan.
-* Snippet 4.4 -- :func:`sample_average_uniqueness`, the average uniqueness of a
-  bootstrap sample, counting repeated draws.
+* :func:`sample_average_uniqueness`, the average uniqueness of a bootstrap sample,
+  counting repeated draws (section 4.4 topic; snippet numbering not verified).
 * Snippet 4.3 -- :func:`indicator_matrix`, the bar-by-label matrix ``1_{t,i}``.
 * Snippet 4.5 -- :func:`sequential_bootstrap`, the uniqueness-driven draw of
   labels, with the inner loop in numba.
@@ -211,7 +211,7 @@ def sample_average_uniqueness(
     index_matrix: pd.DataFrame | np.ndarray,
     draws: Sequence[int] | np.ndarray | None = None,
 ) -> float:
-    """Average uniqueness of a bootstrap sample, repeats included (Snippet 4.4).
+    """Average uniqueness of a bootstrap sample, repeats included (section 4.4).
 
     Parameters
     ----------

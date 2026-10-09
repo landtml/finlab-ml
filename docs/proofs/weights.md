@@ -56,7 +56,7 @@ mean of `c_t` over `L_i`.
   labels give exactly 1), `test_average_uniqueness_matches_naive` (3 seeds), and
   `test_average_uniqueness_is_reciprocal_harmonic_mean_of_concurrency`.
 
-## 2a. Snippet 4.4: sample average uniqueness
+## 2a. Sample average uniqueness (section 4.4 topic)
 
 **Definition.** Let `d_1, ..., d_n` be a bootstrap sample of label positions, with
 repeats. Concurrency is taken over the sample, `c_t = sum_k 1_{t, d_k}`, so a label
