@@ -176,17 +176,28 @@ as described there. Its settings differ from the experiment above, so the two re
 compared as one number.
 
 **Benchmark, one run.** `benchmarks/bench_monte_carlo.py`, default sizes (`n_obs=10`, `n_bars=100`,
-`max_h=5`):
+`max_h=5`). The numbers below are from a single run on a shared 4-core machine, and they vary by
+about 10% between runs. Three measurements answer different questions, and they must not be mixed:
 
-* Per trial: `146.7 us` for a dense NumPy path against `3.99 us` for the jitted `_trial_uniqueness`,
-  a ratio of `36.8x`. The dense path computes the same quantities with matrix operations, so this
-  measures the implementation, not a different method. The script also checks the two paths
-  against each other and stops if they differ by more than `1e-9`. That check is in the script,
-  not in the test suite.
-* First call in a fresh process with an empty numba cache: `2496 ms`, which is compile time.
-* `bootstrap_uniqueness_mc(n_iter=20000)`: `8509` trials/s with `num_threads=1`, and `25389`
-  trials/s with the script's parallel run, `num_threads=min(4, os.cpu_count())`, a speedup of
-  `2.98x`. Each parallel run includes creating its process pool.
+* **End to end, one trial (the figure to use for speed).** `bootstrap_uniqueness_mc` with
+  `num_threads=1` takes `54.0 us` per trial. A dense NumPy trial with the same seeds, labels, draws
+  and uniqueness takes `207.0 us`. The ratio is `3.84x`. The dense trial does all the same work,
+  including per-trial seeding and label generation, but it uses no numba. Both sides match to
+  `2.2e-16` over 2000 trials, which the script checks.
+* **Kernel only, not a speed-up of a trial.** `_trial_uniqueness` takes `3.74 us`, against `138.0 us`
+  for a dense path on the same spans, draws and uniforms. That is a ratio of `36.9x`. It excludes
+  label generation, seeding and the Python wrapper, which together are most of a trial, so this
+  ratio must not be quoted as the speed of `bootstrap_uniqueness_mc`.
+* **Where a trial's time goes.** The kernel is about 7% of the end-to-end time. Most of the rest is
+  per-trial seeding (`SeedSequence` and `default_rng`, about 10 us) and the small numpy calls that
+  build the labels and draws.
+* First call in a fresh process with an empty numba cache: `2203 ms`, which is compile time.
+* `bootstrap_uniqueness_mc(n_iter=20000)`: `19324` trials/s with `num_threads=1`, and `68282`
+  trials/s with `num_threads=min(4, os.cpu_count())`, a speedup of `3.53x`. Each parallel run includes
+  creating its process pool. On a machine with fewer cores the parallel figure would be lower.
+
+The script checks the kernel and the dense trial against each other and stops if they differ by more
+than `1e-9`. That check is in the script, not in the test suite.
 
 ## 5. Claimed from the book only
 

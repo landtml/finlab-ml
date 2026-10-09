@@ -4,7 +4,7 @@ Not run by CI. Usage (from the repository root):
 
     python benchmarks/bench_monte_carlo.py
 
-Three measurements, all at the default experiment size (n_obs=10, n_bars=100,
+Four measurements, all at the default experiment size (n_obs=10, n_bars=100,
 max_h=5):
 
 1. Per trial: the jitted ``_trial_uniqueness`` against a dense NumPy path. Both
@@ -19,6 +19,11 @@ max_h=5):
    each, with ``num_threads=1`` and with ``num_threads=min(4, os.cpu_count())``.
    A warm-up call runs first, so numba compilation or cache loading is not
    timed. Each parallel run includes creating its process pool.
+4. End to end against a full dense trial. The dense baseline does everything a
+   trial does, including per-trial seeding and label generation, but with dense
+   NumPy only. The end-to-end figure is ``bootstrap_uniqueness_mc`` with
+   ``num_threads=1``, so both sides run the same number of trials with the same
+   seeds. Each side is the median of ``REPEATS`` runs.
 
 Per-trial timings are the best of ``REPEATS`` runs over ``N_KERNEL_TRIALS``
 trials, divided by the number of trials.
@@ -35,7 +40,12 @@ import time
 import numpy as np
 
 from _timing import best_of
-from finlab.monte_carlo import _trial_uniqueness, bootstrap_uniqueness_mc, random_t1
+from finlab.monte_carlo import (
+    _trial_uniqueness,
+    bootstrap_uniqueness_mc,
+    bootstrap_uniqueness_trial,
+    random_t1,
+)
 from finlab.weights import sample_average_uniqueness
 
 N_OBS, N_BARS, MAX_H = 10, 100, 5
@@ -95,6 +105,57 @@ def naive_trial(grid, starts, ends, std_draws, uniforms) -> tuple[float, float]:
     m = dense_indicator(grid, starts, ends)
     seq_draws = dense_sequential_draws(m, uniforms)
     return sample_average_uniqueness(m, std_draws), sample_average_uniqueness(m, seq_draws)
+
+
+def seeded_rng(i: int) -> np.random.Generator:
+    """The stream of trial ``i`` in ``run_trials`` with seed 0."""
+    return np.random.default_rng(np.random.SeedSequence(0, spawn_key=(i,)))
+
+
+def dense_full_trial(rng) -> tuple[float, float]:
+    """One trial with dense NumPy only: labels, indicator matrix, draws and uniqueness.
+
+    Same draws as ``bootstrap_uniqueness_trial``: start bars, then lengths; repeated
+    starts keep the last draw; the grid runs to the last end; one draw per label.
+    """
+    starts = rng.integers(0, N_BARS, size=N_OBS)
+    lengths = rng.integers(1, MAX_H, size=N_OBS)
+    uniq, first_in_reversed = np.unique(starts[::-1], return_index=True)
+    ends = uniq + lengths[N_OBS - 1 - first_in_reversed]
+    m = len(uniq)
+    grid = int(ends.max()) + 1
+    std_draws = rng.integers(0, m, size=m)
+    uniforms = rng.random(m)
+    bars = np.arange(grid)
+    matrix = ((bars[:, None] >= uniq) & (bars[:, None] <= ends)).astype(np.float64)
+    std_u = sample_average_uniqueness(matrix, std_draws)
+    seq_u = sample_average_uniqueness(matrix, dense_sequential_draws(matrix, uniforms))
+    return std_u, seq_u
+
+
+def compare_end_to_end(n_check: int = 2000) -> None:
+    worst = 0.0
+    for i in range(n_check):
+        d_std, d_seq = dense_full_trial(seeded_rng(i))
+        k = bootstrap_uniqueness_trial(seeded_rng(i), N_OBS, N_BARS, MAX_H)
+        worst = max(worst, abs(d_std - k["std_u"]), abs(d_seq - k["seq_u"]))
+    print(f"check (dense full) : max |dense - kernel path| over {n_check} trials: {worst:.1e}")
+    if worst > 1e-9:
+        raise SystemExit(f"dense full trial and kernel path disagree by {worst:.3g}")
+
+
+def time_end_to_end(n: int = N_ITER) -> tuple[float, float]:
+    """Median per-trial microseconds: (end to end, dense full trial)."""
+    e2e, dense = [], []
+    for _ in range(REPEATS):
+        t0 = time.perf_counter()
+        bootstrap_uniqueness_mc(n_obs=N_OBS, n_bars=N_BARS, max_h=MAX_H, n_iter=n, seed=0, num_threads=1)
+        e2e.append((time.perf_counter() - t0) / n * 1e6)
+        t0 = time.perf_counter()
+        for i in range(n):
+            dense_full_trial(seeded_rng(i))
+        dense.append((time.perf_counter() - t0) / n * 1e6)
+    return float(np.median(e2e)), float(np.median(dense))
 
 
 def first_call_seconds() -> float:
@@ -174,6 +235,12 @@ def main() -> None:
     compare_per_trial(trials)
 
     bootstrap_uniqueness_mc(n_obs=N_OBS, n_bars=N_BARS, max_h=MAX_H, n_iter=200, num_threads=1)
+    compare_end_to_end()
+    t_e2e_us, t_dense_us = time_end_to_end()
+    print(f"end to end        : bootstrap_uniqueness_mc, num_threads=1, n={N_ITER}: "
+          f"{t_e2e_us:.1f} us/trial")
+    print(f"dense full trial  : same work in dense NumPy only, n={N_ITER}: {t_dense_us:.1f} us/trial")
+    print(f"ratio             : dense full trial / end to end = {t_dense_us / t_e2e_us:.2f}x")
     workers = min(4, os.cpu_count() or 1)
     t_serial = timed_run(1)
     t_par = timed_run(workers)

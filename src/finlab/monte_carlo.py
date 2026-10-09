@@ -168,6 +168,31 @@ def run_trials(
 # ---------------------------------------------------------------------------
 
 
+def _check_label_args(n_obs: int, n_bars: int, max_h: int) -> None:
+    if not (_is_int(n_obs) and _is_int(n_bars) and _is_int(max_h)):
+        raise ValueError("n_obs, n_bars and max_h must be integers.")
+    if n_obs < 1 or n_bars < 1:
+        raise ValueError(f"n_obs and n_bars must be at least 1, got {n_obs}, {n_bars}.")
+    if max_h < 2:
+        raise ValueError(f"max_h must be at least 2 (lengths are 1..max_h-1), got {max_h}.")
+
+
+def _random_labels(
+    n_obs: int, n_bars: int, max_h: int, rng: np.random.Generator
+) -> tuple[np.ndarray, np.ndarray]:
+    """Snippet 4.7 in numpy: sorted distinct starts and the end of each, from ``rng``.
+
+    Same draws as :func:`random_t1`. Used directly by the trial, which avoids building
+    a pandas object on every trial.
+    """
+    starts = rng.integers(0, n_bars, size=n_obs).astype(np.int64)
+    lengths = rng.integers(1, max_h, size=n_obs).astype(np.int64)
+    # Keep the last draw for each start, as the book's overwrite loop does.
+    uniq, first_in_reversed = np.unique(starts[::-1], return_index=True)
+    last_draw = n_obs - 1 - first_in_reversed
+    return uniq, uniq + lengths[last_draw]
+
+
 def random_t1(
     n_obs: int,
     n_bars: int,
@@ -213,19 +238,10 @@ def random_t1(
     The book's loop assigns ``t1.loc[ix] = val`` for each draw, so a start drawn more
     than once keeps the length of its last draw. The result is built the same way.
     """
-    if not (_is_int(n_obs) and _is_int(n_bars) and _is_int(max_h)):
-        raise ValueError("n_obs, n_bars and max_h must be integers.")
-    if n_obs < 1 or n_bars < 1:
-        raise ValueError(f"n_obs and n_bars must be at least 1, got {n_obs}, {n_bars}.")
-    if max_h < 2:
-        raise ValueError(f"max_h must be at least 2 (lengths are 1..max_h-1), got {max_h}.")
+    _check_label_args(n_obs, n_bars, max_h)
     rng = seed if isinstance(seed, np.random.Generator) else np.random.default_rng(seed)
-    starts = rng.integers(0, n_bars, size=n_obs).astype(np.int64)
-    lengths = rng.integers(1, max_h, size=n_obs).astype(np.int64)
-    # Keep the last draw for each start, as the book's overwrite loop does.
-    uniq, first_in_reversed = np.unique(starts[::-1], return_index=True)
-    last_draw = n_obs - 1 - first_in_reversed
-    return pd.Series(uniq + lengths[last_draw], index=pd.Index(uniq))
+    uniq, ends = _random_labels(n_obs, n_bars, max_h, rng)
+    return pd.Series(ends, index=pd.Index(uniq))
 
 
 @jit
@@ -332,10 +348,9 @@ def bootstrap_uniqueness_trial(
     :func:`finlab.weights.sequential_bootstrap`. Both averages keep repeated
     draws. Both lie in ``(0, 1]``.
     """
-    t1 = random_t1(n_obs, n_bars, max_h, rng)
-    starts = t1.index.to_numpy(dtype=np.int64)
-    ends = t1.to_numpy(dtype=np.int64)
-    m = len(t1)
+    _check_label_args(n_obs, n_bars, max_h)
+    starts, ends = _random_labels(n_obs, n_bars, max_h, rng)
+    m = len(starts)
     grid = int(ends.max()) + 1
     std_draws = rng.integers(0, m, size=m)
     uniforms = rng.random(m)
