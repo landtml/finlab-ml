@@ -23,6 +23,7 @@ They are not run in CI (timings are machine-dependent). Run one with:
 | `finlab.bet_sizing` | `bench_bet_sizing.py` | overlapping-signal averaging (difference-array sweep) vs a per-timestamp loop |
 | `finlab.parallel` | `bench_parallel.py` | `mp_pandas_obj` serial vs process pool (depends on core count) |
 | `finlab.agent` | `bench_agent.py` | one tool call via JSON-RPC vs the direct library call (overhead) |
+| `finlab.monte_carlo` | `bench_monte_carlo.py` | bootstrap-uniqueness trial kernel vs a dense NumPy path (same draws); first-call compile time; trials/s of `bootstrap_uniqueness_mc` at 1 and N threads |
 
 ## Modules without a benchmark, and why
 
