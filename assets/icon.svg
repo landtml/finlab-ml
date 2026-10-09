@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="finlab icon">
+  <rect width="64" height="64" rx="14" fill="#14213d"/>
+  <!-- candles on the corners -->
+  <rect x="4" y="40" width="5" height="14" rx="1" fill="#2a9d8f"/>
+  <rect x="55" y="34" width="5" height="18" rx="1" fill="#e76f51"/>
+  <!-- ear tufts and head -->
+  <path d="M18 26 L20 12 L29 21 Z M46 26 L44 12 L35 21 Z" fill="#2f5d8c"/>
+  <ellipse cx="32" cy="34" rx="18" ry="19" fill="#2f5d8c"/>
+  <!-- eyes -->
+  <circle cx="25" cy="31" r="7" fill="#fff"/>
+  <circle cx="39" cy="31" r="7" fill="#fff"/>
+  <circle cx="26" cy="32" r="3.5" fill="#14213d"/>
+  <circle cx="38" cy="32" r="3.5" fill="#14213d"/>
+  <!-- beak -->
+  <path d="M29 38 L35 38 L32 42 Z" fill="#f4a261"/>
+</svg>

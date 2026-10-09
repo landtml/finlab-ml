@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 300" role="img" aria-labelledby="owl-title owl-desc">
+  <title id="owl-title">finlab owl mascot</title>
+  <desc id="owl-desc">An owl that blinks and glances between two candlestick charts.</desc>
+  <style>
+    .bob    { animation: bob 3.2s ease-in-out infinite; }
+    .pupil  { animation: track 7.2s ease-in-out infinite; }
+    .blink  { transform-box: fill-box; transform-origin: 50% 0; animation: blink 5s infinite; }
+    .candle { transform-box: fill-box; transform-origin: 50% 100%; animation: grow 2.4s ease-in-out infinite; opacity: .6; }
+    .d1 { animation-delay: .3s; }
+    .d2 { animation-delay: .6s; }
+    .d3 { animation-delay: .9s; }
+    .d4 { animation-delay: 1.2s; }
+    .d5 { animation-delay: 1.5s; }
+    .d6 { animation-delay: 1.8s; }
+    @keyframes bob   { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+    @keyframes track { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-7px); } 50% { transform: translateX(0); } 75% { transform: translateX(7px); } }
+    @keyframes blink { 0%, 85%, 100% { transform: scaleY(0); } 89%, 91% { transform: scaleY(1); } }
+    @keyframes grow  { 0%, 100% { transform: scaleY(0.45); } 50% { transform: scaleY(1); } }
+    @media (prefers-reduced-motion: reduce) { * { animation: none !important; } }
+  </style>
+
+  <!-- candlestick backdrop: green = up, red = down -->
+  <g fill="#2a9d8f">
+    <g class="candle">
+      <rect x="49.5" y="180" width="1" height="80"/>
+      <rect x="44" y="196" width="12" height="40" rx="2"/>
+    </g>
+    <g class="candle d2">
+      <rect x="133.5" y="190" width="1" height="70"/>
+      <rect x="128" y="210" width="12" height="30" rx="2"/>
+    </g>
+    <g class="candle d4">
+      <rect x="387.5" y="130" width="1" height="100"/>
+      <rect x="382" y="150" width="12" height="60" rx="2"/>
+    </g>
+    <g class="candle d6">
+      <rect x="429.5" y="150" width="1" height="80"/>
+      <rect x="424" y="170" width="12" height="34" rx="2"/>
+    </g>
+  </g>
+  <g fill="#e76f51">
+    <g class="candle d1">
+      <rect x="91.5" y="160" width="1" height="96"/>
+      <rect x="86" y="176" width="12" height="52" rx="2"/>
+    </g>
+    <g class="candle d3">
+      <rect x="345.5" y="168" width="1" height="84"/>
+      <rect x="340" y="186" width="12" height="44" rx="2"/>
+    </g>
+  </g>
+
+  <g class="bob">
+    <!-- feet -->
+    <path d="M218 262 L212 278 M226 262 L226 278 M254 262 L254 278 M262 262 L268 278" fill="none" stroke="#f4a261" stroke-width="5" stroke-linecap="round"/>
+    <!-- ear tufts -->
+    <path d="M168 104 L172 56 L204 92 Z M312 104 L308 56 L276 92 Z" fill="#2f5d8c"/>
+    <!-- wings -->
+    <path d="M156 150 Q140 200 168 240 Q176 200 170 150 Z M324 150 Q340 200 312 240 Q304 200 310 150 Z" fill="#245080"/>
+    <!-- body and belly -->
+    <ellipse cx="240" cy="170" rx="88" ry="100" fill="#2f5d8c"/>
+    <ellipse cx="240" cy="208" rx="54" ry="58" fill="#cfe3f5"/>
+    <!-- eyes: white, pupil (tracks), lid (blinks) -->
+    <g>
+      <circle cx="205" cy="122" r="26" fill="#fff" stroke="#14213d" stroke-width="3"/>
+      <g class="pupil">
+        <circle cx="205" cy="124" r="11" fill="#14213d"/>
+        <circle cx="209" cy="119" r="3" fill="#fff"/>
+      </g>
+      <ellipse class="blink" cx="205" cy="122" rx="28" ry="28" fill="#2f5d8c"/>
+    </g>
+    <g>
+      <circle cx="275" cy="122" r="26" fill="#fff" stroke="#14213d" stroke-width="3"/>
+      <g class="pupil">
+        <circle cx="275" cy="124" r="11" fill="#14213d"/>
+        <circle cx="279" cy="119" r="3" fill="#fff"/>
+      </g>
+      <ellipse class="blink" cx="275" cy="122" rx="28" ry="28" fill="#2f5d8c"/>
+    </g>
+    <!-- beak -->
+    <path d="M232 140 L248 140 L240 152 Z" fill="#f4a261"/>
+  </g>
+</svg>

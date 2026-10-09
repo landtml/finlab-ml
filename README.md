@@ -1,4 +1,17 @@
-# finlab
+<h1 align="center">
+  <img src="assets/icon.svg" width="40" alt="" align="absmiddle"> finlab
+</h1>
+
+<p align="center">
+  <img src="assets/owl.svg" width="460" alt="finlab mascot: an owl that blinks and glances at candlestick charts">
+</p>
+
+<p align="center">
+  <a href="https://github.com/landtml/finlab-ml/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/landtml/finlab-ml/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/landtml/finlab-ml/tags"><img alt="Latest tag" src="https://img.shields.io/github/v/tag/landtml/finlab-ml?label=version&color=2f5d8c"></a>
+  <img alt="Python 3.10 to 3.13" src="https://img.shields.io/badge/python-3.10%20to%203.13-3776ab">
+  <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-2a9d8f"></a>
+</p>
 
 A toolkit for financial machine learning that implements the methods of
 Marcos López de Prado's *Advances in Financial Machine Learning* (AFML),
@@ -15,6 +28,12 @@ claim as proved here, checked by test, or claimed from the book only.
 pip install -e .            # core library
 pip install -e ".[dev]"     # + pytest, to run the test suite
 pytest                      # run the suite
+```
+
+To install a tagged release instead:
+
+```bash
+pip install "git+https://github.com/landtml/finlab-ml@v0.1.0"
 ```
 
 Requires Python 3.10 to 3.13.
@@ -62,6 +81,9 @@ tools with compact JSON output. See [`docs/AGENTS.md`](docs/AGENTS.md).
 
 ## Modules
 
+<details>
+<summary><strong>Module map</strong>: chapters 2 to 20 (click to expand)</summary>
+
 | Module | Chapter | What it provides |
 |---|---|---|
 | `finlab.cv` | 7 | `CombinatorialPurgedCV`, `PurgedKFold`, `make_t1` (purge and embargo) |
@@ -86,7 +108,12 @@ Each module has its own page with a runnable example in
 `tests/test_doc_examples.py`). The full signature list is in
 [`docs/API.md`](docs/API.md), generated from the code by `tools/gen_api.py`.
 
+</details>
+
 ## Validation status
+
+<details>
+<summary><strong>Validation status</strong>: what is proved, tested or only claimed (click to expand)</summary>
 
 | Area | Status |
 |---|---|
@@ -101,7 +128,13 @@ Each module has its own page with a runnable example in
 | Trend-scanning labels | Implemented from the literal definition. Not in AFML ch. 3; the t-threshold of 1.96 is a design choice and the citation is not verified against a primary source. |
 | Time decay | Proved and tested: the oldest observation's weight is `c + (1-c)·w1/T`, not exactly `c`. |
 
+
+</details>
+
 ## Benchmarks
+
+<details>
+<summary><strong>Benchmark table</strong> (click to expand)</summary>
 
 Measured on the development machine with `benchmarks/bench_*.py`. Single
 machine, numbers vary between runs.
@@ -120,7 +153,13 @@ machine, numbers vary between runs.
 | PBO, T=1200, N=40, S=12 | 2.09 s | 0.11 s | ~19x |
 | HRP weights, n=200 | | | ~16x (SciPy linkage is not jitted and dominates at large N) |
 
+
+</details>
+
 ## Scope and limitations
+
+<details>
+<summary><strong>Scope and limitations</strong> (click to expand)</summary>
 
 - **Implementation.** Numba (LLVM machine code) is used for the hot loops. Rust and
   JAX are not used.
@@ -141,6 +180,8 @@ machine, numbers vary between runs.
 - **Sample size.** Average uniqueness and sequential-bootstrap gains are modest in
   practice (one measured setting gave 0.1963 vs 0.1913 over 200 seeds); they are
   reported as measured, not as a book reproduction.
+
+</details>
 
 ## Contributing
 
