@@ -332,3 +332,27 @@ def test_bootstrap_uniqueness_mc_num_threads_does_not_change_result():
     serial = bootstrap_uniqueness_mc(n_iter=40, seed=3, num_threads=1)
     parallel = bootstrap_uniqueness_mc(n_iter=40, seed=3, num_threads=2)
     pd.testing.assert_frame_equal(serial, parallel)
+
+
+# ---------------------------------------------------------------------------
+# Statistical and slow checks
+# ---------------------------------------------------------------------------
+
+
+def test_sequential_bootstrap_uniqueness_exceeds_standard_by_four_se():
+    # The margin was measured once when this test was written and is far above
+    # the bound. The bound is a loose check that the paired gap is not noise,
+    # not a pinned value.
+    df = bootstrap_uniqueness_mc(n_iter=2000, seed=0)
+    assert ((df > 0.0) & (df <= 1.0)).all().all()
+    d = (df["seq_u"] - df["std_u"]).to_numpy()
+    se = d.std(ddof=1) / np.sqrt(len(d))
+    assert d.mean() > 4 * se
+
+
+@pytest.mark.slow
+def test_large_run_sequential_median_exceeds_standard_median():
+    df = bootstrap_uniqueness_mc(n_iter=20_000, seed=7, num_threads=2)
+    assert df["seq_u"].median() > df["std_u"].median()
+    means = df.mean()
+    assert ((means > 0.0) & (means <= 1.0)).all()
