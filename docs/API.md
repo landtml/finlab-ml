@@ -55,7 +55,7 @@ Sample weights (AFML ch. 4)
 Monte Carlo experiments (AFML ch. 4)
 
 - **`run_trials(func: 'Callable[..., Mapping[str, float]]', n_iter: 'int', seed: 'int | None' = 0, num_threads: 'int' = 1, **kwargs: 'Any') -> 'pd.DataFrame'`** (function). Run ``func`` ``n_iter`` times with independent, reproducible random streams.
-- **`random_t1(n_obs: 'int', n_bars: 'int', max_h: 'int', seed: 'int | np.random.Generator | None' = None) -> 'pd.Series'`** (function). Random label set on the bar grid ``0..n_bars-1``.
+- **`random_t1(n_obs: 'int', n_bars: 'int', max_h: 'int', seed: 'int | np.random.Generator | None' = None) -> 'pd.Series'`** (function). Random label set, as in AFML Snippet 4.7 (``getRndT1``).
 - **`bootstrap_uniqueness_trial(rng: 'np.random.Generator', n_obs: 'int', n_bars: 'int', max_h: 'int') -> 'dict[str, float]'`** (function). One trial: average uniqueness of a standard and a sequential bootstrap.
 - **`bootstrap_uniqueness_mc(n_obs: 'int' = 10, n_bars: 'int' = 100, max_h: 'int' = 5, n_iter: 'int' = 10000, seed: 'int | None' = 0, num_threads: 'int' = 1) -> 'pd.DataFrame'`** (function). Monte Carlo comparison of standard and sequential bootstrap uniqueness.
 

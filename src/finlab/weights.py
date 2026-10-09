@@ -7,8 +7,9 @@ Implements:
   sweep computes all counts in one pass.
 * Section 4.4, Snippet 4.2 -- :func:`average_uniqueness`, the mean of
   ``1 / c_t`` over each label's lifespan.
-* :func:`sample_average_uniqueness`, the average uniqueness of a bootstrap sample,
-  counting repeated draws (section 4.4 topic; snippet numbering not verified).
+* Snippet 4.4 -- :func:`sample_average_uniqueness`, the average uniqueness of a
+  bootstrap sample, counting repeated draws (Snippet 4.8 applies the book's
+  ``getAvgUniqueness`` to the bootstrapped matrix).
 * Snippet 4.3 -- :func:`indicator_matrix`, the bar-by-label matrix ``1_{t,i}``.
 * Snippet 4.5 -- :func:`sequential_bootstrap`, the uniqueness-driven draw of
   labels, with the inner loop in numba.
@@ -17,12 +18,10 @@ Implements:
 * Snippet 4.11 -- :func:`time_decay`, the piecewise-linear decay applied to
   cumulative uniqueness.
 
-Not covered: the multiprocessing engine ``mpPandasObj`` (Chapter 20), the
-Monte Carlo study of Snippets 4.7-4.9 (not reproduced here; benchmarks/bench_weights.py
-measures speed only), class weights (end of Section 4.8), and the bagging classifier
-of Chapter 6. A separate Monte Carlo experiment, designed in this repository, is in
-:mod:`finlab.monte_carlo`; its claims are in docs/proofs/monte_carlo.md. The book's
-study is not reproduced there either.
+Not covered: the multiprocessing engine ``mpPandasObj`` (Chapter 20), class weights
+(end of Section 4.8), and the bagging classifier of Chapter 6. The Monte Carlo study of
+Snippets 4.7-4.9 is in :mod:`finlab.monte_carlo`, with its claims in
+docs/proofs/monte_carlo.md. ``benchmarks/bench_weights.py`` measures speed only.
 
 Conventions: ``index`` is the sorted grid of bars. ``t1`` is a Series whose
 index holds label start times and whose values hold label end times (NaT

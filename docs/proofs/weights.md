@@ -56,7 +56,7 @@ mean of `c_t` over `L_i`.
   labels give exactly 1), `test_average_uniqueness_matches_naive` (3 seeds), and
   `test_average_uniqueness_is_reciprocal_harmonic_mean_of_concurrency`.
 
-## 2a. Sample average uniqueness (section 4.4 topic)
+## 2a. Sample average uniqueness (Snippet 4.4)
 
 **Definition.** Let `d_1, ..., d_n` be a bootstrap sample of label positions, with
 repeats. Concurrency is taken over the sample, `c_t = sum_k 1_{t, d_k}`, so a label
@@ -115,8 +115,10 @@ unchanged by a permutation of the draws. *(Proved here.)*
   checks that DataFrame and ndarray inputs match. `test_sample_average_uniqueness_rejects_bad_input`
   checks the `ValueError` cases: non-2-D input, out-of-range or negative positions,
   empty or non-1-D or non-integer draws, and a drawn label with no bar.
-* **Not verified.** Whether this matches the listing of Snippet 4.4 in the book.
-  The book's text was not consulted, so no book figure or wording is reproduced.
+* **Checked against the printed book text.** The book's Snippet 4.4 (`getAvgUniqueness`) takes
+  the uniqueness of each column over the rows it covers, with concurrency taken from the matrix
+  passed in. Snippet 4.8 applies it to the bootstrapped matrix, so repeats count. This function
+  computes that quantity. The check was made by reading the listing; no book figure is reproduced.
 
 ## 3. Indicator matrix (Snippet 4.3)
 
@@ -173,11 +175,10 @@ order.
   relative). The book's own figures are not reproduced here.
 * **Claimed from the book only.** That the sequential sample is "much closer to
   IID" than the standard bootstrap.
-* **Monte Carlo.** The Monte Carlo results that the other docs call Snippets
-  4.7-4.9 are not reproduced here, and no book figure is reproduced.
-  `benchmarks/bench_weights.py` measures speed only. A separate, repo-designed
-  experiment is in `finlab.monte_carlo`; its label design and settings differ from
-  the 0.1963 vs 0.1913 measurement above, so the two are not comparable. See
+* **Monte Carlo.** Snippets 4.7-4.9 are implemented in `finlab.monte_carlo`, following the
+  printed listings, with a seeded numpy Generator in place of numpy's global generator.
+  `benchmarks/bench_weights.py` measures speed only. The 0.1963 vs 0.1913 measurement above uses
+  a different design and settings, so it is not comparable with the Monte Carlo experiment. See
   [monte_carlo.md](monte_carlo.md) for its proofs, tests and measured gap.
 
 ## 5. Return attribution (Snippet 4.10)
@@ -242,6 +243,6 @@ uniqueness, and the first observation sits at `C_1 = w_1`, not at 0.
 ## Not covered
 
 The multiprocessing engine `mpPandasObj` (Chapter 20), the Monte Carlo study
-(Snippets 4.7-4.9; the repo's own experiment is in `finlab.monte_carlo`, see
+(Snippets 4.7-4.9, implemented in `finlab.monte_carlo`, see
 [monte_carlo.md](monte_carlo.md)), class weights (end of Section 4.8), the bagging classifier of
 Chapter 6, and the exercises.

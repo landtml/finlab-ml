@@ -16,7 +16,7 @@ so it may be singular; it must have a strictly positive diagonal.
 
 Not covered: the Euclidean "distance of distances" variant of section 16.4.1
 (the book's Example 16.2 clustering), constrained bisection (section 16.4.3's
-closing remark), the out-of-sample Monte Carlo study of section 16.5, and
+closing remark), the out-of-sample Monte Carlo study of section 16.6, and
 the Appendix 16.A.3 data generator.
 """
 

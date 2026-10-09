@@ -20,7 +20,8 @@ caller passes them to :meth:`fit`.
 Not covered
 -----------
 Random-forest-specific tricks from AFML ch. 6 (e.g. the number of features per
-split), and the book's Monte Carlo study of bagging accuracy.
+split), and the book's analytic calculation of bagging accuracy (Snippet 6.1), which
+is not a Monte Carlo study.
 """
 
 from __future__ import annotations

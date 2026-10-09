@@ -128,7 +128,7 @@ Each module has its own page with a runnable example in
 | Entropy | Tested on known cases. The Lempel-Ziv normalisation is the standard LZ78 one, not from AFML. |
 | Trend-scanning labels | Implemented from the literal definition. Not in AFML ch. 3; the t-threshold of 1.96 is a design choice and the citation is not verified against a primary source. |
 | Time decay | Proved and tested: the oldest observation's weight is `c + (1-c)·w1/T`, not exactly `c`. |
-| Monte Carlo trials and bootstrap uniqueness (`finlab.monte_carlo`) | Tested against a dense reference (rtol 1e-12), with worker-count invariance and determinism checked by test; proofs and measurements in [`docs/proofs/monte_carlo.md`](docs/proofs/monte_carlo.md). The label design and defaults are choices of this repo, not from the book. The statistical gap is measured, not proved. |
+| Monte Carlo trials and bootstrap uniqueness (`finlab.monte_carlo`) | Tested against a dense reference (rtol 1e-12), with worker-count invariance and determinism checked by test; proofs and measurements in [`docs/proofs/monte_carlo.md`](docs/proofs/monte_carlo.md). Follows the printed listings of Snippets 4.7-4.8, checked by reading the book, not by a test against its output. Random numbers come from a numpy Generator, so runs are not the book's. The statistical gap is measured, not proved. |
 
 
 </details>
@@ -165,8 +165,9 @@ machine, numbers vary between runs.
 
 - **Implementation.** Numba (LLVM machine code) is used for the hot loops. Rust and
   JAX are not used.
-- **Not implemented:** a separate Mpool (AFML ch. 4 snippets 4.7-4.9); `mp_pandas_obj`
-  in `finlab.parallel` is used for parallel work instead. Also the Chow DFC/SDFC and
+- **Parallel engine.** Snippet 4.9 runs through the book's `mpEngine` (Chapter 20).
+  `finlab.monte_carlo` uses `mp_pandas_obj` in `finlab.parallel` instead.
+- **Not implemented:** the Chow DFC/SDFC and
   quantile ADF tests, the Bailey-Lopez de Prado distance-of-distances
   clustering variant, ONC clustering, and out-of-bag estimation for bagging.
 - **No purging inside CSCV or importance.** Passing a purged splitter is the
@@ -182,10 +183,11 @@ machine, numbers vary between runs.
 - **Python versions.** CI runs 3.10 to 3.13. Locally the suite was run on 3.13.
 - **Sample size.** Average uniqueness and sequential-bootstrap gains are modest in
   practice (one measured setting gave 0.1963 vs 0.1913 over 200 seeds). The Monte
-  Carlo experiment in `finlab.monte_carlo` gave a paired gap of about 0.084 at its
-  default sizes (2000 trials, seed 0). That is a different label design and different
-  settings, so the two numbers are not comparable. All of these are reported as
-  measured, not as a book reproduction.
+  Carlo experiment in `finlab.monte_carlo` follows Snippets 4.7-4.8 at the Snippet 4.9
+  sizes. Its paired gap is about 0.084 (2000 trials, seed 0), and its medians of 0.6
+  and 0.7 match the book's Figure 4.2 caption to one decimal. The 0.1963 vs 0.1913
+  setting uses a different design, so the two numbers are not comparable. All of these
+  are reported as measured, not as a book reproduction.
 
 </details>
 

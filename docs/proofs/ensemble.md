@@ -20,7 +20,8 @@ margin depends on the horizon and the sample.
 
 - That sequential bagging reduces the redundancy of bags with overlapping labels
   (AFML ch. 6), and that subsampling to the effective sample size is a sensible
-  default. The module does not reproduce the book's Monte Carlo study.
+  default. The module does not reproduce the book's bagging-accuracy calculation
+  (Snippet 6.1), which is analytic rather than a Monte Carlo study.
 
 ## Scope
 

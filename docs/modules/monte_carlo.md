@@ -32,16 +32,22 @@ print(res.shape, round(float(res["heads"].mean()), 2))
   stream depends only on `(seed, i)`, so `num_threads` and the chunking across workers
   do not change the output. `seed=None` draws fresh entropy once and records it in
   `result.attrs["seed"]`.
-- **Label design.** `random_t1` draws `n_obs` distinct start bars, sorts them, draws a
-  length in `1..max_h` for each, and clips each end at the last bar. This is a choice
-  made here. The book's label design was not consulted.
-- **Draw order.** Each trial takes its labels first, then the standard bootstrap draws,
-  then one uniform per sequential draw. The order is fixed by the docstring of
+- **Label design (AFML Snippet 4.7).** `random_t1` draws `n_obs` start bars with
+  replacement and a length in `1..max_h-1` for each, as `randint(1, maxH)` does in the
+  book. A start drawn twice keeps the length of its last draw, as the book's
+  `t1.loc[ix] = val` loop does. So a label set can have fewer than `n_obs` labels. Ends
+  are not clipped.
+- **Experiment (AFML Snippet 4.8).** The bar grid runs from 0 to the last label end. Each
+  bootstrap sample has one draw per label. The standard sample is drawn with replacement,
+  and the sequential sample uses the inverse-CDF rule of `finlab.weights.sequential_bootstrap`.
+- **Random numbers.** The draws come from a seeded `numpy.random.Generator`, not numpy's
+  global generator. So the same integer seed does not reproduce the book's random stream.
+- **Draw order.** Each trial draws the start bars, then the lengths, then the standard
+  draws, then one uniform per sequential draw. The order is fixed by the docstring of
   `bootstrap_uniqueness_trial`.
-- **Defaults.** `n_obs=10`, `n_bars=100`, `max_h=5` and `n_iter=10_000` are choices of
-  this module. They are not verified against the book. The default `n_iter` is a short
-  run for a quick check. The book's run sizes are not in this repository and were not
-  checked, so this page makes no comparison with a book-scale run.
+- **Defaults.** `n_obs=10`, `n_bars=100` and `max_h=5` are the values printed in Snippet 4.9.
+  The book runs `numIters=1E6`. The default `n_iter` here is 10,000, for speed. Its medians
+  match the book's Figure 4.2 caption to one decimal place (see the proof note).
 - **Parallel runs.** `num_threads > 1` uses a process pool through
   `finlab.parallel.mp_pandas_obj`, so the function must be defined at module level.
 
