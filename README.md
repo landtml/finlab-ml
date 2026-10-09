@@ -90,6 +90,7 @@ tools with compact JSON output. See [`docs/AGENTS.md`](docs/AGENTS.md).
 | `finlab.bars` | 2 | time, tick, volume, dollar, imbalance and run bars; CUSUM filter |
 | `finlab.labeling` | 3 | daily volatility, triple-barrier events, bin labels, meta-labels, rare-label dropping, trend-scanning labels |
 | `finlab.weights` | 4 | concurrency, average uniqueness, sequential bootstrap, return attribution, time decay |
+| `finlab.monte_carlo` | 4 | seeded Monte Carlo trial runner (`run_trials`), random label sets, standard vs sequential bootstrap uniqueness experiment |
 | `finlab.fracdiff` | 5 | fixed-width and expanding-window fractional differentiation, minimum-d search |
 | `finlab.ensemble` | 6 | `SequentialBootstrapBagging` |
 | `finlab.importance` | 8 | MDI, MDA, SFI, orthogonal features |
@@ -127,6 +128,7 @@ Each module has its own page with a runnable example in
 | Entropy | Tested on known cases. The Lempel-Ziv normalisation is the standard LZ78 one, not from AFML. |
 | Trend-scanning labels | Implemented from the literal definition. Not in AFML ch. 3; the t-threshold of 1.96 is a design choice and the citation is not verified against a primary source. |
 | Time decay | Proved and tested: the oldest observation's weight is `c + (1-c)·w1/T`, not exactly `c`. |
+| Monte Carlo trials and bootstrap uniqueness (`finlab.monte_carlo`) | Tested against a dense reference (rtol 1e-12), with worker-count invariance and determinism checked by test; proofs and measurements in [`docs/proofs/monte_carlo.md`](docs/proofs/monte_carlo.md). The label design and defaults are choices of this repo, not from the book. The statistical gap is measured, not proved. |
 
 
 </details>
@@ -163,8 +165,9 @@ machine, numbers vary between runs.
 
 - **Implementation.** Numba (LLVM machine code) is used for the hot loops. Rust and
   JAX are not used.
-- **Not implemented:** Monte Carlo and Mpool (AFML ch. 4 snippets 4.7-4.9), the
-  Chow DFC/SDFC and quantile ADF tests, the Bailey-Lopez de Prado distance-of-distances
+- **Not implemented:** a separate Mpool (AFML ch. 4 snippets 4.7-4.9); `mp_pandas_obj`
+  in `finlab.parallel` is used for parallel work instead. Also the Chow DFC/SDFC and
+  quantile ADF tests, the Bailey-Lopez de Prado distance-of-distances
   clustering variant, ONC clustering, and out-of-bag estimation for bagging.
 - **No purging inside CSCV or importance.** Passing a purged splitter is the
   caller's responsibility for MDA and SFI; CSCV follows the book without purging.
@@ -178,8 +181,11 @@ machine, numbers vary between runs.
   `E[max]` (Jensen); the proof note shows this.
 - **Python versions.** CI runs 3.10 to 3.13. Locally the suite was run on 3.13.
 - **Sample size.** Average uniqueness and sequential-bootstrap gains are modest in
-  practice (one measured setting gave 0.1963 vs 0.1913 over 200 seeds); they are
-  reported as measured, not as a book reproduction.
+  practice (one measured setting gave 0.1963 vs 0.1913 over 200 seeds). The Monte
+  Carlo experiment in `finlab.monte_carlo` gave a paired gap of about 0.084 at its
+  default sizes (2000 trials, seed 0). That is a different label design and different
+  settings, so the two numbers are not comparable. All of these are reported as
+  measured, not as a book reproduction.
 
 </details>
 

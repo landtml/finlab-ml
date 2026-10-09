@@ -49,6 +49,15 @@ Sample weights (AFML ch. 4)
 - **`sample_weight_by_return(index: 'pd.Index | Sequence', t1: 'pd.Series', close: 'pd.Series') -> 'pd.Series'`** (function). Sample weights from absolute return attribution (Snippet 4.10).
 - **`time_decay(weights: 'pd.Series | np.ndarray', c_last: 'float' = 1.0) -> 'pd.Series | np.ndarray'`** (function). Piecewise-linear decay of weights by cumulative uniqueness (Snippet 4.11).
 
+## `finlab.monte_carlo`
+
+Monte Carlo experiments (AFML ch. 4)
+
+- **`run_trials(func: 'Callable[..., Mapping[str, float]]', n_iter: 'int', seed: 'int | None' = 0, num_threads: 'int' = 1, **kwargs: 'Any') -> 'pd.DataFrame'`** (function). Run ``func`` ``n_iter`` times with independent, reproducible random streams.
+- **`random_t1(n_obs: 'int', n_bars: 'int', max_h: 'int', seed: 'int | np.random.Generator | None' = None) -> 'pd.Series'`** (function). Random label set on the bar grid ``0..n_bars-1``.
+- **`bootstrap_uniqueness_trial(rng: 'np.random.Generator', n_obs: 'int', n_bars: 'int', max_h: 'int') -> 'dict[str, float]'`** (function). One trial: average uniqueness of a standard and a sequential bootstrap.
+- **`bootstrap_uniqueness_mc(n_obs: 'int' = 10, n_bars: 'int' = 100, max_h: 'int' = 5, n_iter: 'int' = 10000, seed: 'int | None' = 0, num_threads: 'int' = 1) -> 'pd.DataFrame'`** (function). Monte Carlo comparison of standard and sequential bootstrap uniqueness.
+
 ## `finlab.fracdiff`
 
 Fractionally differentiated features (AFML ch. 5)

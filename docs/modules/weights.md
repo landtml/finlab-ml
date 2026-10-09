@@ -25,6 +25,6 @@ print(len(draws), "draws")
 
 ## Notes
 
-Proof: [weights.md](../proofs/weights.md). Scope: the sequential-bootstrap uniqueness gain is modest in measured settings.
+Proof: [weights.md](../proofs/weights.md). Scope: the sequential-bootstrap uniqueness gain is modest in measured settings. For a Monte Carlo comparison of standard and sequential bootstrap uniqueness, see [`finlab.monte_carlo`](monte_carlo.md).
 
 Full signatures: [API reference](../API.md).

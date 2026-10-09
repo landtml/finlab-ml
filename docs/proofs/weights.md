@@ -172,8 +172,13 @@ order.
   0.013 and 0.015. The gain is real in this setting but small (about 2.6%
   relative). The book's own figures are not reproduced here.
 * **Claimed from the book only.** That the sequential sample is "much closer to
-  IID" than the standard bootstrap, and the Monte Carlo results of Snippets
-  4.7-4.9 (not reproduced; `benchmarks/bench_weights.py` measures speed only).
+  IID" than the standard bootstrap.
+* **Monte Carlo.** The Monte Carlo results that the other docs call Snippets
+  4.7-4.9 are not reproduced here, and no book figure is reproduced.
+  `benchmarks/bench_weights.py` measures speed only. A separate, repo-designed
+  experiment is in `finlab.monte_carlo`; its label design and settings differ from
+  the 0.1963 vs 0.1913 measurement above, so the two are not comparable. See
+  [monte_carlo.md](monte_carlo.md) for its proofs, tests and measured gap.
 
 ## 5. Return attribution (Snippet 4.10)
 
@@ -237,5 +242,6 @@ uniqueness, and the first observation sits at `C_1 = w_1`, not at 0.
 ## Not covered
 
 The multiprocessing engine `mpPandasObj` (Chapter 20), the Monte Carlo study
-(Snippets 4.7-4.9), class weights (end of Section 4.8), the bagging classifier of
+(Snippets 4.7-4.9; the repo's own experiment is in `finlab.monte_carlo`, see
+[monte_carlo.md](monte_carlo.md)), class weights (end of Section 4.8), the bagging classifier of
 Chapter 6, and the exercises.

@@ -18,9 +18,11 @@ Implements:
   cumulative uniqueness.
 
 Not covered: the multiprocessing engine ``mpPandasObj`` (Chapter 20), the
-Monte Carlo study of Snippets 4.7-4.9 (benchmarks/bench_weights.py measures
-speed only), class weights (end of Section 4.8), and the bagging classifier
-of Chapter 6.
+Monte Carlo study of Snippets 4.7-4.9 (not reproduced here; benchmarks/bench_weights.py
+measures speed only), class weights (end of Section 4.8), and the bagging classifier
+of Chapter 6. A separate Monte Carlo experiment, designed in this repository, is in
+:mod:`finlab.monte_carlo`; its claims are in docs/proofs/monte_carlo.md. The book's
+study is not reproduced there either.
 
 Conventions: ``index`` is the sorted grid of bars. ``t1`` is a Series whose
 index holds label start times and whose values hold label end times (NaT

@@ -13,6 +13,7 @@ MODULES = [
     ("finlab.bars", "Financial data structures (AFML ch. 2)"),
     ("finlab.labeling", "Labeling (AFML ch. 3)"),
     ("finlab.weights", "Sample weights (AFML ch. 4)"),
+    ("finlab.monte_carlo", "Monte Carlo experiments (AFML ch. 4)"),
     ("finlab.fracdiff", "Fractionally differentiated features (AFML ch. 5)"),
     ("finlab.ensemble", "Ensemble methods (AFML ch. 6)"),
     ("finlab.importance", "Feature importance (AFML ch. 8)"),
