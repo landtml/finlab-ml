@@ -44,6 +44,7 @@ Sample weights (AFML ch. 4)
 
 - **`num_co_events(index: 'pd.Index | Sequence', t1: 'pd.Series') -> 'pd.Series'`** (function). Number of labels whose lifespan covers each bar (Snippet 4.1).
 - **`average_uniqueness(index: 'pd.Index | Sequence', t1: 'pd.Series', c_t: 'pd.Series | np.ndarray') -> 'pd.Series'`** (function). Average uniqueness of each label over its lifespan (Section 4.4, Snippet 4.2).
+- **`sample_average_uniqueness(index_matrix: 'pd.DataFrame | np.ndarray', draws: 'Sequence[int] | np.ndarray | None' = None) -> 'float'`** (function). Average uniqueness of a bootstrap sample, repeats included (section 4.4).
 - **`indicator_matrix(index: 'pd.Index | Sequence', t1: 'pd.Series') -> 'pd.DataFrame'`** (function). Binary bar-by-label matrix ``1_{t,i}`` (Snippet 4.3).
 - **`sequential_bootstrap(index_matrix: 'pd.DataFrame | np.ndarray', n_samples: 'int | None' = None, seed: 'int | None' = None) -> 'np.ndarray'`** (function). Draw labels by sequential bootstrap (Snippet 4.5).
 - **`sample_weight_by_return(index: 'pd.Index | Sequence', t1: 'pd.Series', close: 'pd.Series') -> 'pd.Series'`** (function). Sample weights from absolute return attribution (Snippet 4.10).
