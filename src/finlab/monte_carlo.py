@@ -381,7 +381,7 @@ def bootstrap_uniqueness_mc(
     The three experiment defaults (``n_obs``, ``n_bars``, ``max_h``) are the values
     printed in Snippet 4.9. ``n_iter`` is a smaller run count than the book's 1E6.
     The book reports medians of about 0.6 for the standard bootstrap and 0.7 for the
-    sequential bootstrap (Figure 4.2 caption). Those medians are compared with the
+    sequential bootstrap (text after Figure 4.2). Those medians are compared with the
     measured ones in ``docs/proofs/monte_carlo.md``, not asserted here.
     """
     return run_trials(

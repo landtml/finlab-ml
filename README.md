@@ -185,7 +185,7 @@ machine, numbers vary between runs.
   practice (one measured setting gave 0.1963 vs 0.1913 over 200 seeds). The Monte
   Carlo experiment in `finlab.monte_carlo` follows Snippets 4.7-4.8 at the Snippet 4.9
   sizes. Its paired gap is about 0.084 (2000 trials, seed 0), and its medians of 0.6
-  and 0.7 match the book's Figure 4.2 caption to one decimal. The 0.1963 vs 0.1913
+  and 0.7 match the medians the book states after Figure 4.2 to one decimal. The 0.1963 vs 0.1913
   setting uses a different design, so the two numbers are not comparable. All of these
   are reported as measured, not as a book reproduction.
 

@@ -114,14 +114,14 @@ test below exercises it.
 
 ## 3. Checked against the printed book text
 
-These were checked by reading the printed listings and the Figure 4.2 caption. No test compares
+These were checked by reading the printed listings and the text after Figure 4.2 (p. 68). No test compares
 against the book's output.
 
-* **Snippet 4.7.** The start is `randint(0, numBars)` and the length is `randint(1, maxH)`. In
+* **Snippet 4.7.** The book's prose says lengths run from 0 to maxH, but the listing excludes 0, and this code follows the listing. The start is `randint(0, numBars)` and the length is `randint(1, maxH)`. In
   numpy `randint` excludes the upper bound, so lengths run from 1 to `maxH - 1`. `random_t1`
   uses the same bounds. A repeated start is overwritten by its later draw, so a label set can
   have fewer than `numObs` labels. `random_t1` does the same.
-* **Snippet 4.8.** The bar grid is `range(t1.max() + 1)`, so it runs to the last label end, not to
+* **Snippet 4.8.** The sequential draw uses the inverse-CDF rule on the uniforms, not `np.random.choice(p=...)`; both give the same distribution. The bar grid is `range(t1.max() + 1)`, so it runs to the last label end, not to
   `numBars`. The standard sample is `np.random.choice(indM.columns, size=indM.shape[1])`, which has
   one draw per label. `bootstrap_uniqueness_trial` uses the number of labels as the sample size.
   `seqBootstrap(indM)` also defaults to one draw per label.
@@ -130,7 +130,7 @@ against the book's output.
 * **Snippet 4.4.** `getAvgUniqueness` takes the uniqueness of each column over the rows it covers,
   with the concurrency taken over the matrix passed in. Snippet 4.8 applies it to the bootstrapped
   matrix, so repeats are counted, as in `sample_average_uniqueness`.
-* **Figure 4.2 caption.** The book states that "the median of the average uniqueness for the
+* **Figure 4.2 text (p. 68).** The book states, in the text after the figure, that "the median of the average uniqueness for the
   standard method is 0.6, and the median of the average uniqueness for the sequential method is
   0.7." The experiment's measured medians match this to one decimal place (section 4).
 
@@ -159,16 +159,16 @@ standard deviation of `d` over `sqrt(2000)`.
 | 3 | 0.083943 | 0.002911 | 28.8 | 0.6119 | 0.6958 |
 | 42 | 0.085824 | 0.002858 | 30.0 | 0.6073 | 0.6932 |
 
-**Medians against the book's caption.** `bootstrap_uniqueness_mc(n_iter=20000, seed=0, num_threads=4)`
+**Medians against the book's text (p. 68).** `bootstrap_uniqueness_mc(n_iter=20000, seed=0, num_threads=4)`
 gives medians of `0.6` for `std_u` and `0.7` for `seq_u`, to four decimal places. The book's
-caption gives 0.6 and 0.7 for the same two statistics. Seed 7, the slow test's seed, gives the same
+text gives 0.6 and 0.7 for the same two statistics. Seed 7, the slow test's seed, gives the same
 medians. This is a comparison at one decimal place, from a run of 20,000 trials and not 1E6. It
 supports that the design matches the book's experiment closely enough to reproduce those
 medians. It is not a test of the book's full distribution.
 
 **Repeated starts.** With 10 draws on 100 start bars, the chance of at least one repeated start is
-`1 - prod_{i=0}^{9} (1 - i/100)`, about `0.372`. In 2000 label sets from seed-keyed generators,
-`0.369` had fewer than 10 labels. This matches the calculation.
+`1 - prod_{i=0}^{9} (1 - i/100)`, about `0.372`. For seeds `s = 0..1999`, `random_t1(10, 100, 5, seed=np.random.default_rng(s))` gives fewer than 10 labels in
+`0.369` of label sets. This matches the calculation.
 
 **Another experiment in this repository, not comparable.** [weights.md](weights.md) reports `0.1963` (sequential)
 against `0.1913` (standard) over 200 seeds. That design has 200 bars, 60 labels and spans up to 30,
@@ -197,10 +197,10 @@ These statements are about AFML and were not checked here.
   verified by measuring an increase in" average uniqueness. The experiment here measures average
   uniqueness, which is the quantity the book proposes for that check. It does not measure closeness
   to IID, so it does not test the IID claim.
-* **The ANOVA result.** The Figure 4.2 caption says an ANOVA test on the difference of means gives "a
+* **The ANOVA result.** The text after Figure 4.2 says an ANOVA test on the difference of means gives "a
   vanishingly small probability". This module does not run that test.
-* **The book's run and its figure.** The book's histogram comes from its own run of 1E6 iterations.
-  This document makes no claim that the figure is reproduced.
+* **The figure's source run.** The book does not state how many trials produced Figure 4.2. This
+  document does not claim it was the 1E6 run, and makes no claim that the figure is reproduced.
 
 ## Limits
 

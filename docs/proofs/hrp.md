@@ -187,4 +187,4 @@ is dominated by that step for large `N`.
 | Weights nonnegative, sum to 1 (Prop. 5.2) | proved here; checked by test on 25 random covariances, incl. singular |
 | Block-diagonal cluster-level allocation (Prop. 6.1, Cor. 6.2) | proved here; checked by test |
 | Complexity `O(N^3)` worst case (Prop. 7.1) | proved here; the book's `T(n)=Theta(n)` is claimed from the book only |
-| HRP out-of-sample superiority over CLA and IVP (Section 16.6) | claimed from the book only; not reproduced here |
+| The book reports lower out-of-sample variance for HRP than CLA and IVP (Section 16.6) | claimed from the book only; not reproduced here |

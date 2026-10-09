@@ -63,7 +63,7 @@ repeats. Concurrency is taken over the sample, `c_t = sum_k 1_{t, d_k}`, so a la
 drawn twice covers each of its bars twice. For a drawn label `d`,
 `ū_d = (1/|L_d|) sum_{t in L_d} 1/c_t`. The sample statistic is
 `S = (1/n) sum_k ū_{d_k}`. The function `sample_average_uniqueness` computes `S`.
-The definition follows the task specification. The book's text was not consulted.
+The definition follows the task specification. The printed listing was also checked by reading (see section 2a, last bullet).
 
 **Proposition 2a.1 (range).** `0 < S <= 1`, provided every drawn label covers at
 least one bar.

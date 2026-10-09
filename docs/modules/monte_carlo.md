@@ -47,7 +47,7 @@ print(res.shape, round(float(res["heads"].mean()), 2))
   `bootstrap_uniqueness_trial`.
 - **Defaults.** `n_obs=10`, `n_bars=100` and `max_h=5` are the values printed in Snippet 4.9.
   The book runs `numIters=1E6`. The default `n_iter` here is 10,000, for speed. Its medians
-  match the book's Figure 4.2 caption to one decimal place (see the proof note).
+  match the medians the book states in the text after Figure 4.2 to one decimal place (see the proof note).
 - **Parallel runs.** `num_threads > 1` uses a process pool through
   `finlab.parallel.mp_pandas_obj`, so the function must be defined at module level.
 
