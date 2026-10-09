@@ -348,8 +348,8 @@ def bootstrap_uniqueness_mc(
     max_h : int, default 5
         Largest label length in bars.
     n_iter : int, default 10_000
-        Number of trials. This default is far below any book-scale run. The book
-        text is not in this repository, so that claim is not checked here.
+        Number of trials. The default is a convenience value, not a book setting.
+        The book text is not in this repository, so no book comparison is made.
     seed : int or None, default 0
         Seed for :func:`run_trials`.
     num_threads : int, default 1
