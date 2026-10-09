@@ -148,8 +148,20 @@ Each module has a test file in `tests/`, a benchmark in `benchmarks/`, and a pro
 note in `docs/proofs/`. Keep claims in the proof notes to three kinds: proved here,
 checked by test, or claimed from the book only.
 
+## Credits
+
+The methods implemented here come from Marcos López de Prado, *Advances in
+Financial Machine Learning* (Wiley, 2018; ISBN 978-1-119-48208-6). The book's
+text is not included in this repository; buy or borrow a copy to read the
+derivations. The proof notes cite chapters and snippets by number.
+
+Other sources named in the code and docs: López de Prado, Lewis and Boudt
+(2019) for ONC clustering, and Bailey and López de Prado (2012) for the minimum
+track record length. The purged cross-validation code and its proof come from
+the [`purgedcv`](https://github.com/landtml/purgedcv) project.
+
 ## License
 
-MIT. Parts of the CPCV implementation and its proof are ported from
+MIT; see [`LICENSE`](LICENSE). Parts of the CPCV implementation and its proof are ported from
 [`purgedcv`](https://github.com/landtml/purgedcv), also MIT; see
 `NOTICE_purgedcv_LICENSE.txt`.
