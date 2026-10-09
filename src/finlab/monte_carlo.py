@@ -22,11 +22,14 @@ draw nothing themselves.
 
 Bootstrap uniqueness experiment
 -------------------------------
-:func:`bootstrap_uniqueness_mc` compares the average uniqueness of a standard
-bootstrap sample with that of a sequential bootstrap sample (Chapter 4 style).
-The label design (:func:`random_t1`) is a design choice made here, because the
-book text is not in this repository. The defaults are not verified against the
-book.
+:func:`bootstrap_uniqueness_mc` runs the experiment of AFML section 4.5.4, the
+Monte Carlo comparison of standard and sequential bootstrap uniqueness. It
+follows the printed listings of Snippets 4.7 and 4.8 (label generation and the
+two bootstraps), with one change: random numbers come from a seeded
+:class:`numpy.random.Generator`, not numpy's legacy global generator. So a single
+trial is not the book's trial, but the design is the same. The book's Snippet 4.9
+runs 1E6 trials through its own job engine; :func:`bootstrap_uniqueness_mc` runs
+``n_iter`` trials (10,000 by default) through :func:`run_trials`.
 
 Not covered
 -----------
@@ -171,19 +174,20 @@ def random_t1(
     max_h: int,
     seed: int | np.random.Generator | None = None,
 ) -> pd.Series:
-    """Random label set on the bar grid ``0..n_bars-1``.
-
-    This label design is a choice made for the bootstrap experiment. It is not
-    taken from the book.
+    """Random label set, as in AFML Snippet 4.7 (``getRndT1``).
 
     Parameters
     ----------
     n_obs : int
-        Number of labels, with ``1 <= n_obs <= n_bars``.
+        Number of draws, at least 1. Labels can collapse (see Notes), so the
+        result can have fewer than ``n_obs`` labels.
     n_bars : int
-        Number of bars. Bars are the integers ``0..n_bars-1``.
+        Number of bars at the start of the sample. Start bars are drawn from
+        ``0..n_bars-1``.
     max_h : int
-        Largest label length in bars, at least 1.
+        Upper bound of the label length, at least 2. Lengths are drawn from
+        ``1..max_h-1``, because the book draws ``randint(1, maxH)``, which excludes
+        ``maxH``.
     seed : int, numpy.random.Generator or None, default None
         A Generator is used directly. Any other value is passed to
         :func:`numpy.random.default_rng`.
@@ -192,34 +196,36 @@ def random_t1(
     -------
     pd.Series
         Index: the distinct start bars, sorted ascending. Values: the end bar of
-        each label, as integers. Label ``i`` runs from ``index[i]`` to
-        ``values[i]``.
+        each label, ``start + length``. Ends are not clipped, so they can exceed
+        ``n_bars - 1``.
 
     Raises
     ------
     ValueError
-        If an argument is not an integer, if ``n_obs`` is outside ``1..n_bars``,
-        or if ``max_h < 1``.
+        If an argument is not an integer, if ``n_obs < 1`` or ``n_bars < 1``, or if
+        ``max_h < 2``.
 
     Notes
     -----
-    Draw order: ``n_obs`` distinct start bars, ``rng.choice(n_bars, size=n_obs,
-    replace=False)``, sorted. Then one length per label in sorted order,
-    ``rng.integers(1, max_h + 1, size=n_obs)``. The end is
-    ``min(start + length, n_bars - 1)``. So ``end - start`` lies in ``1..max_h``,
-    except where an end is clipped at the last bar, where it can be 0.
+    Draw order: ``n_obs`` start bars, ``rng.integers(0, n_bars, size=n_obs)``, then
+    ``n_obs`` lengths, ``rng.integers(1, max_h, size=n_obs)``.
+
+    The book's loop assigns ``t1.loc[ix] = val`` for each draw, so a start drawn more
+    than once keeps the length of its last draw. The result is built the same way.
     """
     if not (_is_int(n_obs) and _is_int(n_bars) and _is_int(max_h)):
         raise ValueError("n_obs, n_bars and max_h must be integers.")
-    if not 1 <= n_obs <= n_bars:
-        raise ValueError(f"need 1 <= n_obs <= n_bars, got n_obs={n_obs}, n_bars={n_bars}.")
-    if max_h < 1:
-        raise ValueError(f"max_h must be at least 1, got {max_h}.")
+    if n_obs < 1 or n_bars < 1:
+        raise ValueError(f"n_obs and n_bars must be at least 1, got {n_obs}, {n_bars}.")
+    if max_h < 2:
+        raise ValueError(f"max_h must be at least 2 (lengths are 1..max_h-1), got {max_h}.")
     rng = seed if isinstance(seed, np.random.Generator) else np.random.default_rng(seed)
-    starts = np.sort(rng.choice(n_bars, size=n_obs, replace=False)).astype(np.int64)
-    lengths = rng.integers(1, max_h + 1, size=n_obs).astype(np.int64)
-    ends = np.minimum(starts + lengths, n_bars - 1)
-    return pd.Series(ends, index=pd.Index(starts))
+    starts = rng.integers(0, n_bars, size=n_obs).astype(np.int64)
+    lengths = rng.integers(1, max_h, size=n_obs).astype(np.int64)
+    # Keep the last draw for each start, as the book's overwrite loop does.
+    uniq, first_in_reversed = np.unique(starts[::-1], return_index=True)
+    last_draw = n_obs - 1 - first_in_reversed
+    return pd.Series(uniq + lengths[last_draw], index=pd.Index(uniq))
 
 
 @jit
@@ -295,11 +301,11 @@ def bootstrap_uniqueness_trial(
     rng : numpy.random.Generator
         Stream for this trial, as supplied by :func:`run_trials`.
     n_obs : int
-        Number of labels and of draws in each bootstrap sample.
+        Number of draws passed to :func:`random_t1`.
     n_bars : int
-        Number of bars.
+        Number of start bars, passed to :func:`random_t1`.
     max_h : int
-        Largest label length in bars.
+        Upper bound of the label length, passed to :func:`random_t1`.
 
     Returns
     -------
@@ -309,12 +315,18 @@ def bootstrap_uniqueness_trial(
 
     Notes
     -----
+    Follows AFML Snippet 4.8. The bar grid runs from 0 to the largest label end,
+    as in ``range(t1.max() + 1)`` in the book. Each sample has as many draws as
+    there are labels (after :func:`random_t1` has merged repeated starts), as the
+    book's ``np.random.choice(indM.columns, size=indM.shape[1])`` and
+    ``seqBootstrap(indM)`` do.
+
     Draw order from ``rng``, fixed by this docstring:
 
-    1. ``random_t1(n_obs, n_bars, max_h, rng)``: start bars, then lengths.
-    2. ``std_draws = rng.integers(0, n_obs, size=n_obs)``: the standard bootstrap,
-       with repeats.
-    3. ``uniforms = rng.random(n_obs)``: one uniform per sequential draw.
+    1. :func:`random_t1`: ``n_obs`` start bars, then ``n_obs`` lengths.
+    2. ``std_draws = rng.integers(0, m, size=m)``: the standard bootstrap, with
+       repeats. ``m`` is the number of labels.
+    3. ``uniforms = rng.random(m)``: one uniform per sequential draw.
 
     The sequential sample uses ``uniforms`` through the same inverse-CDF rule as
     :func:`finlab.weights.sequential_bootstrap`. Both averages keep repeated
@@ -323,9 +335,11 @@ def bootstrap_uniqueness_trial(
     t1 = random_t1(n_obs, n_bars, max_h, rng)
     starts = t1.index.to_numpy(dtype=np.int64)
     ends = t1.to_numpy(dtype=np.int64)
-    std_draws = rng.integers(0, n_obs, size=n_obs)
-    uniforms = rng.random(n_obs)
-    std_u, seq_u = _trial_uniqueness(n_bars, starts, ends, std_draws, uniforms)
+    m = len(t1)
+    grid = int(ends.max()) + 1
+    std_draws = rng.integers(0, m, size=m)
+    uniforms = rng.random(m)
+    std_u, seq_u = _trial_uniqueness(grid, starts, ends, std_draws, uniforms)
     return {"std_u": float(std_u), "seq_u": float(seq_u)}
 
 
@@ -342,14 +356,14 @@ def bootstrap_uniqueness_mc(
     Parameters
     ----------
     n_obs : int, default 10
-        Number of labels and of draws, passed to :func:`random_t1`.
+        Number of draws in :func:`random_t1`. The book's Snippet 4.9 uses 10.
     n_bars : int, default 100
-        Number of bars.
+        Number of start bars. The book's Snippet 4.9 uses 100.
     max_h : int, default 5
-        Largest label length in bars.
+        Upper bound of the label length. The book's Snippet 4.9 uses 5.
     n_iter : int, default 10_000
-        Number of trials. The default is a convenience value, not a book setting.
-        The book text is not in this repository, so no book comparison is made.
+        Number of trials. The book's Snippet 4.9 uses 1E6. The default is smaller
+        for speed; it is not the book's value.
     seed : int or None, default 0
         Seed for :func:`run_trials`.
     num_threads : int, default 1
@@ -364,8 +378,11 @@ def bootstrap_uniqueness_mc(
 
     Notes
     -----
-    The defaults (``n_obs``, ``n_bars``, ``max_h``, ``n_iter``) are design choices
-    of this module. They are not verified against the book.
+    The three experiment defaults (``n_obs``, ``n_bars``, ``max_h``) are the values
+    printed in Snippet 4.9. ``n_iter`` is a smaller run count than the book's 1E6.
+    The book reports medians of about 0.6 for the standard bootstrap and 0.7 for the
+    sequential bootstrap (Figure 4.2 caption). Those medians are compared with the
+    measured ones in ``docs/proofs/monte_carlo.md``, not asserted here.
     """
     return run_trials(
         bootstrap_uniqueness_trial,

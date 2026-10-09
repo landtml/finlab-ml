@@ -45,23 +45,29 @@ REPEATS = 3
 FIRST_CALL_TAG = "FIRST_CALL_S="
 
 
-def make_trials(n: int, seed: int = 0) -> list[tuple[np.ndarray, ...]]:
-    """Inputs for ``n`` trials, drawn in the order documented for bootstrap_uniqueness_trial."""
+def make_trials(n: int, seed: int = 0) -> list[tuple]:
+    """Inputs for ``n`` trials, drawn in the order documented for bootstrap_uniqueness_trial.
+
+    Each entry is ``(grid, starts, ends, std_draws, uniforms)``. As in the trial, the
+    bar grid runs to the last label end, and each sample has one draw per label.
+    """
     rng = np.random.default_rng(seed)
     trials = []
     for _ in range(n):
         t1 = random_t1(N_OBS, N_BARS, MAX_H, rng)
         starts = t1.index.to_numpy(dtype=np.int64)
         ends = t1.to_numpy(dtype=np.int64)
-        std_draws = rng.integers(0, N_OBS, size=N_OBS)
-        uniforms = rng.random(N_OBS)
-        trials.append((starts, ends, std_draws, uniforms))
+        grid = int(ends.max()) + 1
+        m = len(t1)
+        std_draws = rng.integers(0, m, size=m)
+        uniforms = rng.random(m)
+        trials.append((grid, starts, ends, std_draws, uniforms))
     return trials
 
 
-def dense_indicator(starts: np.ndarray, ends: np.ndarray) -> np.ndarray:
-    """Full bar-by-label indicator matrix, shape (N_BARS, n_labels)."""
-    bars = np.arange(N_BARS)
+def dense_indicator(grid: int, starts: np.ndarray, ends: np.ndarray) -> np.ndarray:
+    """Full bar-by-label indicator matrix, shape (grid, n_labels)."""
+    bars = np.arange(grid)
     return ((bars[:, None] >= starts) & (bars[:, None] <= ends)).astype(np.float64)
 
 
@@ -84,18 +90,18 @@ def dense_sequential_draws(m: np.ndarray, uniforms: np.ndarray) -> np.ndarray:
     return draws
 
 
-def naive_trial(starts, ends, std_draws, uniforms) -> tuple[float, float]:
+def naive_trial(grid, starts, ends, std_draws, uniforms) -> tuple[float, float]:
     """Dense path for one trial: indicator matrix, dense draws, public dense uniqueness."""
-    m = dense_indicator(starts, ends)
+    m = dense_indicator(grid, starts, ends)
     seq_draws = dense_sequential_draws(m, uniforms)
     return sample_average_uniqueness(m, std_draws), sample_average_uniqueness(m, seq_draws)
 
 
 def first_call_seconds() -> float:
     """Time the first call of the jitted trial. Runs in the child process only."""
-    starts, ends, std_draws, uniforms = make_trials(1)[0]
+    grid, starts, ends, std_draws, uniforms = make_trials(1)[0]
     t0 = time.perf_counter()
-    _trial_uniqueness(N_BARS, starts, ends, std_draws, uniforms)
+    _trial_uniqueness(grid, starts, ends, std_draws, uniforms)
     return time.perf_counter() - t0
 
 
@@ -118,21 +124,21 @@ def cold_first_call_seconds() -> float:
 
 def compare_per_trial(trials) -> None:
     worst_std = worst_seq = 0.0
-    for starts, ends, std_draws, uniforms in trials[:200]:
-        k_std, k_seq = _trial_uniqueness(N_BARS, starts, ends, std_draws, uniforms)
-        n_std, n_seq = naive_trial(starts, ends, std_draws, uniforms)
+    for grid, starts, ends, std_draws, uniforms in trials[:200]:
+        k_std, k_seq = _trial_uniqueness(grid, starts, ends, std_draws, uniforms)
+        n_std, n_seq = naive_trial(grid, starts, ends, std_draws, uniforms)
         worst_std = max(worst_std, abs(k_std - n_std))
         worst_seq = max(worst_seq, abs(k_seq - n_seq))
     if max(worst_std, worst_seq) > 1e-9:
         raise SystemExit(f"kernel and dense path disagree: std_u {worst_std:.3g}, seq_u {worst_seq:.3g}")
 
     def run_kernel() -> None:
-        for starts, ends, std_draws, uniforms in trials:
-            _trial_uniqueness(N_BARS, starts, ends, std_draws, uniforms)
+        for grid, starts, ends, std_draws, uniforms in trials:
+            _trial_uniqueness(grid, starts, ends, std_draws, uniforms)
 
     def run_naive() -> None:
-        for starts, ends, std_draws, uniforms in trials:
-            naive_trial(starts, ends, std_draws, uniforms)
+        for grid, starts, ends, std_draws, uniforms in trials:
+            naive_trial(grid, starts, ends, std_draws, uniforms)
 
     t_jit = best_of(run_kernel, repeats=REPEATS) / len(trials)
     t_naive = best_of(run_naive, repeats=REPEATS) / len(trials)

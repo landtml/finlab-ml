@@ -185,32 +185,51 @@ def naive_sample_avg_uniqueness(m, draws):
         vals.append(np.mean(1.0 / c[rows]))
     return float(np.mean(vals))
 
-
 @pytest.mark.parametrize("seed", range(4))
-def test_random_t1_index_is_unique_sorted_and_values_are_ordered(seed):
-    n_bars = 40
-    t1 = random_t1(15, n_bars, 6, seed=seed)
+def test_random_t1_index_is_unique_sorted_and_within_grid(seed):
+    n_bars, n_obs, max_h = 40, 15, 6
+    t1 = random_t1(n_obs, n_bars, max_h, seed=seed)
     idx = t1.index.to_numpy()
-    vals = t1.to_numpy()
-    assert len(t1) == 15
     assert t1.index.is_unique
     assert np.all(np.diff(idx) > 0)
+    assert 1 <= len(t1) <= n_obs
     assert idx.min() >= 0 and idx.max() <= n_bars - 1
-    assert np.all(vals >= idx)
-    assert vals.max() <= n_bars - 1
 
 
-@pytest.mark.parametrize("n_obs,n_bars,max_h", [(15, 40, 6), (20, 20, 8), (5, 30, 1)])
-def test_random_t1_span_lengths_respect_max_h_and_clip_at_last_bar(n_obs, n_bars, max_h):
+@pytest.mark.parametrize("n_obs,n_bars,max_h", [(15, 40, 6), (20, 20, 8), (5, 30, 2)])
+def test_random_t1_lengths_lie_in_one_to_max_h_minus_one(n_obs, n_bars, max_h):
     for seed in range(5):
         t1 = random_t1(n_obs, n_bars, max_h, seed=seed)
-        idx = t1.index.to_numpy()
-        vals = t1.to_numpy()
-        diff = vals - idx
-        assert np.all(diff <= max_h)
-        # A zero length can only come from clipping at the last bar.
-        assert np.all((diff >= 1) | (vals == n_bars - 1))
-        assert np.all(idx[diff == 0] == n_bars - 1)
+        diff = t1.to_numpy() - t1.index.to_numpy()
+        assert np.all((diff >= 1) & (diff <= max_h - 1))
+
+
+def test_random_t1_ends_are_not_clipped_at_the_last_bar():
+    # Starts lie in 0..2, but the largest end runs past bar 2 for some seeds.
+    largest_end = [random_t1(5, 3, 6, seed=s).to_numpy().max() for s in range(20)]
+    assert max(largest_end) > 2
+
+
+@pytest.mark.parametrize("seed", range(10))
+def test_random_t1_matches_snippet_4_7_loop_with_same_draws(seed):
+    # Snippet 4.7 as a loop: t1.loc[ix] = val for each draw, so the last draw wins.
+    n_obs, n_bars, max_h = 12, 6, 5
+    rng = np.random.default_rng(seed)
+    starts = rng.integers(0, n_bars, size=n_obs)
+    lengths = rng.integers(1, max_h, size=n_obs)
+    ref = {}
+    for ix, ln in zip(starts, lengths):
+        ref[int(ix)] = int(ix + ln)
+    expected = pd.Series(ref).sort_index()
+    got = random_t1(n_obs, n_bars, max_h, seed=seed)
+    pd.testing.assert_series_equal(
+        got, expected, check_dtype=False, check_index_type=False, check_names=False
+    )
+
+
+def test_random_t1_can_merge_repeated_starts():
+    # 40 draws on 5 bars must repeat some start, so fewer than 5 labels can remain.
+    assert len(random_t1(40, 5, 4, seed=0)) <= 5
 
 
 def test_random_t1_same_seed_gives_same_series():
@@ -227,33 +246,51 @@ def test_random_t1_generator_and_int_seed_agree():
 
 @pytest.mark.parametrize(
     "n_obs,n_bars,max_h",
-    [(0, 10, 3), (11, 10, 3), (3, 10, 0), (3, 10, -1), (2.5, 10, 3), (3, True, 3)],
+    [(0, 10, 3), (3, 0, 3), (3, 10, 1), (3, 10, 0), (2.5, 10, 3), (3, True, 3)],
 )
 def test_random_t1_rejects_bad_arguments(n_obs, n_bars, max_h):
     with pytest.raises(ValueError):
         random_t1(n_obs, n_bars, max_h, seed=0)
 
 
+def _naive_trial(rng, n_obs, n_bars, max_h):
+    """bootstrap_uniqueness_trial rebuilt with dense matrices and loops, same draws."""
+    t1 = random_t1(n_obs, n_bars, max_h, rng)
+    n_labels = len(t1)
+    m = naive_indicator(np.arange(int(t1.max()) + 1), t1)
+    std = rng.integers(0, n_labels, size=n_labels)
+    uniforms = rng.random(n_labels)
+    seq = naive_sequential_draws(m, uniforms)
+    return naive_sample_avg_uniqueness(m, std), naive_sample_avg_uniqueness(m, seq)
+
+
 @pytest.mark.parametrize("seed", range(6))
-def test_trial_uniqueness_matches_naive_reference(seed):
-    n_bars, n_obs, max_h = 40, 12, 6
-    t1 = random_t1(n_obs, n_bars, max_h, seed=seed)
+def test_trial_matches_dense_naive_reference(seed):
+    ref_std, ref_seq = _naive_trial(np.random.default_rng(seed), 12, 30, 6)
+    got = bootstrap_uniqueness_trial(np.random.default_rng(seed), 12, 30, 6)
+    assert got["std_u"] == pytest.approx(ref_std, rel=1e-12)
+    assert got["seq_u"] == pytest.approx(ref_seq, rel=1e-12)
+
+
+@pytest.mark.parametrize("seed", range(6))
+def test_trial_uniqueness_kernel_matches_dense_reference(seed):
+    t1 = random_t1(12, 30, 6, seed=seed)
     starts = t1.index.to_numpy(dtype=np.int64)
     ends = t1.to_numpy(dtype=np.int64)
-    m = naive_indicator(np.arange(n_bars), t1)
+    grid = int(ends.max()) + 1
+    m = naive_indicator(np.arange(grid), t1)
 
     rng = np.random.default_rng(100 + seed)
-    std = rng.integers(0, n_obs, size=n_obs)
-    uniforms = rng.random(n_obs)
+    std = rng.integers(0, len(t1), size=len(t1))
+    uniforms = rng.random(len(t1))
     seq = naive_sequential_draws(m, uniforms)
 
     ref_std = naive_sample_avg_uniqueness(m, std)
-    ref_seq = naive_sample_avg_uniqueness(m, seq)
     assert ref_std == pytest.approx(sample_average_uniqueness(m, std), rel=1e-12)
 
-    got_std, got_seq = _trial_uniqueness(n_bars, starts, ends, std, uniforms)
+    got_std, got_seq = _trial_uniqueness(grid, starts, ends, std, uniforms)
     assert got_std == pytest.approx(ref_std, rel=1e-12)
-    assert got_seq == pytest.approx(ref_seq, rel=1e-12)
+    assert got_seq == pytest.approx(naive_sample_avg_uniqueness(m, seq), rel=1e-12)
 
 
 def test_trial_uniqueness_hand_computed_repeat_case():
@@ -285,11 +322,16 @@ def test_trial_follows_documented_draw_order(seed):
     n_obs, n_bars, max_h = 9, 30, 4
     got = bootstrap_uniqueness_trial(np.random.default_rng(seed), n_obs, n_bars, max_h)
 
+    # Hand-written draw order from the docstring of bootstrap_uniqueness_trial.
     rng = np.random.default_rng(seed)
-    t1 = random_t1(n_obs, n_bars, max_h, rng)
-    m = naive_indicator(np.arange(n_bars), t1)
-    std = rng.integers(0, n_obs, size=n_obs)
-    uniforms = rng.random(n_obs)
+    starts = rng.integers(0, n_bars, size=n_obs)  # start bars
+    rng.integers(1, max_h, size=n_obs)  # lengths
+    t1 = random_t1(n_obs, n_bars, max_h, np.random.default_rng(seed))
+    assert len(t1) == len(set(starts.tolist()))
+    m_labels = len(t1)
+    m = naive_indicator(np.arange(int(t1.max()) + 1), t1)
+    std = rng.integers(0, m_labels, size=m_labels)
+    uniforms = rng.random(m_labels)
     seq = naive_sequential_draws(m, uniforms)
     assert got["std_u"] == pytest.approx(naive_sample_avg_uniqueness(m, std), rel=1e-12)
     assert got["seq_u"] == pytest.approx(naive_sample_avg_uniqueness(m, seq), rel=1e-12)
@@ -303,7 +345,8 @@ def test_trial_is_deterministic_for_fixed_rng_seed():
 
 
 @pytest.mark.parametrize("seed", range(3))
-def test_single_label_sample_has_uniqueness_one(seed):
+def test_single_draw_sample_has_uniqueness_one(seed):
+    # One draw gives one label, which covers bars alone, so its uniqueness is 1.
     out = bootstrap_uniqueness_trial(np.random.default_rng(seed), 1, 20, 4)
     assert out["std_u"] == 1.0
     assert out["seq_u"] == 1.0
@@ -340,9 +383,7 @@ def test_bootstrap_uniqueness_mc_num_threads_does_not_change_result():
 
 
 def test_sequential_bootstrap_uniqueness_exceeds_standard_by_four_se():
-    # The margin was measured once when this test was written and is far above
-    # the bound. The bound is a loose check that the paired gap is not noise,
-    # not a pinned value.
+    # The bound is a loose check that the paired gap is not noise, not a pinned value.
     df = bootstrap_uniqueness_mc(n_iter=2000, seed=0)
     assert ((df > 0.0) & (df <= 1.0)).all().all()
     d = (df["seq_u"] - df["std_u"]).to_numpy()
