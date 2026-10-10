@@ -1,31 +1,29 @@
 # Releasing
 
-Releases are published by `.github/workflows/release.yml`. Nobody pushes tags by hand.
+The Release workflow (`.github/workflows/release.yml`) tags and publishes each release. It runs after the
+CI workflow passes on a push to `main`.
 
-## Steps
+## Release pull request
 
-In one pull request to `main`:
+A release pull request to `main` contains:
 
-1. Set the new version in `pyproject.toml`.
-2. In `CHANGELOG.md`, move the `[Unreleased]` entries under `## [X.Y.Z] - YYYY-MM-DD` and update
-   the link references at the bottom.
-3. Update the version in the README's install command (`@vX.Y.Z`).
-4. Optional: write the release notes in `.github/releases/vX.Y.Z.md`. Without that file, the
-   release uses an install line and the changelog section. `v0.1.1.md` is an example.
+1. The new version in `pyproject.toml`.
+2. A `## [X.Y.Z] - YYYY-MM-DD` section in `CHANGELOG.md` with the former `[Unreleased]` entries, and the
+   updated link references at the end of the file.
+3. The new version in the README install command (`@vX.Y.Z`).
+4. Optional release notes in `.github/releases/vX.Y.Z.md`, in the format of `v0.1.1.md`.
 
-Merge the pull request. When CI passes on `main`, the workflow sees a version with no tag. It
-then:
+## Workflow
 
-- tags the merge commit `vX.Y.Z`;
+When the version in `pyproject.toml` has no tag, the workflow:
+
+- tags the commit `vX.Y.Z`;
 - builds the sdist and the wheel;
 - publishes the release "finlab X.Y.Z" with both files attached.
 
-## What the workflow checks
+The release notes come from `.github/releases/vX.Y.Z.md`. Without that file, they are an install line
+followed by the `CHANGELOG.md` section.
 
-- It runs only after the CI workflow passes on a push to `main`.
-- A version that is already tagged is skipped, so other merges to `main` release nothing.
-- A version with no `CHANGELOG.md` section fails the run and publishes nothing.
-- A README that still names the old version gives a warning but does not stop the release.
-
-If a run fails, fix the cause on `main`. The next CI pass retries the release. You can also
-start the workflow by hand from the Actions tab.
+A version that already has a tag is skipped. A version with no `CHANGELOG.md` section fails the run and
+publishes nothing. A README that names another version raises a warning. A failed run is retried by the
+next passing CI run on `main`, or from the Actions tab.
