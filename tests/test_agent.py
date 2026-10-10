@@ -139,3 +139,33 @@ def test_subprocess_round_trip():
     assert proc.returncode == 0, proc.stderr
     reply = json.loads(proc.stdout.splitlines()[0])
     assert reply["id"] == 7 and not reply["result"]["isError"]
+
+
+def test_call_tool_unknown_name_returns_error_shape():
+    result, is_error = tl.call_tool("no_such_tool", {})
+    assert is_error is True
+    assert result == {"error": "unknown tool 'no_such_tool'"}
+
+
+def test_tool_error_is_reported_by_call_tool():
+    assert issubclass(tl.ToolError, ValueError)
+    with pytest.raises(tl.ToolError, match="non-empty"):
+        tl.TOOLS["sharpe_ratio"].handler({"returns": []})
+    result, is_error = tl.call_tool("sharpe_ratio", {"returns": []})
+    assert is_error is True
+    assert "non-empty" in result["error"]
+    # Missing arguments (None) are treated as an empty dict, not a crash.
+    result, is_error = tl.call_tool("sharpe_ratio", None)
+    assert is_error is True and "error" in result
+
+
+def test_list_tools_entries_have_name_description_and_input_schema():
+    entries = tl.list_tools()
+    assert [e["name"] for e in entries] == list(tl.TOOLS.keys())
+    assert entries, "registry must not be empty"
+    for e in entries:
+        assert set(e) == {"name", "description", "inputSchema"}
+        assert isinstance(e["name"], str) and e["name"]
+        assert isinstance(e["description"], str) and e["description"]
+        assert e["inputSchema"]["type"] == "object"
+        assert isinstance(e["inputSchema"]["properties"], dict)
