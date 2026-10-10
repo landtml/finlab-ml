@@ -263,6 +263,16 @@ def test_time_bars_right_closed_and_dropping_empty() -> None:
     assert out.loc[pd.Timestamp("2024-01-01 00:04:00"), "volume"] == 4.0
 
 
+def test_time_bars_warns_that_trailing_interval_is_kept() -> None:
+    idx = pd.to_datetime(["2020-01-02 10:00:10", "2020-01-02 10:00:50", "2020-01-02 10:01:20"])
+    s = pd.Series([1.0, 2.0, 3.0], index=idx)
+    with pytest.warns(UserWarning, match="not closed"):
+        out = time_bars(s, freq="1min")
+    # The trailing (10:01, 10:02] interval holds one tick and is kept, not dropped.
+    assert list(out.index) == [pd.Timestamp("2020-01-02 10:01:00"), pd.Timestamp("2020-01-02 10:02:00")]
+    assert out["ticks"].tolist() == [2, 1]
+
+
 def test_numpy_input_gives_positional_index() -> None:
     p, v = make_ticks(4, n=200)
     bars = tick_bars(p, 10)
@@ -276,6 +286,20 @@ def test_series_index_is_used_as_bar_timestamp() -> None:
     idx = pd.date_range("2024-03-01", periods=120, freq="s")
     bars = tick_bars(pd.Series(p, index=idx), 30)
     assert list(bars.index) == [idx[29], idx[59], idx[89], idx[119]]
+
+
+def test_unsorted_series_gives_the_same_bars_as_sorted() -> None:
+    p, v = make_ticks(13, n=600)
+    idx = pd.date_range("2024-03-01", periods=600, freq="s")
+    perm = np.random.default_rng(13).permutation(600)
+    sorted_bars = tick_bars(pd.Series(p, index=idx), 50, volumes=pd.Series(v, index=idx))
+    shuffled = tick_bars(
+        pd.Series(p[perm], index=idx[perm]),
+        50,
+        volumes=pd.Series(v[perm], index=idx[perm]),
+    )
+    assert shuffled.index.is_monotonic_increasing
+    pd.testing.assert_frame_equal(shuffled, sorted_bars)
 
 
 # --------------------------------------------------------------------------- #
