@@ -278,6 +278,20 @@ def test_series_index_is_used_as_bar_timestamp() -> None:
     assert list(bars.index) == [idx[29], idx[59], idx[89], idx[119]]
 
 
+def test_unsorted_series_gives_the_same_bars_as_sorted() -> None:
+    p, v = make_ticks(13, n=600)
+    idx = pd.date_range("2024-03-01", periods=600, freq="s")
+    perm = np.random.default_rng(13).permutation(600)
+    sorted_bars = tick_bars(pd.Series(p, index=idx), 50, volumes=pd.Series(v, index=idx))
+    shuffled = tick_bars(
+        pd.Series(p[perm], index=idx[perm]),
+        50,
+        volumes=pd.Series(v[perm], index=idx[perm]),
+    )
+    assert shuffled.index.is_monotonic_increasing
+    pd.testing.assert_frame_equal(shuffled, sorted_bars)
+
+
 # --------------------------------------------------------------------------- #
 # Tick rule
 # --------------------------------------------------------------------------- #

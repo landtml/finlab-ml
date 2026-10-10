@@ -332,6 +332,13 @@ def _as_arrays(
         if not np.all(np.isfinite(v)) or np.any(v < 0.0):
             raise ValueError("volumes must be finite and non-negative.")
         v = np.ascontiguousarray(v)
+    # Bars are formed in arrival order, so an unsorted Series must be put in time
+    # order first; a stable sort keeps the arrival order of duplicate timestamps.
+    if isinstance(prices, pd.Series) and not index.is_monotonic_increasing:
+        order = index.argsort(kind="stable")
+        index = index[order]
+        p = np.ascontiguousarray(p[order])
+        v = np.ascontiguousarray(v[order])
     return index, p, v
 
 
