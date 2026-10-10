@@ -50,6 +50,7 @@ from typing import Callable, Optional, Union
 import numpy as np
 import pandas as pd
 
+from finlab._display import html_table
 from finlab._jit import jit
 
 __all__ = ["PBOResult", "probability_of_backtest_overfitting"]
@@ -75,6 +76,20 @@ class PBOResult:
     pbo: float
     logits: np.ndarray
     n_combinations: int
+
+    def _repr_html_(self) -> str:
+        """Return a notebook HTML table of PBO, the split count and the logit count.
+
+        The values are read from the object; PBO is not recomputed.
+        """
+        return html_table(
+            "PBOResult",
+            [
+                ("PBO", self.pbo),
+                ("n_combinations = C(S, S/2)", self.n_combinations),
+                ("n_logits", len(self.logits)),
+            ],
+        )
 
 
 def probability_of_backtest_overfitting(

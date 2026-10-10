@@ -45,6 +45,8 @@ import numpy as np
 import pandas as pd
 from scipy.stats import norm
 
+from finlab._display import html_table
+
 __all__ = [
     "sharpe_ratio",
     "probabilistic_sharpe_ratio",
@@ -235,6 +237,22 @@ class DeflatedSharpeResult:
     n_obs: int
     skew: float
     kurt: float
+
+    def _repr_html_(self) -> str:
+        """Return a notebook HTML table of the DSR, its benchmark and its inputs.
+
+        The values are read from the object; the DSR is not recomputed.
+        """
+        return html_table(
+            "DeflatedSharpeResult",
+            [
+                ("dsr", self.dsr),
+                ("sr_hat", self.sr_hat),
+                ("sr_star", self.sr_star),
+                ("n_trials", self.n_trials),
+                ("n_obs", self.n_obs),
+            ],
+        )
 
 
 def deflated_sharpe(
