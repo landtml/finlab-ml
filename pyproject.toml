@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "finlab"
-version = "0.1.0"
+version = "0.1.1"
 description = "High-performance toolkit for financial machine learning, implementing Advances in Financial Machine Learning (Lopez de Prado)."
 readme = "README.md"
 license = { text = "MIT" }
