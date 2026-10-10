@@ -263,6 +263,16 @@ def test_time_bars_right_closed_and_dropping_empty() -> None:
     assert out.loc[pd.Timestamp("2024-01-01 00:04:00"), "volume"] == 4.0
 
 
+def test_time_bars_warns_that_trailing_interval_is_kept() -> None:
+    idx = pd.to_datetime(["2020-01-02 10:00:10", "2020-01-02 10:00:50", "2020-01-02 10:01:20"])
+    s = pd.Series([1.0, 2.0, 3.0], index=idx)
+    with pytest.warns(UserWarning, match="not closed"):
+        out = time_bars(s, freq="1min")
+    # The trailing (10:01, 10:02] interval holds one tick and is kept, not dropped.
+    assert list(out.index) == [pd.Timestamp("2020-01-02 10:01:00"), pd.Timestamp("2020-01-02 10:02:00")]
+    assert out["ticks"].tolist() == [2, 1]
+
+
 def test_numpy_input_gives_positional_index() -> None:
     p, v = make_ticks(4, n=200)
     bars = tick_bars(p, 10)

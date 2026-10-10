@@ -45,6 +45,7 @@ order-book data, and the auction-outlier filtering the book discusses in 2.3.1.2
 
 from __future__ import annotations
 
+import warnings
 from typing import Literal
 
 import numpy as np
@@ -445,6 +446,16 @@ def time_bars(
     )
     out = out[out["ticks"] > 0].copy()
     out["ticks"] = out["ticks"].astype(np.int64)
+    # The module contract drops an incomplete trailing bar, but whether the last
+    # interval is complete cannot be known from the ticks alone, so it is kept
+    # and flagged here rather than silently changing the output.
+    if len(out):
+        warnings.warn(
+            "the last time-bar interval is not closed and is kept; the module "
+            "contract drops an incomplete trailing bar, so it may still change.",
+            UserWarning,
+            stacklevel=2,
+        )
     return out
 
 
