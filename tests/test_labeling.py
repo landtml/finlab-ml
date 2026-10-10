@@ -8,6 +8,8 @@ scanning against scipy.stats.linregress.
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -388,3 +390,66 @@ def test_pandas_only_labeling_helpers_reject_non_pandas_input(bad) -> None:
         meta_labels(bad, close, side=pd.Series([1.0] * 3, index=events.index))
     with pytest.raises(TypeError, match="close"):
         meta_labels(events, bad, side=pd.Series([1.0] * 3, index=events.index))
+
+
+# ---------------------------------------------------------------------------
+# Timezone mismatch between target and close (W3-L01)
+# ---------------------------------------------------------------------------
+
+
+def test_get_events_rejects_naive_target_with_aware_close():
+    close = _random_walk(60, seed=11).tz_localize("America/New_York")
+    tv = add_vertical_barrier(close.index[:3], close, 2)
+    target = pd.Series(0.02, index=pd.bdate_range("2019-01-01", periods=60))
+    with pytest.raises(ValueError, match="timezone") as info:
+        get_events(close, close.index[:3], (1, 1), target, 0.01, vertical_barrier_times=tv)
+    assert "America/New_York" in str(info.value)
+    assert "None" in str(info.value)
+
+
+# ---------------------------------------------------------------------------
+# Timezone of the index is kept on barrier and t1 values (W3-L02)
+# ---------------------------------------------------------------------------
+
+
+def test_vertical_barrier_and_events_keep_index_timezone():
+    close = _random_walk(60, seed=12).tz_localize("America/New_York")
+    events = close.index[:20:5]
+    vt = add_vertical_barrier(events, close, 10)
+    assert vt.dtype == close.index.dtype
+    target = pd.Series(0.02, index=close.index)
+    ev = get_events(close, events, (1, 1), target, 0.01, vertical_barrier_times=vt)
+    assert ev["t1"].dtype == close.index.dtype
+    bins = get_bins(ev, close)
+    assert len(bins) == len(events)
+
+
+# ---------------------------------------------------------------------------
+# Vertical barrier between bars (W3-L03)
+# ---------------------------------------------------------------------------
+
+
+def test_get_events_warns_when_vertical_barrier_falls_between_bars():
+    c = _random_walk(40, seed=13)
+    t0 = c.index[0]
+    between = pd.Series([c.index[10] + pd.Timedelta(hours=12)], index=[t0])
+    on_grid = pd.Series([c.index[10]], index=[t0])
+    trgt = pd.Series(10.0, index=c.index)
+    with pytest.warns(UserWarning, match="between bars"):
+        ev = get_events(c, [t0], (10, 10), trgt, 0.01, vertical_barrier_times=between)
+    assert ev.loc[t0, "t1"] == c.index[10] + pd.Timedelta(hours=12)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", UserWarning)
+        get_events(c, [t0], (10, 10), trgt, 0.01, vertical_barrier_times=on_grid)
+
+
+# ---------------------------------------------------------------------------
+# Input order does not change daily volatility (W3-L04)
+# ---------------------------------------------------------------------------
+
+
+def test_get_daily_vol_is_independent_of_input_order():
+    s = _random_walk(30, seed=14)
+    shuffled = s.iloc[np.random.default_rng(1).permutation(len(s))]
+    expected = get_daily_vol(s, 5).reindex(shuffled.index)
+    pd.testing.assert_series_equal(get_daily_vol(shuffled, 5), expected)
