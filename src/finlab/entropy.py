@@ -8,7 +8,8 @@ Implements, following the book's notation:
 * :func:`lempel_ziv_parse` -- the Lempel-Ziv non-redundant dictionary
   (AFML 18.4, Snippet 18.2).
 * :func:`lempel_ziv_entropy` -- an entropy estimate from the LZ dictionary size
-  (see the Notes: the book gives no formula, so this normalisation is ours).
+  (see the Notes: the book gives no formula, so this is the standard LZ78
+  normalisation, not an AFML formula).
 * :func:`kontoyiannis_entropy` -- the Kontoyiannis / Gao et al. (2008) LZ
   estimator with the expanding or sliding centred window (AFML 18.4,
   Snippet 18.4).

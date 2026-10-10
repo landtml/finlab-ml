@@ -239,10 +239,11 @@ def becker_parkinson_volatility(high: ArrayLike, low: ArrayLike, sl: int = 1) ->
 
     Notes
     -----
-    The formula was checked by simulation (GBM, 20,000 bars, 400 steps per
-    bar): the average estimate was within 4% of the true sigma. The book
-    gives no proof, so the formula is "claimed from the book" and only the
-    simulation check supports it. See ``docs/proofs/microstructure.md``.
+    The formula was checked by simulation on a GBM path (20,000 bars, 400
+    steps per bar): the average estimate is within 10% of the true sigma at
+    the test seed, and about 5% low (0.01893 against 0.02 at seed 0). The
+    book gives no proof, so the formula is "claimed from the book" and only
+    the simulation check supports it. See ``docs/proofs/microstructure.md``.
 
     Scope: continuous-time volatility proxy from bar extremes. Discrete
     monitoring of the path biases the estimate downward.
