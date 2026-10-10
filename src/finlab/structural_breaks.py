@@ -301,7 +301,11 @@ def _csw_fixed(y: np.ndarray, sigma: np.ndarray, ref: int) -> np.ndarray:
     n_obs = y.shape[0]
     out = np.full(n_obs, np.nan)
     for t in range(ref + 1, n_obs):
-        out[t] = (y[t] - y[ref]) / (sigma[t] * math.sqrt(t - ref))
+        denom = sigma[t] * math.sqrt(t - ref)
+        if denom == 0.0:
+            # Flat prefix: sigma_t = 0 and the statistic is undefined, keep NaN.
+            continue
+        out[t] = (y[t] - y[ref]) / denom
     return out
 
 
@@ -311,6 +315,9 @@ def _csw_sup(y: np.ndarray, sigma: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     best = np.full(n_obs, np.nan)
     arg = np.full(n_obs, -1, dtype=np.int64)
     for t in range(1, n_obs):
+        if sigma[t] == 0.0:
+            # Flat prefix: the statistic is undefined, keep NaN with no argmax.
+            continue
         bval = -np.inf
         barg = -1
         for n in range(t):

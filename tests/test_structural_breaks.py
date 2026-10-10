@@ -197,6 +197,47 @@ def test_csw_critical_value_book_constant():
         csw_critical_value(0)
 
 
+@pytest.mark.parametrize("reference", [None, 0, 1])
+def test_csw_constant_leading_values_do_not_raise(reference):
+    # sigma_t = 0 while the series is still flat, so the statistic is undefined there.
+    y = np.array([0.0, 0.0, 0.0, 1.0, 2.0, 4.0])
+    res = chu_stinchcombe_white(y, reference=reference)
+    assert len(res.statistic) == len(y)
+    assert len(res.critical) == len(y)
+    assert len(res.reject) == len(y)
+
+
+@pytest.mark.parametrize("reference", [None, 0])
+def test_csw_zero_volatility_entries_are_nan(reference):
+    y = np.array([0.0, 0.0, 0.0, 1.0, 2.0, 4.0])
+    res = chu_stinchcombe_white(y, reference=reference)
+    # sigma_1 = sigma_2 = 0: the statistic is NaN there and never rejects.
+    assert np.isnan(res.statistic[1]) and np.isnan(res.statistic[2])
+    assert not res.reject[1] and not res.reject[2]
+    # From index 3 on sigma is positive, so the statistic is finite.
+    assert np.all(np.isfinite(res.statistic[3:]))
+
+
+def test_csw_zero_volatility_pandas_shape_and_index():
+    idx = pd.date_range("2024-01-01", periods=5, freq="D")
+    y = pd.Series([0.0, 0.0, 1.0, 2.0, 3.0], index=idx)
+    res = chu_stinchcombe_white(y)
+    assert isinstance(res.statistic, pd.Series)
+    assert list(res.statistic.index) == list(idx)
+    assert np.isnan(res.statistic.iloc[1])
+    assert np.isfinite(res.statistic.iloc[2:]).all()
+
+
+@pytest.mark.parametrize("seed", [4, 5])
+def test_csw_normal_series_has_no_nan_after_start(seed):
+    rng = np.random.default_rng(seed)
+    y = rng.standard_normal(50).cumsum()
+    res = chu_stinchcombe_white(y)
+    assert np.all(np.isfinite(res.statistic[1:]))
+    fixed = chu_stinchcombe_white(y, reference=3)
+    assert np.all(np.isfinite(fixed.statistic[4:]))
+
+
 def test_csw_detects_late_drift():
     rng = np.random.default_rng(7)
     y = rng.standard_normal(300).cumsum() * 0.01
