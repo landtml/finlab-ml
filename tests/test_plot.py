@@ -195,3 +195,10 @@ def test_static_guard_flags_a_forbidden_call():
     """The guard must catch a forbidden call, or the check above proves nothing."""
     source = "x = np.mean(y)\nz = deflated_sharpe(1.0, 2, 0.1, 10)\nw = plot_title(x)\n"
     assert _called_names(source) & _FORBIDDEN_CALLS == {"mean", "deflated_sharpe"}
+
+
+def test_monte_carlo_histogram_rejects_non_pandas_frame() -> None:
+    with pytest.raises(TypeError, match="frame"):
+        plot.monte_carlo_histogram([[0.1, 0.2], [0.3, 0.4]])
+    with pytest.raises(TypeError, match="frame"):
+        plot.monte_carlo_histogram(np.zeros((2, 2)))

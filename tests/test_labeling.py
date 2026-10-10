@@ -368,3 +368,23 @@ def test_get_bins_without_side_column_does_not_warn():
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         get_bins(ev, close)
+
+
+@pytest.mark.parametrize("bad", [[1.0, 2.0], np.zeros((2, 2))])
+def test_pandas_only_labeling_helpers_reject_non_pandas_input(bad) -> None:
+    idx = pd.date_range("2024-01-01", periods=4)
+    close = pd.Series([10.0, 10.5, 10.2, 10.8], index=idx)
+    events = pd.DataFrame(
+        {"t1": idx[1:], "trgt": [0.01] * 3, "side": [1.0] * 3},
+        index=idx[:3],
+    )
+    with pytest.raises(TypeError, match="pandas"):
+        get_daily_vol(bad)
+    with pytest.raises(TypeError, match="events"):
+        get_bins(bad, close)
+    with pytest.raises(TypeError, match="close"):
+        get_bins(events, bad)
+    with pytest.raises(TypeError, match="events"):
+        meta_labels(bad, close, side=pd.Series([1.0] * 3, index=events.index))
+    with pytest.raises(TypeError, match="close"):
+        meta_labels(events, bad, side=pd.Series([1.0] * 3, index=events.index))

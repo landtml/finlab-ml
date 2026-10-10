@@ -103,3 +103,14 @@ def test_average_active_signals_matches_naive_loop():
     got = average_active_signals(sig, t1, index=idx).to_numpy()
     want = _naive_average(sig, t1, idx)
     np.testing.assert_allclose(got, want, atol=1e-12)
+
+
+@pytest.mark.parametrize("bad", [[0.5, -0.5], np.zeros((2, 2))])
+def test_average_active_signals_rejects_non_pandas_input(bad) -> None:
+    idx = pd.date_range("2024-01-01", periods=2)
+    signals = pd.Series([0.5, -0.5], index=idx)
+    t1 = pd.Series([idx[1], idx[1]], index=idx)
+    with pytest.raises(TypeError, match="signals"):
+        average_active_signals(bad, t1)
+    with pytest.raises(TypeError, match="t1"):
+        average_active_signals(signals, bad)

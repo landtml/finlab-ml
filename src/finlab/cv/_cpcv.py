@@ -43,6 +43,8 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 
+from .._checks import _require_type
+
 # No scikit-learn dependency: the splitter duck-types the sklearn cross-validator
 # protocol (``split``, ``get_n_splits``), so sklearn helpers still accept it.
 _Base = object
@@ -72,6 +74,7 @@ def make_t1(index: pd.Index, horizon: int) -> pd.Series:
     pd.Series
         ``index``-aligned series whose values are the event-end timestamps.
     """
+    _require_type(index, "index", pd.Index)
     if horizon < 1:
         raise ValueError(f"horizon must be >= 1, got {horizon!r}.")
     if not index.is_monotonic_increasing:

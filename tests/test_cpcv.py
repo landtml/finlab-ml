@@ -644,3 +644,9 @@ def test_t1_given_does_not_warn():
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         list(PurgedKFold(n_splits=4, t1=t1).split(X))
+
+
+@pytest.mark.parametrize("bad", [list(pd.date_range("2024-01-01", periods=4)), np.zeros((4, 2))])
+def test_make_t1_rejects_non_pandas_index(bad) -> None:
+    with pytest.raises(TypeError, match="index"):
+        make_t1(bad, 2)
