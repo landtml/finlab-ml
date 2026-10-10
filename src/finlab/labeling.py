@@ -106,6 +106,21 @@ def get_daily_vol(close: pd.Series, span: int = 100) -> pd.Series:
 # ---------------------------------------------------------------------------
 
 
+def _utc_values(index: pd.Index) -> np.ndarray:
+    # Naive datetime64 in UTC, so copying bar times into a numpy array keeps the instant.
+    if getattr(index, "tz", None) is not None:
+        return index.tz_convert(None).to_numpy()
+    return index.to_numpy()
+
+
+def _restore_tz(values: np.ndarray, index: pd.Index) -> pd.DatetimeIndex:
+    # Naive inputs keep their previous dtype. Aware inputs get back the zone and unit of the index.
+    out = pd.DatetimeIndex(values)
+    if getattr(index, "tz", None) is None:
+        return out
+    return out.tz_localize("UTC").tz_convert(index.tz).as_unit(index.unit)
+
+
 def add_vertical_barrier(
     t_events: pd.Index | Sequence, close: pd.Series, num_days: float = 0
 ) -> pd.Series:
@@ -135,8 +150,8 @@ def add_vertical_barrier(
     pos = grid.searchsorted(t_events + pd.Timedelta(days=num_days), side="left")
     valid = pos < len(grid)
     vals = np.full(len(t_events), np.datetime64("NaT", "ns"))
-    vals[valid] = grid.to_numpy()[pos[valid]]
-    return pd.Series(pd.DatetimeIndex(vals), index=t_events)
+    vals[valid] = _utc_values(grid)[pos[valid]]
+    return pd.Series(_restore_tz(vals, grid), index=t_events)
 
 
 # ---------------------------------------------------------------------------
@@ -333,17 +348,17 @@ def get_events(
 
     n = len(ev_index)
     t1 = np.full(n, np.datetime64("NaT", "ns"))
-    grid_vals = grid.to_numpy()
+    grid_vals = _utc_values(grid)
     horiz = code > 0
     t1[horiz] = grid_vals[hit_pos[horiz]]
     vert_only = (~horiz) & has_vert
     code_out = code.astype(np.int64)
     code_out[vert_only] = 3
-    t1[vert_only] = vert_time.to_numpy()[vert_only]
+    t1[vert_only] = _utc_values(vert_time)[vert_only]
 
     out = pd.DataFrame(
         {
-            "t1": pd.DatetimeIndex(t1),
+            "t1": _restore_tz(t1, grid),
             "trgt": trgt,
             "side": side_v,
             "barrier": np.asarray(BARRIER_NAMES, dtype=object)[code_out],

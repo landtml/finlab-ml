@@ -403,3 +403,20 @@ def test_get_events_rejects_naive_target_with_aware_close():
         get_events(close, close.index[:3], (1, 1), target, 0.01, vertical_barrier_times=tv)
     assert "America/New_York" in str(info.value)
     assert "None" in str(info.value)
+
+
+# ---------------------------------------------------------------------------
+# Timezone of the index is kept on barrier and t1 values (W3-L02)
+# ---------------------------------------------------------------------------
+
+
+def test_vertical_barrier_and_events_keep_index_timezone():
+    close = _random_walk(60, seed=12).tz_localize("America/New_York")
+    events = close.index[:20:5]
+    vt = add_vertical_barrier(events, close, 10)
+    assert vt.dtype == close.index.dtype
+    target = pd.Series(0.02, index=close.index)
+    ev = get_events(close, events, (1, 1), target, 0.01, vertical_barrier_times=vt)
+    assert ev["t1"].dtype == close.index.dtype
+    bins = get_bins(ev, close)
+    assert len(bins) == len(events)
