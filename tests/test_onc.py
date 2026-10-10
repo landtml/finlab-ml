@@ -78,6 +78,10 @@ def test_accepts_dataframe_and_returns_scores_for_each_k():
     df = pd.DataFrame(corr, columns=[f"v{i}" for i in range(9)], index=[f"v{i}" for i in range(9)])
     res = onc(df, max_k=5, seed=0)
     assert sorted(res.scores) == [2, 3, 4, 5]
+    # Same clustering as the ndarray path, and the three planted blocks are recovered.
+    ref = onc(corr, max_k=5, seed=0)
+    np.testing.assert_array_equal(res.labels, ref.labels)
+    assert res.n_clusters == 3
 
 
 @pytest.mark.parametrize(

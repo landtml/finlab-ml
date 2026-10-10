@@ -31,3 +31,6 @@ def test_serial_and_parallel_agree():
     parallel = mp_pandas_obj(_square, idx, num_threads=3, offset=1)
     pd.testing.assert_series_equal(serial, parallel)
     assert len(serial) == 1000
+    # Equality alone would also pass if both paths returned the same wrong values.
+    assert serial.index.equals(idx)
+    np.testing.assert_array_equal(serial.to_numpy(), np.arange(1000.0) ** 2 + 1)

@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from finlab.cv import CombinatorialPurgedCV, CPCVPaths, make_t1
+from finlab.cv import CombinatorialPurgedCV, make_t1
 from finlab.cv._cpcv import _end_positions, _make_group_labels
 
 # (n_groups, n_test_groups) configurations exercised across the suite.
@@ -65,12 +65,15 @@ def test_no_label_overlap_between_train_and_test(n_groups, k, horizon):
     start = np.arange(len(X))
     end = _end_positions(X.index, t1)
 
+    n_folds = 0
     for train_idx, test_idx in cv.split(X, t1=t1):
+        n_folds += 1
         ts0, te0 = start[test_idx], end[test_idx]
         tr0, tr1 = start[train_idx], end[train_idx]
         # Brute-force every train x test interval pair: none may overlap.
         overlap = (tr1[:, None] >= ts0[None, :]) & (tr0[:, None] <= te0[None, :])
         assert not overlap.any(), "purge failed: a train label overlaps a test label"
+    assert n_folds == cv.get_n_splits()  # an empty loop must not pass
 
 
 # --------------------------------------------------------------------------- #
@@ -84,7 +87,9 @@ def test_embargo_removes_following_bars():
     cv = CombinatorialPurgedCV(n_groups, k, embargo_pct=embargo_pct)
     labels = _make_group_labels(n, n_groups)
 
+    n_folds = 0
     for train_idx, test_idx in cv.split(X):  # t1=None -> event ends at own bar
+        n_folds += 1
         train = set(train_idx.tolist())
         # Last position of each contiguous test run.
         in_test = np.isin(labels, np.unique(labels[test_idx]))
@@ -95,6 +100,7 @@ def test_embargo_removes_following_bars():
                 pos = b1 + off
                 if pos < n and not in_test[pos]:
                     assert pos not in train, f"embargoed bar {pos} leaked into train"
+    assert n_folds == cv.get_n_splits()
 
 
 def test_zero_embargo_is_noop_and_does_not_raise():
@@ -112,7 +118,9 @@ def test_zero_embargo_is_noop_and_does_not_raise():
 def test_train_test_disjoint(n_groups, k):
     X = _frame(450)
     cv = CombinatorialPurgedCV(n_groups, k, embargo_pct=0.01)
-    for train_idx, test_idx in cv.split(X, t1=make_t1(X.index, 10)):
+    splits = list(cv.split(X, t1=make_t1(X.index, 10)))
+    assert len(splits) == cv.get_n_splits()
+    for train_idx, test_idx in splits:
         assert set(train_idx).isdisjoint(set(test_idx))
 
 
@@ -186,6 +194,7 @@ def test_split_is_deterministic_across_calls():
     cv = CombinatorialPurgedCV(6, 2, embargo_pct=0.01)
     first = [(tr.copy(), te.copy()) for tr, te in cv.split(X, t1=t1)]
     second = list(cv.split(X, t1=t1))
+    assert len(first) == len(second) == cv.get_n_splits()
     for (a_tr, a_te), (b_tr, b_te) in zip(first, second):
         np.testing.assert_array_equal(a_tr, b_tr)
         np.testing.assert_array_equal(a_te, b_te)
@@ -290,7 +299,9 @@ def test_envelope_purge_equals_bruteforce(n_groups, k, horizon):
     t1 = make_t1(X.index, horizon)
     cv = CombinatorialPurgedCV(n_groups, k, embargo_pct=0.0)
     combos = list(itertools.combinations(range(n_groups), k))
-    for (train_idx, _), combo in zip(cv.split(X, t1=t1), combos):
+    splits = list(cv.split(X, t1=t1))
+    assert len(splits) == len(combos)  # zip() below would silently truncate otherwise
+    for (train_idx, _), combo in zip(splits, combos):
         np.testing.assert_array_equal(
             train_idx, _bruteforce_train_idx(X.index, t1, n_groups, combo)
         )
@@ -304,14 +315,16 @@ def test_t1_in_constructor_purges_via_sklearn_signature():
     t1 = make_t1(X.index, 21)
     ctor = CombinatorialPurgedCV(6, 2, t1=t1)
     # split(X, y, groups) -- the call sklearn helpers make -- still purges.
-    for (a_tr, a_te), (b_tr, b_te) in zip(ctor.split(X, None, None),
-                                          CombinatorialPurgedCV(6, 2).split(X, t1=t1)):
+    via_ctor = list(ctor.split(X, None, None))
+    via_arg = list(CombinatorialPurgedCV(6, 2).split(X, t1=t1))
+    assert len(via_ctor) == len(via_arg) == 15
+    for (a_tr, a_te), (b_tr, b_te) in zip(via_ctor, via_arg):
         np.testing.assert_array_equal(a_tr, b_tr)
         np.testing.assert_array_equal(a_te, b_te)
     # ...and it genuinely removes more than the no-t1 (test-indices-only) case.
     no_t1 = list(CombinatorialPurgedCV(6, 2).split(X))
     assert any(len(a_tr) < len(b_tr)
-               for (a_tr, _), (b_tr, _) in zip(ctor.split(X, None, None), no_t1))
+               for (a_tr, _), (b_tr, _) in zip(via_ctor, no_t1))
 
 
 def test_split_t1_overrides_constructor_t1():
@@ -330,8 +343,13 @@ def test_embargo_anchor_label_end_removes_at_least_test_end():
     t1 = make_t1(X.index, 21)
     le = CombinatorialPurgedCV(6, 2, embargo_pct=0.02, embargo_anchor="label_end")
     te = CombinatorialPurgedCV(6, 2, embargo_pct=0.02, embargo_anchor="test_end")
-    for (le_tr, _), (te_tr, _) in zip(le.split(X, t1=t1), te.split(X, t1=t1)):
+    le_splits = list(le.split(X, t1=t1))
+    te_splits = list(te.split(X, t1=t1))
+    assert len(le_splits) == len(te_splits) == 15
+    for (le_tr, _), (te_tr, _) in zip(le_splits, te_splits):
         assert set(le_tr).issubset(set(te_tr))  # label_end is the conservative one
+    # Subset alone also holds if the anchors were identical; require a strictly larger purge somewhere.
+    assert any(len(le_tr) < len(te_tr) for (le_tr, _), (te_tr, _) in zip(le_splits, te_splits))
 
 
 def test_invalid_embargo_anchor_raises():
@@ -413,8 +431,9 @@ def test_stale_t1_raises_eagerly_without_consuming_the_generator():
         cv.split(X.iloc[::2])          # deliberately not wrapped in list()
 
 
-def test_stale_t1_would_have_leaked_but_correct_t1_does_not():
+def test_rebuilt_t1_on_subset_leaks_nothing():
     # The guard's justification: rebuilt-for-the-subset t1 leaks nothing.
+    # (The leaking case is refused by the guard, so it cannot be run here.)
     X = _frame(400).iloc[::2]
     cv = CombinatorialPurgedCV(6, 2, embargo_pct=0.0)
     assert _leaking_pairs(X, make_t1(X.index, 21), cv) == 0

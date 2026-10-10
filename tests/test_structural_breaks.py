@@ -57,7 +57,6 @@ def naive_adf(y, lag, const):
     for t in range(lag + 1, n_levels):
         dy = y[t] - y[t - 1]
         row = [y[t - 1]] + [y[t - l] - y[t - l - 1] for l in range(1, lag + 1)]
-        k = len(row)
         if const in ("c", "ct", "ctt"):
             row.append(1.0)
         if const in ("ct", "ctt"):
@@ -141,6 +140,10 @@ def test_cusum_pandas_and_result_shape():
     assert res.statistic.shape == (50,)
     assert res.z.shape == (50,)
     assert np.isnan(res.statistic[0])
+    # Pandas input must give the same values as the array path.
+    ref = cusum_test(s.to_numpy())
+    np.testing.assert_allclose(res.statistic, ref.statistic, rtol=1e-12, equal_nan=True)
+    np.testing.assert_allclose(res.residuals, ref.residuals, rtol=1e-12, equal_nan=True)
 
 
 # ---------------------------------------------------------------------------
@@ -256,6 +259,8 @@ def test_sadf_pandas_index_and_nan_prefix():
     assert out.index.equals(idx)
     assert out.iloc[:19].isna().all()
     assert out.iloc[19:].notna().all()
+    np.testing.assert_allclose(out.to_numpy(), sadf(s.to_numpy(), min_length=20, lags=1),
+                               rtol=1e-12, equal_nan=True)
 
 
 def test_sadf_rejects_short_min_length():

@@ -36,10 +36,15 @@ def test_grid_search_recovers_best_threshold():
 
 
 def test_grid_search_ties_prefer_first_candidate():
+    # Both thresholds lie above every x, so they predict all zeros and score identically.
+    # Identical candidates would not show which one wins, so the order is swapped to check it.
     X, y = _data()
     cv = PurgedKFold(n_splits=3)
-    res = grid_search(Threshold, {"threshold": [0.5, 0.5]}, X, y, cv)
-    assert res.best_params == {"threshold": 0.5}
+    res = grid_search(Threshold, {"threshold": [100.0, 200.0]}, X, y, cv)
+    assert res.results["mean_score"].nunique() == 1
+    assert res.best_params == {"threshold": 100.0}
+    res = grid_search(Threshold, {"threshold": [200.0, 100.0]}, X, y, cv)
+    assert res.best_params == {"threshold": 200.0}
 
 
 def test_randomized_search_is_reproducible():

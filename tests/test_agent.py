@@ -123,6 +123,7 @@ def test_stdio_loop_handles_parse_errors_and_batches_of_lines():
     out = io.StringIO()
     srv.main(io.StringIO(lines), out)
     replies = [json.loads(x) for x in out.getvalue().splitlines()]
+    assert len(replies) == 3  # ping, parse error, tools/call; the notification gets no reply
     assert replies[0] == {"jsonrpc": "2.0", "id": 1, "result": {}}
     assert replies[1]["error"]["code"] == -32700
     assert replies[2]["id"] == 2

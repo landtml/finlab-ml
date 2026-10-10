@@ -97,7 +97,7 @@ def test_true_edge_gives_pbo_near_zero() -> None:
     M[:, 0] += 0.02  # one trial with a genuine, persistent edge
     res = probability_of_backtest_overfitting(M, n_partitions=8)
     assert res.pbo < 0.05
-    assert np.all(res.logits[res.logits > 0] > 0)
+    assert np.all(res.logits > 0)  # in every split the in-sample pick ranks above the OOS median
 
 
 def test_logits_bounded_by_rank_range() -> None:

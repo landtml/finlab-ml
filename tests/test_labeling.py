@@ -246,10 +246,9 @@ def test_drop_labels_leaves_each_class_above_min_pct(seed):
     ev = pd.DataFrame({"bin": labels}, index=pd.RangeIndex(2000))
     out = drop_labels(ev, min_pct=0.1)
     freq = out["bin"].value_counts(normalize=True)
-    if freq.shape[0] >= 3:
-        assert freq.min() >= 0.1
-    assert 2 not in set(out["bin"])  # the 5% class is always removed
     assert freq.shape[0] == 3
+    assert freq.min() >= 0.1
+    assert 2 not in set(out["bin"])  # the 5% class is always removed
 
 
 def test_drop_labels_stops_at_two_classes_as_in_book():

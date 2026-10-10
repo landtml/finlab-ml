@@ -250,6 +250,7 @@ def test_encode_feeds_entropy_estimators():
     rng = np.random.default_rng(6)
     r = rng.standard_normal(400)
     codes = encode_quantile(r, 4)
-    h = plug_in_entropy(codes)
-    assert 1.9 < h <= 2.0 + 1e-12  # quantile codes are close to uniform over 4 letters
+    # 400 draws in 4 quantile bins: exactly 100 per code, so the plug-in entropy is exactly 2 bits.
+    np.testing.assert_array_equal(np.bincount(codes, minlength=4), [100, 100, 100, 100])
+    assert plug_in_entropy(codes) == pytest.approx(2.0, abs=1e-12)
     assert kontoyiannis_entropy(codes) > 0.0

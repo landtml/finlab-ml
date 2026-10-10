@@ -57,6 +57,7 @@ def test_same_seed_gives_identical_bags():
     X, y, t1 = _data(120, seed=2)
     a = SequentialBootstrapBagging(NearestCentroid, 5, seed=9).fit(X, y, t1=t1)
     b = SequentialBootstrapBagging(NearestCentroid, 5, seed=9).fit(X, y, t1=t1)
+    assert len(a.draws_) == len(b.draws_) == 5
     for da, db in zip(a.draws_, b.draws_):
         np.testing.assert_array_equal(da, db)
 
@@ -77,7 +78,15 @@ def test_sequential_bags_have_higher_average_uniqueness_than_iid():
 def test_majority_vote_when_no_predict_proba():
     X, y, t1 = _data(150, seed=6)
     bag = SequentialBootstrapBagging(NoProba, 7, seed=1).fit(X, y, t1=t1)
-    assert bag.predict(X).shape == (150,)
+    pred = bag.predict(X)
+    assert pred.shape == (150,)
+    assert set(np.unique(pred)) <= {0, 1}
+    # Exact majority of the 7 fitted members (odd count, so no ties): class 1 wins with 4+ votes.
+    votes = np.stack([e.predict(X) for e in bag.estimators_])
+    expected = np.where((votes == 1).sum(axis=0) * 2 > len(bag.estimators_), 1, 0)
+    np.testing.assert_array_equal(pred, expected)
+    # Same separable data as the predict_proba test, so the vote should be accurate too.
+    assert (pred == y).mean() > 0.85
 
 
 def test_sequential_requires_t1():
