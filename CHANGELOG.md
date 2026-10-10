@@ -5,6 +5,18 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-10-10
+
+Changes since 0.1.1. The library code is unchanged; this release changes how releases are published.
+
+### Changed
+
+- A merge to `main` that sets a new version in `pyproject.toml` is tagged and published
+  by the Release workflow once CI passes on it, with the sdist and wheel attached.
+  The release notes come from `.github/releases/vX.Y.Z.md`, or from this changelog
+  section when that file is absent.
+- `RELEASING.md` describes the release pull request and the steps that follow it.
+
 ## [0.1.1] - 2026-10-10
 
 Changes since 0.1.0.
@@ -80,6 +92,7 @@ Changes since 0.1.0.
 
 First tagged release. No changelog was kept for it. Its source is at the `v0.1.0` tag.
 
-[Unreleased]: https://github.com/landtml/finlab-ml/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/landtml/finlab-ml/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/landtml/finlab-ml/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/landtml/finlab-ml/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/landtml/finlab-ml/releases/tag/v0.1.0
