@@ -1,7 +1,7 @@
 """Internal implementation of Combinatorial Purged Cross-Validation.
 
 Import from :mod:`finlab.cv` (the package's public ``__init__.py``), not this
-module directly — this file is the private implementation detail, kept
+module directly; this file is the private implementation detail, kept
 separate from the public API so it can be reorganized without breaking users.
 
 A clean, fully-vectorized implementation of the cross-validation scheme from
