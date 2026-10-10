@@ -118,6 +118,38 @@ described in the API reference (the examples are executed by
 
 </details>
 
+## Gallery
+
+Figures from the example notebooks in [`examples/`](examples/), saved to
+[`docs/images/`](docs/images/) by `tools/export_figures.py` with the notebooks' fixed seeds.
+
+<p align="center">
+  <img src="docs/images/monte_carlo_uniqueness.png" width="720" alt="Histograms of average uniqueness for standard and sequential bootstrap samples">
+</p>
+
+**Monte Carlo, chapter 4.** Average uniqueness of 2,000 bootstrap samples drawn the
+standard way and the sequential way. The sequential draws are more unique on average; the
+paired gap at seed 0 is about 0.084 (`examples/monte_carlo.py`).
+
+<p align="center">
+  <img src="docs/images/pbo_logits.png" width="720" alt="Histogram of logits for pure-noise strategies, with PBO annotated">
+</p>
+
+**PBO, chapter 11.** Logit distribution over the 70 train/test splits of a pure-noise
+matrix. Under pure noise the expected PBO is 1/2; this seed gives 0.643
+(`examples/pbo.py`).
+
+<p align="center">
+  <img src="docs/images/deflated_sharpe_comparison.png" width="720" alt="Observed and benchmark Sharpe ratios of the best trial for 40 and for 80 trials">
+</p>
+
+**Deflated Sharpe, chapter 14.** The best of 40 pure-noise trials has a deflated Sharpe
+ratio of 0.590. After 40 more trials on the same registry, the best of 80 has 0.515
+(`examples/deflated_sharpe.py`).
+
+To regenerate the images, install plotly and kaleido and run `python tools/export_figures.py`
+from the repository root (see the script for the Chrome requirement).
+
 ## Validation status
 
 <details>

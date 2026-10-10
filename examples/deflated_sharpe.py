@@ -170,6 +170,36 @@ print(f"JSON size: {len(text):,} characters for {reg.n_trials} trials")
 print("round trip equal:", roundtrip_ok)
 
 # %% [markdown]
+# ## Plot
+#
+# `finlab.plot.deflated_sharpe_comparison` shows the observed and benchmark Sharpe
+# ratios for 40 and for 80 trials, with the deflated Sharpe ratio of each. It needs
+# plotly; without it the cell prints the install hint.
+
+# %%
+from finlab.stats import deflated_sharpe
+
+after_returns = np.asarray(reg.records[best_after].returns)
+g3_after = float(skew(after_returns))
+g4_after = float(kurtosis(after_returns, fisher=False))
+var_sr_after = float(np.var(srs_after, ddof=1))
+res_40 = deflated_sharpe(sr_hat, n_trials, var_sr, T, g3, g4)
+res_80 = deflated_sharpe(
+    float(srs_after[best_after]), reg.n_trials, var_sr_after, T, g3_after, g4_after
+)
+assert abs(res_40.dsr - dsr) < 1e-12
+assert abs(res_80.dsr - dsr_after_80) < 1e-12
+
+try:
+    from finlab.plot import deflated_sharpe_comparison
+
+    fig = deflated_sharpe_comparison([res_40, res_80], title="Deflated Sharpe: 40 and 80 trials")
+except ImportError as exc:
+    print(exc)
+    fig = None
+fig
+
+# %% [markdown]
 # ## Key values
 #
 # `KEY` collects the results that `tests/test_example_deflated_sharpe.py` checks.

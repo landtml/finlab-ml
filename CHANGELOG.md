@@ -26,6 +26,10 @@ All notable changes to this project are documented in this file. The format foll
   `.py` regenerates its `.ipynb` and that committed notebooks have no outputs, executes each
   notebook under nbconvert with a time limit, uploads the executed copies, and runs the plot
   tests with and without plotly.
+- A Gallery section in the README with three figures from the example notebooks, saved as
+  PNG files in `docs/images/`. `tools/export_figures.py` regenerates them from the notebooks'
+  fixed seeds.
+- A deflated Sharpe comparison plot (40 and 80 trials) in `examples/deflated_sharpe`.
 - Tests for the PBO hand-computed and closed-form cases (`tests/test_pbo.py`), the deflated
   Sharpe numerical reference and hand values (`tests/test_stats.py`), the trial records
   (`tests/test_trials.py`), the plotting functions and their no-plotly path
