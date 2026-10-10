@@ -75,6 +75,12 @@ All notable changes to this project are documented in this file. The format foll
   `finlab.trials` and `finlab.plot`, which are described in the API reference.
 - `finlab.trials` is documented as not an AFML construct: it supplies the inputs that
   chapters 11 and 14 need.
+- Proof notes for PBO and deflated Sharpe: the minTRL tolerance statement now gives the
+  tolerances the test uses; the default `prob = 0.95` has its own test
+  (`test_stats_default_prob_is_0_95`); the pure-noise rank probability is checked by enumeration
+  for N = 2 to 9 (`test_pbo_pure_noise_rank_probability_by_enumeration`); and the Gaussian
+  Sharpe-ratio variance is checked by simulation at SR = 0.1 and T = 2000
+  (`test_stats_sharpe_variance_formula_by_simulation`, +1.09% against the formula).
 - `docs/API.md` lists `finlab.onc`, which the generator had omitted; the README's link to the
   full signature list now covers every public module.
 - Monte Carlo, weights and microstructure tests check exact values where a value was only

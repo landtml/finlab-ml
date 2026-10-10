@@ -432,3 +432,50 @@ def test_hrp_bisection_cost_bound_n2_to_30() -> None:
     assert schedule(3)[0] == 13
     assert all(schedule(n)[0] > n**3 / 3 for n in (2, 3, 4, 5))
     assert all(schedule(n)[0] <= n**3 / 3 for n in range(6, 31))
+
+
+# ---------------------------------------------------------------------------
+# stats.md section 5 (minTRL default prob) and section 1 (Sharpe variance)
+# ---------------------------------------------------------------------------
+
+
+def test_stats_default_prob_is_0_95() -> None:
+    # minTRL's default prob is 0.95 (docs/proofs/stats.md, section 5).
+    default = min_track_record_length(0.5, 0.0, 0.0, 3.0)
+    explicit = min_track_record_length(0.5, 0.0, 0.0, 3.0, 0.95)
+    assert default == pytest.approx(explicit, rel=1e-12)
+
+
+# ---------------------------------------------------------------------------
+# pbo.md section 3 (pure-noise rank probability)
+# ---------------------------------------------------------------------------
+
+
+def test_pbo_pure_noise_rank_probability_by_enumeration() -> None:
+    # Pure noise: the in-sample winner's out-of-sample rank is uniform on {1, ..., N}
+    # (docs/proofs/pbo.md, section 3). Enumerate the N equally likely ranks and count
+    # those with lambda <= 0, i.e. rank <= (N + 1) / 2.
+    for n in range(2, 10):
+        count = sum(1 for rank in range(1, n + 1) if rank <= (n + 1) / 2)
+        assert count / n == math.floor((n + 1) / 2) / n
+        if n % 2 == 0:
+            assert count / n == 0.5
+
+
+# ---------------------------------------------------------------------------
+# stats.md section 1 (asymptotic variance of the sample Sharpe ratio, Gaussian case)
+# ---------------------------------------------------------------------------
+
+
+def test_stats_sharpe_variance_formula_by_simulation() -> None:
+    # Gaussian returns with per-period SR = mu / sigma = 0.1 (mu = 0.1, sd = 1).
+    # Measured (seed 20261010, 4000 replications, T = 2000):
+    #   Var[SR_hat] = 5.080010570690413e-4, formula (1 + SR^2 / 2) / T = 5.025e-4,
+    #   relative difference +1.09 %. Tolerance: 10 %.
+    rng = np.random.default_rng(20261010)
+    n_rep, t_obs, mu = 4000, 2000, 0.1
+    x = rng.normal(mu, 1.0, size=(n_rep, t_obs))
+    sr_hat = x.mean(axis=1) / x.std(axis=1, ddof=1)
+    measured = sr_hat.var(ddof=1)
+    predicted = (1.0 + 0.1**2 / 2.0) / t_obs
+    assert measured == pytest.approx(predicted, rel=0.10)

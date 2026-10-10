@@ -49,6 +49,10 @@ with a = sigma^{-1}(1+SR^2) and b = -SR/(2 sigma^2). Substituting mu/sigma = SR:
 Summing and collecting terms (the SR^4 terms and the SR^2 cross terms cancel,
 leaving 1 - gamma3 SR + SR^2 (gamma4 - 1)/4) gives the claim.
 Check: gamma3 = 0, gamma4 = 3 gives (1 + SR^2/2)/T, the familiar Gaussian result.
+**Checked by test** (`test_stats_sharpe_variance_formula_by_simulation`, Gaussian case only):
+with SR = 0.1 and T = 2000, 4000 simulated samples (seed 20261010) give Var[SR_hat] = 5.080e-4
+against (1 + SR^2/2)/T = 5.025e-4, a relative difference of +1.09 % (tolerance 10 %). This is a
+simulation check of the finite-T value, not a proof of it.
 
 **Assumptions:** IID returns, finite fourth moment, a consistent estimator of
 the population moments. The result is asymptotic; finite-T accuracy is
@@ -149,13 +153,15 @@ literature here, not from AFML.
 SR = 0.5, SR* = 0, p = 0.95:
 D^2 = 1 + (2/4)(0.25) = 1.125, Phi^{-1}(0.95) = 1.6448536,
 minTRL = 1 + 1.125 (1.6448536/0.5)^2 = 13.1749455 (13.174946 to six decimals).
-**Checked by test:** `test_min_track_record_length_hand_computation` (tolerance 1e-5),
+**Checked by test:** `test_min_track_record_length_hand_computation` (pytest.approx: rel 1e-12
+against the formula, abs 1e-9 against the stored constant 13.1749455434),
 and to 1e-9 in `tests/test_doc_claims.py::test_stats_min_track_record_length_exact`.
 The round trip PSR(ceil(minTRL)) >= p > PSR(ceil(minTRL) - 1) is checked by
 `test_min_track_record_length_round_trip_gives_target_psr`, at other parameters.
 
 The default `prob = 0.95` of minTRL is a common convention, not a book value.
-**Checked by test:** `test_min_track_record_length_hand_case_gives_four` (below).
+**Checked by test:** `test_stats_default_prob_is_0_95` (the default call equals the explicit
+`prob = 0.95` call, rel 1e-12).
 
 ## 6. Closed-form and numerical-reference checks
 
@@ -206,7 +212,7 @@ so they do not contradict the quadrature.
 
 | Statement | Status |
 |---|---|
-| Var[SR_hat] asymptotic formula | Proved here (delta method) |
+| Var[SR_hat] asymptotic formula | Proved here (delta method); Gaussian value at SR = 0.1, T = 2000 checked by simulation (`test_stats_sharpe_variance_formula_by_simulation`) |
 | PSR form and T-1 convention | Proved here asymptotically; T-1 claimed from book |
 | Expected-max approximation | Claimed from book; scaling by sqrt(V) proved here; accuracy checked by MC and by numerical reference (section 6) |
 | Expected max at N = 1 and the N = 2 exact value 1/sqrt(pi) | Proved here; checked by test (`test_expected_max_n1_convention_agrees_with_exact_value`, `test_expected_max_n2_closed_form_for_exact_maximum_approximation_error_recorded`) |

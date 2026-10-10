@@ -58,6 +58,8 @@ columns, and n* is fixed. So rank_c is uniform on {1, ..., N}, and
     P(lambda_c <= 0) = P(rank_c <= (N+1)/2) = floor((N+1)/2) / N.
 
 For even N this is exactly 1/2. For odd N it is (N+1)/(2N), slightly above 1/2.
+**Checked by test** (`test_pbo_pure_noise_rank_probability_by_enumeration`): enumerating the N
+equally likely ranks for N = 2 to 9 gives count/N = floor((N+1)/2)/N, which is 1/2 for even N.
 Taking expectations over the data gives E[PBO] = P(lambda_c <= 0) by linearity.
 
 **Realised values are noisy.** The C(S, S/2) splits share blocks, so their
@@ -159,7 +161,7 @@ finite. `test_all_equal_returns_give_finite_pbo_and_logits`,
 | Number of splits C(S, S/2); C(16, 8) = 12,870 | Proved here (`test_pbo_split_count_s16`) |
 | The book's text gives 12,780 for S = 16 | Claimed from the book only |
 | omega in (0,1), lambda finite, lambda <= 0 iff rank <= (N+1)/2 | Proved here |
-| Pure noise gives P(lambda <= 0) = floor((N+1)/2)/N, so E[PBO] = 1/2 for even N | Proved here |
+| Pure noise gives P(lambda <= 0) = floor((N+1)/2)/N, so E[PBO] = 1/2 for even N | Proved here; enumeration for N = 2 to 9 checked by test (`test_pbo_pure_noise_rank_probability_by_enumeration`) |
 | Pure-noise PBO is near 1 | Not supported; contradicted by the proof above |
 | Pure-noise PBO mean, sd and percentiles at N = 60, 10, 2 (seeds 0 to 59) | Checked by test (`test_pbo_pure_noise_simulation_seeds_0_to_59`) |
 | One real edge gives PBO near 0 | Checked by test (`test_true_edge_gives_pbo_near_zero`); bound sketched only |
