@@ -521,8 +521,7 @@ def time_decay(
     """
     if not (-1.0 < c_last <= 1.0):
         raise ValueError("c_last must lie in (-1, 1].")
-    is_series = isinstance(weights, pd.Series)
-    if is_series:
+    if isinstance(weights, pd.Series):
         ws = weights.sort_index()
         values = ws.to_numpy(dtype=np.float64)
     else:
@@ -539,7 +538,7 @@ def time_decay(
         slope = 1.0 / ((c_last + 1.0) * total)
     const = 1.0 - slope * total
     dec = np.maximum(const + slope * cum, 0.0)
-    if is_series:
+    if isinstance(weights, pd.Series):
         out = pd.Series(dec, index=ws.index, name=weights.name)
         return out.reindex(weights.index)
     return dec

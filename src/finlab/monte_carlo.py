@@ -65,7 +65,10 @@ def _check_positive_int(name: str, value: Any) -> None:
 def _resolve_seed(seed: int | None) -> int:
     if seed is None:
         # Fresh entropy, drawn once so that every trial in this run shares it.
-        return int(np.random.SeedSequence().entropy)
+        entropy = np.random.SeedSequence().entropy
+        if not isinstance(entropy, int):
+            raise TypeError("SeedSequence did not return an integer entropy value")
+        return int(entropy)
     if not _is_int(seed) or seed < 0:
         raise ValueError(f"seed must be None or a non-negative integer, got {seed!r}.")
     return int(seed)

@@ -109,6 +109,10 @@ All notable changes to this project are documented in this file. The format foll
 - Docstrings that disagreed with the code or the tests: the Becker-Parkinson accuracy
   (`finlab.microstructure`), the Lempel-Ziv normalisation (`finlab.entropy`), and the
   distance metric statement (`finlab.hrp`).
+- Four type errors that an ad hoc mypy run reported in `src/finlab` are fixed: the time-decay
+  function's Series branch now narrows with `isinstance`, and the drawn seed for `seed=None` is
+  checked to be an integer. Behaviour is unchanged. mypy is not configured in the repository;
+  `mypy --ignore-missing-imports src/finlab` now reports no issues.
 - The trial registry docstring said a zero-variance trial raises. Only a nonzero constant
   (infinite Sharpe ratio) raises; an identically zero trial has Sharpe ratio 0.
 - Removed an unused local in the agent CPCV tool and an unused `pjit` import in `weights.py`
