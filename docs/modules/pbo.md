@@ -1,4 +1,4 @@
-# `finlab.pbo`: Probability of backtest overfitting via CSCV (AFML ch. 11-12)
+# `finlab.pbo`: Probability of backtest overfitting via CSCV (AFML ch. 11)
 
 Given returns of many candidate strategies, estimates how often the in-sample best
 strategy ranks below the median out of sample. Under pure noise the expectation is 1/2

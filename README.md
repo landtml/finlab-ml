@@ -18,15 +18,15 @@ Marcos López de Prado's *Advances in Financial Machine Learning* (AFML),
 organised by chapter. Hot loops are compiled to machine code with
 [numba](https://numba.pydata.org/); there is no scikit-learn dependency.
 
-Every method comes with tests that cross-check it against a naive reference, and
+Most methods come with tests that cross-check them against a naive reference, and
 where the book states a result, a proof note under `docs/proofs/` that marks each
-claim as proved here, checked by test, or claimed from the book only.
+claim as proved here, checked by test, measured, or claimed from the book only.
 
 ## Install
 
 ```bash
 pip install -e .            # core library
-pip install -e ".[dev]"     # + pytest, to run the test suite
+pip install -e ".[dev]"     # + pytest and ruff, to run the test suite and lint
 pytest                      # run the suite
 ```
 
@@ -88,7 +88,7 @@ tools with compact JSON output. See [`docs/AGENTS.md`](docs/AGENTS.md).
 |---|---|---|
 | `finlab.cv` | 7 | `CombinatorialPurgedCV`, `PurgedKFold`, `make_t1` (purge and embargo) |
 | `finlab.bars` | 2 | time, tick, volume, dollar, imbalance and run bars; CUSUM filter |
-| `finlab.labeling` | 3 | daily volatility, triple-barrier events, bin labels, meta-labels, rare-label dropping, trend-scanning labels |
+| `finlab.labeling` | 3 | daily volatility, triple-barrier events, bin labels, meta-labels, rare-label dropping, trend-scanning labels (not in AFML) |
 | `finlab.weights` | 4 | concurrency, average uniqueness, sequential bootstrap, return attribution, time decay |
 | `finlab.monte_carlo` | 4 | seeded Monte Carlo trial runner (`run_trials`), random label sets, standard vs sequential bootstrap uniqueness experiment |
 | `finlab.fracdiff` | 5 | fixed-width and expanding-window fractional differentiation, minimum-d search |
@@ -96,7 +96,7 @@ tools with compact JSON output. See [`docs/AGENTS.md`](docs/AGENTS.md).
 | `finlab.importance` | 8 | MDI, MDA, SFI, orthogonal features |
 | `finlab.tuning` | 9 | grid and randomized search scored by purged CV |
 | `finlab.bet_sizing` | 10 | probability and sigmoid bet sizing, target positions, limit prices, discretisation |
-| `finlab.pbo` | 11-12 | probability of backtest overfitting by CSCV |
+| `finlab.pbo` | 11 | probability of backtest overfitting by CSCV |
 | `finlab.stats` | 14 | Sharpe, probabilistic and deflated Sharpe, minimum track record length |
 | `finlab.hrp` | 16 | hierarchical risk parity |
 | `finlab.structural_breaks` | 17 | CUSUM tests, Chu-Stinchcombe-White, SADF |
@@ -118,7 +118,7 @@ Each module has its own page with a runnable example in
 
 | Area | Status |
 |---|---|
-| CPCV purge and no-leakage property | Proved in [`docs/proofs/cpcv.md`](docs/proofs/cpcv.md); tests carried over from `purgedcv`. The live-data certificate in that file is the `purgedcv` run, not a `finlab` run. |
+| CPCV purge and no-leakage property | Proved in [`docs/proofs/cpcv.md`](docs/proofs/cpcv.md); tested in `tests/test_cpcv.py`. The leakage checker `tools/verify_leakage.py` is ported from `purgedcv`. The live-data certificate in that file is the `purgedcv` run, not a `finlab` run. |
 | Purged K-fold, tuning, bet sizing, parallel helpers | Tested. Book worked examples for bet sizing (sigmoid calibration, target 97, limit price 112.3657) are tests. |
 | PBO via CSCV | Tested against a naive transcription. Under i.i.d. noise E[PBO] = 1/2 for even N (proved in `docs/proofs/pbo.md`), so a PBO near 1 is not a noise result. |
 | Deflated Sharpe, PSR, minTRL | Tested on hand-checked values. minTRL is cited to Bailey and López de Prado (2012), not AFML. |
@@ -138,12 +138,14 @@ Each module has its own page with a runnable example in
 <details>
 <summary><strong>Benchmark table</strong> (click to expand)</summary>
 
-Measured on the development machine with `benchmarks/bench_*.py`. Single
-machine, numbers vary between runs.
+Measured on the development machine. Each row comes from the benchmark script for its
+module in `benchmarks/` (map in [`benchmarks/README.md`](benchmarks/README.md)), run as
+`PYTHONPATH=src python3 benchmarks/bench_<name>.py`. Single machine, numbers vary
+between runs.
 
 | Hot path | Naive reference | Jitted | Speedup |
 |---|---|---|---|
-| `get_events` (triple barrier) | 2.66 s | 16.3 ms | ~163x |
+| `get_events` (triple barrier; naive extrapolated from 1k events) | 2.66 s | 16.3 ms | ~163x |
 | `trend_scanning_labels` | 7.75 s | 7.8 ms | ~991x |
 | `sequential_bootstrap` | 1.50 s | 1.4 ms | ~1063x (the naive version is a dense loop, so this overstates the gain) |
 | `num_co_events` | 74.6 ms | 8.4 ms | ~8.9x |
@@ -168,34 +170,41 @@ machine, numbers vary between runs.
 - **Parallel engine.** Snippet 4.9 runs through the book's `mpEngine` (Chapter 20).
   `finlab.monte_carlo` uses `mp_pandas_obj` in `finlab.parallel` instead.
 - **Not implemented:** the Chow DFC/SDFC and
-  quantile ADF tests, the Bailey-Lopez de Prado distance-of-distances
-  clustering variant, ONC clustering, and out-of-bag estimation for bagging.
+  quantile ADF tests, the distance-of-distances clustering variant of AFML section 16.4.1,
+  and out-of-bag estimation for bagging. ONC clustering is in `finlab.onc`, without the
+  published repair step.
 - **No purging inside CSCV or importance.** Passing a purged splitter is the
   caller's responsibility for MDA and SFI; CSCV follows the book without purging.
 - **Leakage beyond the splitter.** The CV guarantee covers the split boundary given
   the `t1` you supply. Leakage in your own feature construction is not detected.
-- **Bar warm-up look-ahead.** Imbalance and runs bars estimate the expected
-  imbalance from the first `init_T` ticks and then use it for the whole sample,
-  which uses early data for later decisions. If the expected imbalance is 0 the
-  threshold is 0 and every tick closes a bar, so zero-drift data gives very short
-  bars. Runs bars use the book's `max{E[buy], E[sell]}` threshold, which is not
-  `E[max]` (Jensen); the proof note shows this.
+- **Bar warm-up look-ahead.** Imbalance and runs bars start their expected-imbalance
+  estimates from the first `init_T` ticks, so the first bars close on a threshold that
+  uses later data. After that the estimates are EWMA updates from prior bars and ticks.
+  If the expected imbalance is 0 the threshold is 0 and every tick closes a bar, so
+  zero-drift data gives very short bars. Runs bars use the book's
+  `max{E[buy], E[sell]}` threshold, which is not `E[max]` (Jensen); the proof note
+  shows this.
 - **Python versions.** CI runs 3.10 to 3.13. Locally the suite was run on 3.13.
 - **Sample size.** Average uniqueness and sequential-bootstrap gains are modest in
-  practice (one measured setting gave 0.1963 vs 0.1913 over 200 seeds). The Monte
-  Carlo experiment in `finlab.monte_carlo` follows Snippets 4.7-4.8 at the Snippet 4.9
-  sizes. Its paired gap is about 0.084 (2000 trials, seed 0), and its medians of 0.6
-  and 0.7 match the medians the book states after Figure 4.2 to one decimal. The 0.1963 vs 0.1913
-  setting uses a different design, so the two numbers are not comparable. All of these
-  are reported as measured, not as a book reproduction.
+  practice (one measured setting gave 0.1963 vs 0.1913 over 200 seeds; that run is
+  recorded in `docs/proofs/weights.md`, and no script in the repo reproduces it). The
+  Monte Carlo experiment in `finlab.monte_carlo` follows Snippets 4.7-4.8 at the Snippet
+  4.9 sizes. Its paired gap is about 0.084 (`bootstrap_uniqueness_mc(n_iter=2000, seed=0)`,
+  see `docs/proofs/monte_carlo.md` section 4). Its medians of 0.6 and 0.7 at 20,000
+  trials match the medians the book states after Figure 4.2 (p. 68, as quoted in that
+  proof note; the page reference is not verified) to one decimal. The
+  0.1963 vs 0.1913 setting uses a different design, so the two numbers are not
+  comparable. All of these are reported as measured, not as a book reproduction.
 
 </details>
 
 ## Contributing
 
-Each module has a test file in `tests/`, a benchmark in `benchmarks/`, and a proof
-note in `docs/proofs/`. Keep claims in the proof notes to three kinds: proved here,
-checked by test, or claimed from the book only.
+Each module has a test file in `tests/` and a page in `docs/modules/`. Most also have a
+benchmark in `benchmarks/` and a proof note in `docs/proofs/` (no benchmark for
+`finlab.stats` and `finlab.tuning`; no proof note for `finlab.agent`). Keep claims in the
+proof notes to four kinds: proved here, checked by test, measured, or claimed from the
+book only.
 
 ## Credits
 
@@ -204,7 +213,7 @@ Financial Machine Learning* (Wiley, 2018; ISBN 978-1-119-48208-6). The book's
 text is not included in this repository; buy or borrow a copy to read the
 derivations. The proof notes cite chapters and snippets by number.
 
-Other sources named in the code and docs: López de Prado, Lewis and Boudt
+Other sources cited in the code and docs include: López de Prado, Lewis and Boudt
 (2019) for ONC clustering, and Bailey and López de Prado (2012) for the minimum
 track record length. The purged cross-validation code and its proof come from
 the [`purgedcv`](https://github.com/landtml/purgedcv) project.

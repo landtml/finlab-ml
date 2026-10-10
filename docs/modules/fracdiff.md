@@ -1,8 +1,9 @@
 # `finlab.fracdiff`: Fractionally differentiated features (AFML ch. 5)
 
 Differencing of order d in [0, 1] makes a price series stationary while keeping memory.
-Fixed-window differencing (`frac_diff`) uses a window of weights, and the search
-`find_min_d` returns the smallest d that passes a stationarity test you supply.
+Fixed-width differencing (`frac_diff_ffd`) uses a window of weights; `frac_diff` is the
+expanding-window version. The search `find_min_d` returns the smallest d whose
+fixed-width series passes a stationarity test you supply.
 
 ## Example
 

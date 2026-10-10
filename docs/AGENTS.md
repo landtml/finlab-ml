@@ -30,7 +30,7 @@ Or run it directly: `python -m finlab.agent` (reads JSON-RPC lines on stdin).
 | `probabilistic_sharpe_ratio` | P(true SR > benchmark) | 14 |
 | `deflated_sharpe_ratio` | SR corrected for n trials | 14 |
 | `min_track_record_length` | Observations needed for a given confidence | 14 |
-| `probability_of_backtest_overfitting` | PBO by CSCV on a returns matrix | 11-12 |
+| `probability_of_backtest_overfitting` | PBO by CSCV on a returns matrix | 11 |
 | `frac_diff_ffd` | Fixed-window fractional differentiation | 5 |
 | `cusum_filter` | Symmetric CUSUM event positions | 2 |
 | `sadf` | Supremum ADF statistic (bubble detection) | 17 |
