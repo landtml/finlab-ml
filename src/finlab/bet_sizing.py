@@ -35,6 +35,7 @@ model) and the meta-labeling pipeline itself (see :mod:`finlab.labeling`).
 from __future__ import annotations
 
 import math
+import warnings
 
 import numpy as np
 import numpy.typing as npt
@@ -146,6 +147,13 @@ def calibrate_sigmoid_width(x: float, m_star: float) -> float:
         raise ValueError("x must be nonzero to calibrate the sigmoid width.")
     if not 0.0 < abs(m_star) < 1.0:
         raise ValueError(f"|m_star| must be in (0, 1), got {m_star!r}.")
+    if not math.isfinite(x):
+        # An infinite divergence yields an infinite width; the caller should know why.
+        warnings.warn(
+            "calibrate_sigmoid_width: non-finite x gives a non-finite width",
+            UserWarning,
+            stacklevel=2,
+        )
     return float(x * x * (abs(m_star) ** -2 - 1.0))
 
 
@@ -261,4 +269,11 @@ def discretize_signal(signal: npt.ArrayLike, step: float) -> FloatArray:
     if not 0.0 < step <= 1.0:
         raise ValueError(f"step must be in (0, 1], got {step!r}.")
     s = np.asarray(signal, dtype=np.float64)
+    if np.isinf(s).any():
+        # Infinite bet sizes survive rounding as infinite targets; flag them instead of passing them on.
+        warnings.warn(
+            "discretize_signal: non-finite (inf) signal element, output contains inf",
+            UserWarning,
+            stacklevel=2,
+        )
     return np.round(s / step) * step

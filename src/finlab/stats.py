@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import math
 import numbers
+import warnings
 from dataclasses import dataclass
 from typing import Union
 
@@ -97,6 +98,12 @@ def sharpe_ratio(
     x = _as_1d(returns)
     x = x[np.isfinite(x)]
     if x.size < 2:
+        # Warn so a caller does not mistake the NaN for a missing-data marker.
+        warnings.warn(
+            "sharpe_ratio: fewer than two finite observations, returning NaN",
+            UserWarning,
+            stacklevel=2,
+        )
         return float("nan")
     sd = float(np.std(x, ddof=1))
     mu = float(np.mean(x))
@@ -155,6 +162,13 @@ def probabilistic_sharpe_ratio(
     if n_obs < 2:
         raise ValueError("n_obs must be at least 2")
     z = (sr_hat - sr_benchmark) * math.sqrt(n_obs - 1) / denom
+    if not (math.isfinite(sr_hat) and math.isfinite(sr_benchmark)):
+        # Infinite inputs make z NaN or infinite, which would otherwise pass silently.
+        warnings.warn(
+            "probabilistic_sharpe_ratio: non-finite input (sr_hat or sr_benchmark), result may be NaN",
+            UserWarning,
+            stacklevel=2,
+        )
     return float(norm.cdf(z))
 
 
