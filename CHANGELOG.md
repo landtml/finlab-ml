@@ -88,6 +88,10 @@ All notable changes to this project are documented in this file. The format foll
   for N = 2 to 9 (`test_pbo_pure_noise_rank_probability_by_enumeration`); and the Gaussian
   Sharpe-ratio variance is checked by simulation at SR = 0.1 and T = 2000
   (`test_stats_sharpe_variance_formula_by_simulation`, +1.09% against the formula).
+- Deflated Sharpe ratio checks at the ratio level: an independent reimplementation of the
+  AFML 14.7.3 formula with scipy primitives, for three parameter sets
+  (`test_dsr_independent_reimplementation_of_the_formula`), and a hand-computed case with N = 1
+  (`test_dsr_hand_computed_case_n_equals_one`). The proof note names both tests.
 - `docs/API.md` lists `finlab.onc`, which the generator had omitted; the README's link to the
   full signature list now covers every public module.
 - Monte Carlo, weights and microstructure tests check exact values where a value was only

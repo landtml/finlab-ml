@@ -87,12 +87,42 @@ def test_deflated_sharpe_decreases_with_trials() -> None:
     assert all(b < a for a, b in zip(dsr, dsr[1:]))
 
 
+# closed form, not a book value: DSR equals PSR evaluated at expected_max_sharpe (AFML 14.7.3).
 def test_deflated_sharpe_equals_psr_against_expected_max() -> None:
     sr_hat, n, var_sr, t = 0.3, 40, 0.02, 300
     sr_star = expected_max_sharpe(n, var_sr)
     assert deflated_sharpe_ratio(sr_hat, n, var_sr, t, -0.5, 6.0) == pytest.approx(
         probabilistic_sharpe_ratio(sr_hat, sr_star, t, -0.5, 6.0), rel=1e-14
     )
+
+
+def test_dsr_independent_reimplementation_of_the_formula() -> None:
+    """Independent reimplementation of the AFML 14.7.3 formula with scipy primitives. It checks the implementation, not the accuracy of the expected-maximum approximation (see section 6 of the proof note)."""
+    gamma = 0.5772156649015329  # Euler-Mascheroni constant, typed here rather than imported
+
+    def dsr_reference(
+        sr_hat: float, n: int, var_sr: float, n_obs: int, skew: float, kurt: float
+    ) -> float:
+        sr_star = math.sqrt(var_sr) * (
+            (1 - gamma) * norm.ppf(1 - 1 / n) + gamma * norm.ppf(1 - 1 / (n * math.e))
+        )
+        denom = math.sqrt(1 - skew * sr_hat + (kurt - 1) / 4 * sr_hat**2)
+        return float(norm.cdf((sr_hat - sr_star) * math.sqrt(n_obs - 1) / denom))
+
+    # (N, var_sr, sr_hat, T, skew, kurt)
+    cases = [
+        (2, 0.01, 0.2, 250, -0.3, 4.5),
+        (5, 0.04, 0.5, 120, 0.0, 3.0),
+        (50, 0.0025, 0.15, 500, 0.2, 3.8),
+    ]
+    for n, var_sr, sr_hat, n_obs, skew, kurt in cases:
+        expected = dsr_reference(sr_hat, n, var_sr, n_obs, skew, kurt)
+        assert deflated_sharpe_ratio(sr_hat, n, var_sr, n_obs, skew, kurt) == pytest.approx(
+            expected, rel=1e-12
+        )
+        assert deflated_sharpe(sr_hat, n, var_sr, n_obs, skew, kurt).dsr == pytest.approx(
+            expected, rel=1e-12
+        )
 
 
 def test_min_track_record_length_hand_computation() -> None:
@@ -232,6 +262,21 @@ def test_min_track_record_length_hand_case_gives_four() -> None:
     assert min_track_record_length(2.0, 0.0, 0.0, 3.0, prob) == pytest.approx(4.0, abs=1e-9)
     assert probabilistic_sharpe_ratio(2.0, 0.0, 4, 0.0, 3.0) == pytest.approx(prob, abs=1e-12)
     assert probabilistic_sharpe_ratio(2.0, 0.0, 3, 0.0, 3.0) < prob
+
+
+def test_dsr_hand_computed_case_n_equals_one() -> None:
+    # N = 1: expected_max_sharpe returns 0 by convention, so SR* = 0 and DSR = PSR against zero.
+    # Inputs: SR_hat = 0.2, var_sr = 0.01 (not used when N = 1), T = 101, skew = 0, kurt = 3.
+    # Denominator (Gaussian moments): sqrt(1 - 0 + (3 - 1)/4 * 0.2^2) = sqrt(1 + 0.2^2 / 2)
+    #   = sqrt(1.02) = 1.0099505.
+    # z = (0.2 - 0) * sqrt(101 - 1) / sqrt(1.02) = 0.2 * 10 / 1.0099505 = 1.9802951
+    #   (the exact value is 2 / sqrt(1.02) = 1.98029509, rounded to 7 places).
+    # DSR = Phi(z) = 0.976165 (six decimals, from scipy).
+    dsr = deflated_sharpe_ratio(0.2, 1, 0.01, 101, 0.0, 3.0)
+    assert deflated_sharpe(0.2, 1, 0.01, 101, 0.0, 3.0).sr_star == 0.0
+    assert dsr == pytest.approx(norm.cdf(2.0 / math.sqrt(1.02)), rel=1e-9)
+    assert dsr == pytest.approx(0.976165, abs=1e-6)
+    assert dsr == pytest.approx(probabilistic_sharpe_ratio(0.2, 0.0, 101, 0.0, 3.0), rel=1e-14)
 
 
 # ---------------------------------------------------------------------------

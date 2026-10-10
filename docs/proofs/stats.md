@@ -132,6 +132,14 @@ Phi is increasing and its argument (SR_hat - SR*) sqrt(T-1)/D is decreasing in S
 **Checked by test:** `test_deflated_sharpe_result_matches_float_api`,
 `test_deflated_sharpe_rejects_invalid_inputs`.
 
+**Checks of the DSR formula (three tests).** `test_dsr_independent_reimplementation_of_the_formula`
+(independent reimplementation, not a book value) rebuilds AFML 14.7.3 from scipy primitives alone,
+without calling `expected_max_sharpe`, `deflated_sharpe_ratio` or `deflated_sharpe`, and matches both
+public functions at rel 1e-12 for three parameter sets. `test_dsr_hand_computed_case_n_equals_one`
+(hand-computed, closed form) takes N = 1, where SR* = 0 by convention, and checks DSR = Phi(2/sqrt(1.02))
+= 0.976165 by hand. `test_deflated_sharpe_equals_psr_against_expected_max` (closed form, not a book
+value) checks DSR against PSR at `expected_max_sharpe`.
+
 **Convention (not from the book).** Values of DSR above 0.95 are a common significance
 convention (not from the book). The book is not consulted for it here, so it is not labelled as
 a book value.
