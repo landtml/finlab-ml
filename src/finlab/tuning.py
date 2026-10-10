@@ -24,6 +24,7 @@ discusses it; run an outer splitter yourself), and Bayesian search.
 from __future__ import annotations
 
 import itertools
+import warnings
 from dataclasses import dataclass
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
@@ -118,12 +119,18 @@ def cv_score(
     Xa, ya, w = _as_arrays(X, y, sample_weight)
     score_fn = scoring or _accuracy
     scores = []
-    for train_idx, test_idx in _materialize_splits(cv, X):
+    for fold, (train_idx, test_idx) in enumerate(_materialize_splits(cv, X)):
         model = model_factory(**params)
         w_tr = None if w is None else w[train_idx]
         model.fit(Xa[train_idx], ya[train_idx], sample_weight=w_tr)
         pred = model.predict(Xa[test_idx])
         w_te = None if w is None else w[test_idx]
+        if w_te is not None and not np.any(w_te):
+            warnings.warn(
+                f"fold {fold} has zero total sample weight in its test rows; its score is NaN.",
+                UserWarning,
+                stacklevel=2,
+            )
         scores.append(score_fn(ya[test_idx], pred, w_te))
     arr = np.asarray(scores, dtype=float)
     if arr.size == 0:

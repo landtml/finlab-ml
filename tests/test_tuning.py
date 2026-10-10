@@ -173,3 +173,14 @@ def test_sample_weight_length_must_match_rows():
         grid_search(Threshold, {"threshold": [0.0]}, X, y, PurgedKFold(3), sample_weight=np.ones(10))
     with pytest.raises(ValueError, match="sample_weight.*300"):
         cv_score(Threshold, {"threshold": 0.0}, X, y, PurgedKFold(3), sample_weight=np.ones(301))
+
+
+def test_cv_score_warns_on_zero_weight_test_fold():
+    X, y = _data()
+    cv = PurgedKFold(n_splits=3)
+    first_test = next(iter(cv.split(X)))[1]
+    w = np.ones(len(y))
+    w[first_test] = 0.0
+    with pytest.warns(UserWarning, match="fold 0"):
+        mean, _ = cv_score(Threshold, {"threshold": 0.0}, X, y, cv, sample_weight=w)
+    assert np.isnan(mean)

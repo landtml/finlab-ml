@@ -41,6 +41,7 @@ effects are not corrected for, only diluted through orthogonalization.
 from __future__ import annotations
 
 import math
+import warnings
 from typing import Any, Callable, Iterator, Protocol, Sequence
 
 import numpy as np
@@ -144,6 +145,16 @@ def _fit(
 def _folds(cv: Any, X: Any) -> Iterator[tuple[npt.NDArray[np.int_], npt.NDArray[np.int_]]]:
     for train, test in cv.split(X):
         yield np.asarray(train, dtype=np.intp), np.asarray(test, dtype=np.intp)
+
+
+def _warn_if_zero_weight(w_te: npt.NDArray[np.float64] | None, fold: int) -> None:
+    """Warn when a test fold has no weight, since its weighted accuracy is 0/0 = NaN."""
+    if w_te is not None and not np.any(w_te):
+        warnings.warn(
+            f"fold {fold} has zero total sample weight in its test rows; its score is NaN.",
+            UserWarning,
+            stacklevel=3,
+        )
 
 
 def _summarize(per_fold: npt.NDArray[np.float64], names: list[Any]) -> pd.DataFrame:
@@ -336,11 +347,12 @@ def mda(
 
     baseline: list[float] = []
     drops: list[npt.NDArray[np.float64]] = []
-    for train, test in _folds(cv, X):
+    for fold, (train, test) in enumerate(_folds(cv, X)):
         X_tr, y_tr = _take_rows(X, train), y_arr[train]
         X_te, y_te = _take_rows(X, test), y_arr[test]
         w_tr = None if w_arr is None else w_arr[train]
         w_te = None if w_arr is None else w_arr[test]
+        _warn_if_zero_weight(w_te, fold)
 
         model = _fit(model_factory, X_tr, y_tr, w_tr)
         base = _score(scoring, y_te, np.asarray(model.predict(X_te)), w_te)
@@ -403,10 +415,11 @@ def sfi(
 
     baseline: list[float] = []
     per_feature: list[npt.NDArray[np.float64]] = []
-    for train, test in _folds(cv, X):
+    for fold, (train, test) in enumerate(_folds(cv, X)):
         y_tr, y_te = y_arr[train], y_arr[test]
         w_tr = None if w_arr is None else w_arr[train]
         w_te = None if w_arr is None else w_arr[test]
+        _warn_if_zero_weight(w_te, fold)
 
         X_tr_all, X_te_all = _take_rows(X, train), _take_rows(X, test)
         full = _fit(model_factory, X_tr_all, y_tr, w_tr)

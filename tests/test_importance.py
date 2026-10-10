@@ -337,3 +337,17 @@ def test_mdi_rejects_infinite_impurity():
     imp = np.array([[np.inf, 1.0], [1.0, 1.0]])
     with pytest.raises(ValueError, match="infinite"):
         mdi_from_matrix(imp, ["a", "b"])
+
+
+def test_mda_warns_on_zero_weight_test_fold_and_keeps_values():
+    rng = np.random.default_rng(0)
+    X = rng.normal(size=(300, 2))
+    y = (X[:, 0] > 0).astype(int)
+    cv = PurgedKFold(n_splits=3)
+    first_test = next(iter(cv.split(X)))[1]
+    w = np.ones(300)
+    w[first_test] = 0.0
+    with pytest.warns(UserWarning, match="fold 0"):
+        baseline, _ = mda(NearestCentroid, X, y, cv, sample_weight=w)
+    assert np.isnan(baseline[0])
+    assert np.all(np.isfinite(baseline[1:]))
