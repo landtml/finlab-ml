@@ -119,6 +119,14 @@ unchanged by a permutation of the draws. *(Proved here.)*
   the uniqueness of each column over the rows it covers, with concurrency taken from the matrix
   passed in. Snippet 4.8 applies it to the bootstrapped matrix, so repeats count. This function
   computes that quantity. The check was made by reading the listing; no book figure is reproduced.
+* **Checked by test (two implementations).** `S` has two implementations, on purpose.
+  `sample_average_uniqueness` in `finlab.weights` is the dense reference: it takes the indicator
+  matrix and the draws. `_sample_uniqueness` in `finlab.monte_carlo` is the numba kernel that the
+  Monte Carlo path calls: it takes the bar count and the span of each draw. The test file
+  `tests/test_uniqueness_equivalence.py` feeds both the same labels and draws over 200 fixed seeds,
+  with duplicate starts, identical spans, length-one spans, spans ending at the last bar and
+  repeated draws. It also checks a single draw, identical draws and disjoint labels. The two agree
+  at `rtol = 1e-12`.
 
 ## 3. Indicator matrix (Snippet 4.3)
 
