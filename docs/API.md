@@ -110,7 +110,7 @@ Bet sizing (AFML ch. 10)
 
 ## `finlab.pbo`
 
-Backtest overfitting via CSCV (AFML ch. 11-12)
+Backtest overfitting via CSCV (AFML ch. 11)
 
 - **`PBOResult(pbo: 'float', logits: 'np.ndarray', n_combinations: 'int') -> None`** (class). Result of :func:`probability_of_backtest_overfitting`.
 - **`probability_of_backtest_overfitting(performance_matrix: 'Union[pd.DataFrame, np.ndarray]', n_partitions: 'int' = 16, performance: 'Optional[PerformanceFn]' = None) -> 'PBOResult'`** (function). Estimate the probability of backtest overfitting by CSCV.
@@ -123,7 +123,24 @@ Backtest statistics (AFML ch. 14)
 - **`probabilistic_sharpe_ratio(sr_hat: 'float', sr_benchmark: 'float', n_obs: 'int', skew: 'float' = 0.0, kurtosis: 'float' = 3.0) -> 'float'`** (function). Probabilistic Sharpe ratio, AFML 14.7.2.
 - **`expected_max_sharpe(n_trials: 'int', var_sr: 'float') -> 'float'`** (function). Expected maximum Sharpe ratio across N independent trials under H0.
 - **`deflated_sharpe_ratio(sr_hat: 'float', n_trials: 'int', var_sr: 'float', n_obs: 'int', skew: 'float' = 0.0, kurt: 'float' = 3.0) -> 'float'`** (function). Deflated Sharpe ratio, AFML 14.7.3.
+- **`deflated_sharpe(sr_hat: 'float', n_trials: 'int', var_sr: 'float', n_obs: 'int', skew: 'float' = 0.0, kurt: 'float' = 3.0) -> 'DeflatedSharpeResult'`** (function). Deflated Sharpe ratio with its benchmark and inputs, AFML 14.7.3.
+- **`DeflatedSharpeResult(dsr: 'float', sr_hat: 'float', sr_star: 'float', n_trials: 'int', n_obs: 'int', skew: 'float', kurt: 'float') -> None`** (class). Deflated Sharpe ratio together with the benchmark and inputs it used.
 - **`min_track_record_length(sr_hat: 'float', sr_benchmark: 'float', skew: 'float' = 0.0, kurt: 'float' = 3.0, prob: 'float' = 0.95) -> 'float'`** (function). Minimum track record length (minTRL) for a PSR confidence level.
+
+## `finlab.trials`
+
+Trial records feeding PBO and deflated Sharpe (AFML ch. 11, 14)
+
+- **`TrialRecord(name: 'str', params: 'ParamsInput', returns: 'ReturnsInput') -> None`** (class). One registered trial: a name, its parameters and its return series.
+- **`TrialRegistry() -> 'None'`** (class). Ordered record of the trials run in one research project.
+
+## `finlab.plot`
+
+Plotly figures for PBO, deflated Sharpe and the Monte Carlo experiment (optional extra)
+
+- **`pbo_distribution(result: 'PBOResult', *, title: 'str | None' = None) -> 'go.Figure'`** (function). Histogram of the CSCV split logits, with the PBO value annotated.
+- **`deflated_sharpe_comparison(results: 'DeflatedSharpeResult | Sequence[DeflatedSharpeResult]', *, title: 'str | None' = None) -> 'go.Figure'`** (function). Grouped bars of the observed and the benchmark Sharpe ratio per result.
+- **`monte_carlo_histogram(frame: 'pd.DataFrame', columns: 'Sequence[str]' = ('std_u', 'seq_u'), *, title: 'str | None' = None) -> 'go.Figure'`** (function). Overlaid histograms of two uniqueness columns from a Monte Carlo run.
 
 ## `finlab.hrp`
 
