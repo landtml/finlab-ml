@@ -5,8 +5,19 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-10
+
 ### Added
 
+- Monte Carlo experiment for AFML chapter 4 in `finlab.monte_carlo`: a seeded trial runner
+  (`run_trials`), random label sets (`random_t1`) and the standard and sequential bootstrap
+  uniqueness experiment (`bootstrap_uniqueness_mc`), following Snippets 4.7 and 4.8.
+- `sample_average_uniqueness` in `finlab.weights` (Snippet 4.4), the dense reference
+  implementation.
+- Monte Carlo benchmark (`benchmarks/bench_monte_carlo.py`) and proof note
+  (`docs/proofs/monte_carlo.md`).
+- Project icon (`assets/icon.svg`) and an animated owl mascot (`assets/owl.svg`) in the README.
+- Search keywords, classifiers and project URLs in `pyproject.toml`.
 - `finlab.trials`: `TrialRecord` (frozen, validated name, JSON-scalar parameters and finite
   returns) and `TrialRegistry`, which counts the trials and feeds the performance matrix to
   PBO and the number of trials N to the deflated Sharpe ratio. Both round-trip through dict
@@ -47,6 +58,7 @@ All notable changes to this project are documented in this file. The format foll
 
 ### Changed
 
+- The README was restructured with a module map, install and quick-start sections.
 - CI runs on every branch and on pull requests. The test job lints before it runs the suite.
 - The CI test matrix installs the `plot` and `notebooks` extras, so the plotting and
   notebook-format tests run on 3.10 to 3.13 instead of skipping. The installed-wheel job
@@ -202,21 +214,3 @@ All notable changes to this project are documented in this file. The format foll
   `tests/test_stats.py` was tightened from `1e-5` to `1e-9` after its exact value was checked.
 - **Timings.** The benchmark table is one run per script on a 4-vCPU machine shared with other
   jobs; the numbers vary between runs.
-
-## [0.1.0]
-
-### Added
-
-- Monte Carlo experiment for AFML chapter 4 in `finlab.monte_carlo`: a seeded trial runner
-  (`run_trials`), random label sets (`random_t1`) and the standard and sequential bootstrap
-  uniqueness experiment (`bootstrap_uniqueness_mc`), following Snippets 4.7 and 4.8.
-- `sample_average_uniqueness` in `finlab.weights` (Snippet 4.4), the dense reference
-  implementation.
-- Monte Carlo benchmark (`benchmarks/bench_monte_carlo.py`) and proof note
-  (`docs/proofs/monte_carlo.md`).
-- Project icon (`assets/icon.svg`) and an animated owl mascot (`assets/owl.svg`) in the README.
-- Search keywords, classifiers and project URLs in `pyproject.toml`.
-
-### Changed
-
-- The README was restructured with a module map, install and quick-start sections.
