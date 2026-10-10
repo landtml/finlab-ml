@@ -48,6 +48,9 @@ All notable changes to this project are documented in this file. The format foll
 ### Changed
 
 - CI runs on every branch and on pull requests. The test job lints before it runs the suite.
+- The CI test matrix installs the `plot` and `notebooks` extras, so the plotting and
+  notebook-format tests run on 3.10 to 3.13 instead of skipping. The installed-wheel job
+  runs once without optional extras and once with `[plot,notebooks]`.
 - `deflated_sharpe_ratio` validates its inputs (rejects booleans, non-integral trial counts
   and non-finite values, which previously returned NaN) and returns the same float.
 - `probability_of_backtest_overfitting` checks `n_partitions` as an integer and raises a
