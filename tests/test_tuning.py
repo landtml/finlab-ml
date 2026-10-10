@@ -155,3 +155,13 @@ def test_cv_score_dataframe_range_index_matches_numpy():
     assert cv_score(Threshold, {"threshold": 0.5}, X_df, y_np, cv) == pytest.approx(
         cv_score(Threshold, {"threshold": 0.5}, X_np, y_np, cv)
     )
+
+
+def test_generator_cv_is_usable_by_every_candidate():
+    # A generator is consumed by the first candidate unless the splits are materialized once.
+    X, y = _data()
+    cv = PurgedKFold(n_splits=4)
+    expected = grid_search(Threshold, {"threshold": [-1.0, 0.5]}, X, y, list(cv.split(X)))
+    res = grid_search(Threshold, {"threshold": [-1.0, 0.5]}, X, y, cv.split(X))
+    assert len(res.results) == 2
+    assert res.results["mean_score"].tolist() == pytest.approx(expected.results["mean_score"].tolist())

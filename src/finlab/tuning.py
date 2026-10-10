@@ -71,6 +71,18 @@ def _as_arrays(X, y, sample_weight):
     return Xa, ya, sample_weight
 
 
+def _materialize_splits(cv, X) -> list[tuple[npt.NDArray, npt.NDArray]]:
+    """Index pairs of ``cv`` as a list, so a one-shot iterator can be reused.
+
+    Pandas input goes to the splitter unchanged so a datetime-indexed t1 resolves
+    against the real index; numpy input keeps its positional RangeIndex.
+    """
+    if hasattr(cv, "split"):
+        split_input = X if isinstance(X, (pd.DataFrame, pd.Series)) else np.asarray(X)
+        return list(cv.split(split_input))
+    return list(cv)
+
+
 def cv_score(
     model_factory: Callable[..., Any],
     params: Mapping[str, Any],
@@ -99,11 +111,8 @@ def cv_score(
     """
     Xa, ya, w = _as_arrays(X, y, sample_weight)
     score_fn = scoring or _accuracy
-    # Pandas input goes to the splitter unchanged so a datetime-indexed t1 resolves
-    # against the real index; numpy input keeps its positional RangeIndex.
-    split_input = X if isinstance(X, (pd.DataFrame, pd.Series)) else Xa
     scores = []
-    for train_idx, test_idx in cv.split(split_input) if hasattr(cv, "split") else cv:
+    for train_idx, test_idx in _materialize_splits(cv, X):
         model = model_factory(**params)
         w_tr = None if w is None else w[train_idx]
         model.fit(Xa[train_idx], ya[train_idx], sample_weight=w_tr)
@@ -139,10 +148,12 @@ def _search(
     sample_weight,
     scoring,
 ) -> SearchResult:
+    # Materialized once so a generator or iterator cv is shared by every candidate.
+    splits = _materialize_splits(cv, X)
     rows = []
     best: tuple[float, dict[str, Any]] | None = None
     for params in candidates:
-        mean, std = cv_score(model_factory, params, X, y, cv, sample_weight, scoring)
+        mean, std = cv_score(model_factory, params, X, y, splits, sample_weight, scoring)
         rows.append({**params, "mean_score": mean, "std_score": std})
         if best is None or _improves(mean, best[0]):
             best = (mean, params)
