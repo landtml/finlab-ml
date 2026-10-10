@@ -69,6 +69,12 @@ All notable changes to this project are documented in this file. The format foll
 - The Roll test uses c = 0.5 and increment sd 0.05, which hold across seeds. The
   Becker-Parkinson test runs on consecutive bars. The two fixtures changed; no tolerance
   was loosened.
+- Every "checked by test" label in `docs/proofs/` names the test function that asserts the
+  claim (129 labels). Two labels are qualified where the test covers only part of a claim.
+- The README module map lists `finlab.onc` and `finlab.agent`. The docs-page statement excludes
+  `finlab.trials` and `finlab.plot`, which are described in the API reference.
+- `finlab.trials` is documented as not an AFML construct: it supplies the inputs that
+  chapters 11 and 14 need.
 - Monte Carlo, weights and microstructure tests check exact values where a value was only
   checked for shape or sign (Kyle t, Corwin-Schultz, BVC, time decay).
 
