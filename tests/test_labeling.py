@@ -388,3 +388,18 @@ def test_pandas_only_labeling_helpers_reject_non_pandas_input(bad) -> None:
         meta_labels(bad, close, side=pd.Series([1.0] * 3, index=events.index))
     with pytest.raises(TypeError, match="close"):
         meta_labels(events, bad, side=pd.Series([1.0] * 3, index=events.index))
+
+
+# ---------------------------------------------------------------------------
+# Timezone mismatch between target and close (W3-L01)
+# ---------------------------------------------------------------------------
+
+
+def test_get_events_rejects_naive_target_with_aware_close():
+    close = _random_walk(60, seed=11).tz_localize("America/New_York")
+    tv = add_vertical_barrier(close.index[:3], close, 2)
+    target = pd.Series(0.02, index=pd.bdate_range("2019-01-01", periods=60))
+    with pytest.raises(ValueError, match="timezone") as info:
+        get_events(close, close.index[:3], (1, 1), target, 0.01, vertical_barrier_times=tv)
+    assert "America/New_York" in str(info.value)
+    assert "None" in str(info.value)

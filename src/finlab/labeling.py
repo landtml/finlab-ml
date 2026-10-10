@@ -281,6 +281,15 @@ def get_events(
     if pt_sl_arr.shape[0] != 2 or np.any(pt_sl_arr < 0) or not np.all(np.isfinite(pt_sl_arr)):
         raise ValueError("pt_sl must be two finite, non-negative floats.")
 
+    # A naive target against an aware close reindexes to all NaN and drops every
+    # event without a message, so the mismatch is refused up front.
+    target_tz = getattr(target.index, "tz", None)
+    grid_tz = getattr(grid, "tz", None)
+    if target_tz != grid_tz:
+        raise ValueError(
+            f"target index timezone ({target_tz}) must match close timezone "
+            f"({grid_tz}); convert one of them before calling get_events."
+        )
     trgt_all = target.reindex(ev_index).to_numpy(dtype=float)
     keep = np.isfinite(trgt_all) & (trgt_all > min_ret)
     ev_index = ev_index[keep]
