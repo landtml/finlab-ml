@@ -24,9 +24,11 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
+import pandas as pd
+
+from ._checks import _require_type
 
 if TYPE_CHECKING:
-    import pandas as pd
     import plotly.graph_objects as go
 
     from finlab.pbo import PBOResult
@@ -168,6 +170,7 @@ def monte_carlo_histogram(
     ValueError
         If a requested column is not in ``frame``.
     """
+    _require_type(frame, "frame", pd.DataFrame)
     go = _require_plotly()
     missing = [c for c in columns if c not in frame.columns]
     if missing:

@@ -36,6 +36,7 @@ from typing import Sequence
 import numpy as np
 import pandas as pd
 
+from ._checks import _require_type
 from ._jit import jit
 
 __all__ = [
@@ -463,6 +464,8 @@ def sample_weight_by_return(
     Scope: a label with zero attributed return gets weight 0. Raises if every
     attributed return is zero.
     """
+    _require_type(t1, "t1", pd.Series)
+    _require_type(close, "close", pd.Series)
     grid = _grid(index)
     px = close.reindex(grid).to_numpy(dtype=np.float64)
     if not np.all(np.isfinite(px)) or np.any(px <= 0):

@@ -115,3 +115,12 @@ def test_discretize_signal_warns_on_infinite_element_and_still_returns_inf() -> 
     with pytest.warns(UserWarning, match="discretize_signal.*non-finite"):
         out = discretize_signal(signal, 0.1)
     assert np.isinf(out[1])
+@pytest.mark.parametrize("bad", [[0.5, -0.5], np.zeros((2, 2))])
+def test_average_active_signals_rejects_non_pandas_input(bad) -> None:
+    idx = pd.date_range("2024-01-01", periods=2)
+    signals = pd.Series([0.5, -0.5], index=idx)
+    t1 = pd.Series([idx[1], idx[1]], index=idx)
+    with pytest.raises(TypeError, match="signals"):
+        average_active_signals(bad, t1)
+    with pytest.raises(TypeError, match="t1"):
+        average_active_signals(signals, bad)

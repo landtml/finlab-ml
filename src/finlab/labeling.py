@@ -35,6 +35,7 @@ import numpy as np
 import pandas as pd
 from numba import prange
 
+from ._checks import _require_type
 from ._jit import jit, pjit
 
 __all__ = [
@@ -84,6 +85,7 @@ def get_daily_vol(close: pd.Series, span: int = 100) -> pd.Series:
     Scope: one-day look-back on a time index. Irregular sampling is handled
     by the calendar lookback, not by a fixed bar count.
     """
+    _require_type(close, "close", pd.Series)
     if not isinstance(close.index, pd.DatetimeIndex):
         raise TypeError("close must be indexed by a DatetimeIndex.")
     px = close.to_numpy(dtype=float)
@@ -385,6 +387,8 @@ def get_bins(events: pd.DataFrame, close: pd.Series, meta: bool = False) -> pd.D
 
     Scope: one price series. Returns are simple, not log.
     """
+    _require_type(events, "events", pd.DataFrame)
+    _require_type(close, "close", pd.Series)
     ev = events.dropna(subset=["t1"])
     t1_vals = pd.DatetimeIndex(ev["t1"])
     px_start = close.reindex(ev.index, method="bfill").to_numpy(dtype=float)
@@ -440,6 +444,8 @@ def meta_labels(
     Zero sides ("no bet") are rejected. Drop them before calling this function
     if the primary model abstains.
     """
+    _require_type(events, "events", pd.DataFrame)
+    _require_type(close, "close", pd.Series)
     ev = events.copy()
     if isinstance(side, pd.Series):
         ev["side"] = side.reindex(ev.index).to_numpy(dtype=float)

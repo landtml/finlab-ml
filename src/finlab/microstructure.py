@@ -623,6 +623,10 @@ def vpin(
     """
     p = _to_float(prices, "prices")
     v = _to_float(volume, "volume")
+    # Checked here so the bucket kernel never sees inf, which overflows its integer cast.
+    for name, arr in (("prices", p), ("volume", v)):
+        if not np.all(np.isfinite(arr)):
+            raise ValueError(f"{name} must contain only finite values.")
     if bucket_volume <= 0.0:
         raise ValueError("bucket_volume must be positive")
     if n_window < 1:

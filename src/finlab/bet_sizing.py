@@ -42,6 +42,8 @@ import numpy.typing as npt
 import pandas as pd
 from scipy.special import ndtr
 
+from ._checks import _require_type
+
 __all__ = [
     "prob_bet_size",
     "sigmoid_bet_size",
@@ -235,6 +237,8 @@ def average_active_signals(
     Implemented as a difference-array sweep over positions, so the cost is
     ``O(n log n)`` in the sort, not quadratic in the number of overlapping events.
     """
+    _require_type(signals, "signals", pd.Series)
+    _require_type(t1, "t1", pd.Series)
     if not signals.index.equals(t1.index):
         raise ValueError("signals and t1 must share an index.")
     if index is None:

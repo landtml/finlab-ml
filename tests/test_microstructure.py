@@ -384,3 +384,19 @@ def test_bvc_default_scale_is_causal() -> None:
     q[120:] += 50.0  # large jump in the future
     shifted = bulk_volume_classification(q, v)
     np.testing.assert_array_equal(base[:120], shifted[:120])
+
+
+@pytest.mark.parametrize("bad_price, bad_volume", [(np.inf, 100.0), (-np.inf, 100.0), (np.nan, 100.0)])
+def test_vpin_rejects_non_finite_prices(bad_price, bad_volume) -> None:
+    prices = np.array([10.0, 10.1, bad_price, 10.3, 10.2, 10.4])
+    volume = np.full(6, 100.0)
+    with pytest.raises(ValueError, match="prices"):
+        vpin(prices, volume, bucket_volume=200.0, n_window=2)
+
+
+@pytest.mark.parametrize("bad_volume", [np.inf, -np.inf, np.nan])
+def test_vpin_rejects_non_finite_volume(bad_volume) -> None:
+    prices = np.array([10.0, 10.1, 10.2, 10.3, 10.2, 10.4])
+    volume = np.array([100.0, 100.0, bad_volume, 100.0, 100.0, 100.0])
+    with pytest.raises(ValueError, match="volume"):
+        vpin(prices, volume, bucket_volume=200.0, n_window=2)

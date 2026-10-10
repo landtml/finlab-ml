@@ -97,8 +97,15 @@ def quasi_diagonalize(link: np.ndarray) -> list[int]:
     basis, and the covariance is re-indexed by it with no other change.
     """
     z = np.asarray(link)
+    # Non-finite entries would reach int() below and fail there with OverflowError.
+    if not np.all(np.isfinite(z)):
+        raise ValueError("link must contain only finite values.")
     n = int(z.shape[0]) + 1
     if n == 1:
+        return [0]
+    if z.shape[0] == 1 and not np.array_equal(np.sort(z[0, :2]), [0.0, 1.0]):
+        # A lone row that does not merge leaves 0 and 1 cannot be walked; it
+        # is treated as one item, whose order is trivially [0].
         return [0]
     order: list[int] = []
     stack = [2 * n - 2]  # root cluster id in scipy's numbering
