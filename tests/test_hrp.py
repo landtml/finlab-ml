@@ -219,3 +219,27 @@ def test_hrp_single_asset_and_bad_inputs() -> None:
         hrp_weights(np.array([[0.0, 0.0], [0.0, 1.0]]))
     with pytest.raises(ValueError):
         hrp_weights(np.eye(3), method="ward")
+
+
+def test_quasi_diagonalize_single_row_is_single_item() -> None:
+    link = np.array([[3.0, 5.0, 0.5230936064205157, 2.0]])
+    assert quasi_diagonalize(link) == [0]
+
+
+def test_quasi_diagonalize_valid_one_merge_is_unchanged() -> None:
+    assert quasi_diagonalize(np.array([[0.0, 1.0, 0.7, 2.0]])) == [0, 1]
+
+
+@pytest.mark.parametrize("bad", [np.inf, -np.inf, np.nan])
+def test_quasi_diagonalize_rejects_non_finite_link(bad) -> None:
+    link = np.array(
+        [
+            [3.0, 5.0, 0.52, 2.0],
+            [1.0, 2.0, 0.55, 2.0],
+            [4.0, 6.0, 0.56, 3.0],
+            [7.0, 8.0, 0.68, 5.0],
+            [bad, 9.0, 0.69, 6.0],
+        ]
+    )
+    with pytest.raises(ValueError, match="link"):
+        quasi_diagonalize(link)
