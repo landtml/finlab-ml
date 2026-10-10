@@ -106,6 +106,8 @@ All notable changes to this project are documented in this file. The format foll
 - Docstrings that disagreed with the code or the tests: the Becker-Parkinson accuracy
   (`finlab.microstructure`), the Lempel-Ziv normalisation (`finlab.entropy`), and the
   distance metric statement (`finlab.hrp`).
+- The trial registry docstring said a zero-variance trial raises. Only a nonzero constant
+  (infinite Sharpe ratio) raises; an identically zero trial has Sharpe ratio 0.
 - Removed an unused local in the agent CPCV tool and an unused `pjit` import in `weights.py`
   that ruff flagged.
 - Test cleanup (eleven modules plus three Monte Carlo, weights and microstructure files):
