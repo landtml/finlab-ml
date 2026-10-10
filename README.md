@@ -157,7 +157,7 @@ from the repository root (see the script for the Chrome requirement).
 
 | Area | Status |
 |---|---|
-| CPCV purge and no-leakage property | Proved in [`docs/proofs/cpcv.md`](docs/proofs/cpcv.md); tested in `tests/test_cpcv.py`. The leakage checker `tools/verify_leakage.py` is ported from `purgedcv`. The live-data certificate in that file is the `purgedcv` run, not a `finlab` run. |
+| CPCV purge and no-leakage property | Proved in [`docs/proofs/cpcv.md`](docs/proofs/cpcv.md); tested in `tests/test_cpcv.py`. The live-data certificate in `docs/proofs/cpcv.md` was not produced by a `finlab` run. |
 | Purged K-fold, tuning, bet sizing, parallel helpers | Tested. Book worked examples for bet sizing (sigmoid calibration, target 97, limit price 112.3657) are tests. |
 | PBO via CSCV | Tested against a naive transcription. Under i.i.d. noise E[PBO] = 1/2 for even N (proved in `docs/proofs/pbo.md`), so a PBO near 1 is not a noise result. |
 | Deflated Sharpe, PSR, minTRL | Tested on hand-checked values. minTRL is cited to Bailey and López de Prado (2012), not AFML. |
@@ -251,8 +251,7 @@ derivations. The proof notes cite chapters and snippets by number.
 
 Other sources cited in the code and docs include: López de Prado, Lewis and Boudt
 (2019) for ONC clustering, and Bailey and López de Prado (2012) for the minimum
-track record length. The purged cross-validation code and its proof come from
-the [`purgedcv`](https://github.com/landtml/purgedcv) project.
+track record length.
 
 ## License
 

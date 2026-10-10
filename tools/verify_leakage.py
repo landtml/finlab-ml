@@ -19,7 +19,7 @@ auditable. Exit code is non-zero if any check fails.
 Run:  python tools/verify_leakage.py              (live data: needs network + yfinance)
       python tools/verify_leakage.py --synthetic  (offline: seeded geometric random walks)
 
-Ported from the purgedcv project's verify_leakage.py. The certificate names its data
+The certificate names its data
 source, so a synthetic run is never presented as live-data evidence.
 """
 

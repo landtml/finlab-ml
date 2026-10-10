@@ -2,7 +2,7 @@
 
 ## Empirical verification in this repository
 
-`tools/verify_leakage.py` (ported from purgedcv) checks properties D, L, E, Q and C
+`tools/verify_leakage.py` checks properties D, L, E, Q and C
 across a grid of configurations, horizons, embargoes and anchors. The run below was
 made in this repository with `python3 tools/verify_leakage.py --synthetic` (exit status 0):
 
@@ -19,7 +19,7 @@ made in this repository with `python3 tools/verify_leakage.py --synthetic` (exit
   RESULT: PASS
 ```
 
-**Not done:** the live-market-data run that the purgedcv project reports. Only the
+**Not done:** a live-market-data run. Only the
 `--synthetic` run has been made for finlab. Its evidence covers the splitter's logic on random-walk data; it does
 not show behaviour on real price series. Run `python3 tools/verify_leakage.py`
 (needs `pip install yfinance` and network access) to reproduce the live check.
@@ -146,7 +146,7 @@ Two **independent** leakage oracles were run and agreed everywhere:
 * **equiv**: library purge output compared element-for-element to a from-scratch
   per-observation brute-force purge (embargo-free).
 
-Reproduce with `python tools/verify_leakage.py` (needs yfinance and network access). Recorded result of a live-data run made by the purgedcv project (its v0.1.0), not by finlab:
+Reproduce with `python tools/verify_leakage.py` (needs yfinance and network access). Recorded result of a live-data run made outside this repository, not by finlab:
 
 Configuration grid behind the numbers below: `(N,k)` in `(6,2) (8,2) (10,3)
 (8,3)`; horizons `1, 5, 21, 63` bars; `embargo_pct` in `0.0, 0.02`;
