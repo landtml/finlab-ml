@@ -26,8 +26,8 @@ Notes
 * The default path is a numba kernel over all combinations. A user-supplied
   ``performance`` callable is evaluated in a Python loop, which is slower.
 * The split count C(S, S/2) includes each train/test pair in both orders, as in
-  the book's algorithm; S = 16 gives 12,870 splits (the book's text says 12,780,
-  which is a typo).
+  the book's algorithm; S = 16 gives 12,870 splits. Claimed from the book only:
+  the book's text gives 12,780 for this count (not checked here).
 
 Scope
 -----
@@ -43,6 +43,7 @@ from __future__ import annotations
 
 import itertools
 import math
+import numbers
 from dataclasses import dataclass
 from typing import Callable, Optional, Union
 
@@ -90,8 +91,8 @@ def probability_of_backtest_overfitting(
         the N trial strategies. Must be finite. A DataFrame's columns are only
         used for shape; values are read positionally.
     n_partitions : int, default 16
-        Number S of contiguous row blocks. Must be even, >= 2, divide T, and
-        satisfy T / S >= 2.
+        Number S of contiguous row blocks. Must be an even integer >= 2 (an
+        integral float such as 8.0 is accepted), divide T, and satisfy T / S >= 2.
     performance : callable, optional
         ``performance(sub)`` takes a (rows, N) ndarray and returns a length-N
         array of trial scores (higher is better). Defaults to the per-column
@@ -105,8 +106,9 @@ def probability_of_backtest_overfitting(
     Raises
     ------
     ValueError
-        On a non-2-D or non-finite matrix, N < 2, S odd or < 2, T not divisible
-        by S, or blocks shorter than 2 rows.
+        On a non-2-D or non-finite matrix, N < 2, n_partitions that is not an
+        integer, S odd or < 2, T not divisible by S, or blocks shorter than
+        2 rows.
 
     Notes
     -----
@@ -115,9 +117,9 @@ def probability_of_backtest_overfitting(
     half of the splits, which is what pure-noise trials produce (see
     ``docs/proofs/pbo.md``).
     """
-    mat = _validate(performance_matrix, n_partitions)
+    S = _partition_count(n_partitions)
+    mat = _validate(performance_matrix, S)
     T, N = mat.shape
-    S = n_partitions
     L = T // S
     k = S // 2
     combos = np.array(list(itertools.combinations(range(S), k)), dtype=np.int64)
@@ -132,9 +134,25 @@ def probability_of_backtest_overfitting(
     return PBOResult(pbo=pbo, logits=logits, n_combinations=int(combos.shape[0]))
 
 
-def _validate(
-    performance_matrix: Union[pd.DataFrame, np.ndarray], n_partitions: int
-) -> np.ndarray:
+def _partition_count(n_partitions: object) -> int:
+    """Return ``n_partitions`` as an int, or raise ValueError.
+
+    Accepts integers (including NumPy integers) and integral floats such as
+    8.0. Rejects bools, non-integral or non-finite floats, strings and anything
+    else, so that no value is truncated silently.
+    """
+    if isinstance(n_partitions, (bool, np.bool_)):
+        raise ValueError(f"n_partitions must be an integer, got bool {n_partitions!r}")
+    if isinstance(n_partitions, numbers.Integral):
+        return int(n_partitions)
+    if isinstance(n_partitions, (float, np.floating)):
+        value = float(n_partitions)
+        if math.isfinite(value) and value.is_integer():
+            return int(value)
+    raise ValueError(f"n_partitions must be an integer, got {n_partitions!r}")
+
+
+def _validate(performance_matrix: Union[pd.DataFrame, np.ndarray], S: int) -> np.ndarray:
     """Coerce to a finite float64 (T, N) array and check the CSCV constraints."""
     if isinstance(performance_matrix, pd.DataFrame):
         arr = performance_matrix.to_numpy(dtype=np.float64)
@@ -145,7 +163,6 @@ def _validate(
     if not np.all(np.isfinite(arr)):
         raise ValueError("performance_matrix must contain only finite values")
     T, N = arr.shape
-    S = int(n_partitions)
     if N < 2:
         raise ValueError("need at least N >= 2 trial columns")
     if S < 2 or S % 2 != 0:
@@ -159,15 +176,31 @@ def _validate(
 
 @jit
 def _sharpe_of_mask(blocks: np.ndarray, mask: np.ndarray, col: int) -> float:
-    """Sharpe ratio of column ``col`` over the blocks flagged in ``mask``."""
+    """Sharpe ratio of column ``col`` over the blocks flagged in ``mask``.
+
+    Zero variance is detected by exact equality of the selected values. A test
+    on the sum of squares is not reliable: the mean of n copies of c can differ
+    from c by an ulp, which would give a huge finite Sharpe instead of +/-inf.
+    """
     S, L, _ = blocks.shape
     cnt = 0
     total = 0.0
+    first = 0.0
+    constant = True
     for s in range(S):
         if mask[s]:
             for t in range(L):
-                total += blocks[s, t, col]
+                v = blocks[s, t, col]
+                if cnt == 0:
+                    first = v
+                elif v != first:
+                    constant = False
+                total += v
                 cnt += 1
+    if constant:
+        if first == 0.0:
+            return 0.0
+        return math.inf if first > 0.0 else -math.inf
     mu = total / cnt
     ss = 0.0
     for s in range(S):

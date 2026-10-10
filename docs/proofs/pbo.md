@@ -15,9 +15,10 @@ C(S, S/2) such splits. The procedure follows AFML 11.6 steps 1-7.
 
 **Proved here (count).** The number of splits is C(S, S/2) by definition of
 the binomial coefficient. For S = 16, C(16, 8) = 12,870
-(`tests/test_doc_claims.py::test_pbo_split_count_s16`). The book's text gives
-12,780 in the surrounding paragraph. That is a claim about the book's text and
-is not checked here.
+(`tests/test_doc_claims.py::test_pbo_split_count_s16`).
+
+**Claimed from the book only.** The book's text gives 12,780 in the surrounding
+paragraph. That is a claim about the book's text and is not checked here.
 
 ## 2. Relative rank and logit
 
@@ -98,21 +99,73 @@ exactly, on random matrices with (T, N, S) in {(48,2,4), (64,5,8), (96,7,6),
 ## 6. Limitations
 
 - The rank uses ties in the selected trial's favour (`<=`). With continuous
-  returns ties have probability zero.
+  returns ties have probability zero. Checked by test:
+  `test_hand_computed_out_of_sample_tie_counts_for_selected_trial`. In-sample ties
+  go to the first index (`>`), checked by the same test.
 - Sharpe is undefined for zero-variance columns; the kernel returns 0 or +/-inf by
   the rule in the module docstring, which is a convention and not from the book.
-- The split count is exponential in S; S = 16 gives 12,870 splits, which is the
-  practical upper limit used in the benchmark.
+  Zero variance is detected by exact equality of the selected values. Checked by
+  test: `test_zero_variance_sharpe_is_exactly_inf_not_rounding_dependent` and
+  `test_all_equal_returns_give_finite_pbo_and_logits`.
+- The split count grows exponentially in S. S = 16 gives 12,870 splits, the
+  largest S timed in `benchmarks/bench_pbo.py` (a benchmark choice, not a limit of
+  the code).
+
+## 7. Hand-computed and closed-form examples
+
+Every example here is a constructed input, not a book value. The numbers are derived
+in this section, and each example names the test that checks it.
+
+**Hand-computed, constructed input, not a book value (T = 8, N = 2, S = 4).** Each
+block has two identical rows, so the pooled rows of a block pair {s, t} are
+{x_s, x_s, x_t, x_t}. Its mean is (x_s + x_t) / 2, its sum of squared deviations is
+(x_s - x_t)^2, and its sample Sharpe ratio is (sqrt(3)/2) * g with
+g = (x_s + x_t) / |x_s - x_t|. The common factor does not change any comparison, so
+the ranks follow from the g values. With N = 2, lambda = -log 2 for rank 1 and
++log 2 for rank 2.
+
+- Values x_A = (1, 2, 3, 4) and x_B = (1, 4, 2, 3). Logits in
+  `itertools.combinations` order are (+, +, -, -, +, +) and PBO = 1/3.
+  `test_hand_computed_T8_N2_S4_logits_and_pbo`.
+- Values x_A = (1, 2, 3, 4) and x_B = (5, 6, 3, 4). Blocks 2 and 3 are equal, so the
+  test set {2, 3} of split {0, 1} is an exact out-of-sample tie. B is selected, the
+  tie counts for it, and the logit is +log 2. Split {2, 3} is an exact in-sample tie,
+  so the first index (A) is selected, and its logit is -log 2. PBO = 1/2.
+  `test_hand_computed_out_of_sample_tie_counts_for_selected_trial`.
+
+**Closed form, constructed input, not a book value.**
+
+- (a) Identical columns. All Sharpe ratios tie, the in-sample argmax is column 0,
+  rank = N, omega = N/(N+1), lambda = log N > 0, PBO = 0.
+  `test_closed_form_identical_columns_give_pbo_zero_constructed_input` (N = 5).
+- (b) One column strictly better than the others in every block. Its Sharpe ratio is
+  the largest in every split, in and out of sample, so rank = N and PBO = 0.
+  `test_closed_form_dominant_column_gives_pbo_zero_constructed_input` (N = 3).
+- (c) The in-sample winner is the out-of-sample worst in every split. Constructed for
+  N = 2 and S = 4: column A has block means (3, -1, -1, -1) and column B = -A.
+  Each split's test pair has the opposite pooled sign, so rank = 1 in all 6 splits,
+  lambda = -log 2 and PBO = 1. `test_closed_form_mirror_columns_give_pbo_one_constructed_input`.
+  Only this case is shown; no construction is claimed for other N or S.
+
+**Closed form, constructed input, not a book value (zero variance).** A constant
+column with value c has Sharpe 0 when c = 0 and +/-inf otherwise. Equal values give
+exact ties, so an all-equal matrix gives logit = log N and PBO = 0, and every value is
+finite. `test_all_equal_returns_give_finite_pbo_and_logits`,
+`test_zero_variance_sharpe_is_exactly_inf_not_rounding_dependent`.
 
 ## Summary
 
 | Statement | Status |
 |---|---|
-| Number of splits C(S, S/2); C(16, 8) = 12,870 (the book's 12,780 is a book claim, not checked) | Proved here |
+| Number of splits C(S, S/2); C(16, 8) = 12,870 | Proved here (`test_pbo_split_count_s16`) |
+| The book's text gives 12,780 for S = 16 | Claimed from the book only |
 | omega in (0,1), lambda finite, lambda <= 0 iff rank <= (N+1)/2 | Proved here |
 | Pure noise gives P(lambda <= 0) = floor((N+1)/2)/N, so E[PBO] = 1/2 for even N | Proved here |
 | Pure-noise PBO is near 1 | Not supported; contradicted by the proof above |
 | Pure-noise PBO mean, sd and percentiles at N = 60, 10, 2 (seeds 0 to 59) | Checked by test (`test_pbo_pure_noise_simulation_seeds_0_to_59`) |
 | One real edge gives PBO near 0 | Checked by test; bound sketched only |
 | Fast kernel equals naive loop | Checked by test |
+| Hand-computed logits and PBO at T = 8, N = 2, S = 4, and the out-of-sample tie rule | Checked by test (`test_hand_computed_T8_N2_S4_logits_and_pbo`, `test_hand_computed_out_of_sample_tie_counts_for_selected_trial`) |
+| Closed forms (a) identical columns, (b) dominant column, (c) mirror construction | Checked by test (`test_closed_form_*`); (c) shown for N = 2, S = 4 only |
+| Zero variance gives Sharpe 0 or +/-inf (exact test); all-equal matrices give PBO = 0 | Checked by test (`test_zero_variance_sharpe_is_exactly_inf_not_rounding_dependent`, `test_all_equal_returns_give_finite_pbo_and_logits`) |
 | CSCV procedure and PBO definition | Claimed from book (AFML 11.6; Bailey et al. 2017) |
