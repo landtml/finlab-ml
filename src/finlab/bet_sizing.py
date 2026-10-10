@@ -71,8 +71,9 @@ def prob_bet_size(
         probability of label ``+1``. For ``num_classes > 2`` it is the probability
         of the predicted label (the maximum class probability).
     side : array-like, optional
-        Predicted label in ``{-1, +1}`` (only used when ``num_classes > 2``).
-        Gives the sign of the bet.
+        Predicted label in ``{-1, +1}``. Gives the sign of the bet. Required when
+        ``num_classes > 2``; for two classes it is applied when passed and the bet
+        is long when it is omitted.
     num_classes : int, default 2
         Number of possible labels ``k``.
 
@@ -95,6 +96,8 @@ def prob_bet_size(
         if num_classes == 2:
             z = (p - 0.5) / np.sqrt(p * (1.0 - p))
             m = 2.0 * ndtr(z) - 1.0
+            if side is not None:
+                m = np.asarray(side, dtype=np.float64) * m
         else:
             if side is None:
                 raise ValueError("side is required when num_classes > 2.")

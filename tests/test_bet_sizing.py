@@ -124,3 +124,10 @@ def test_average_active_signals_rejects_non_pandas_input(bad) -> None:
         average_active_signals(bad, t1)
     with pytest.raises(TypeError, match="t1"):
         average_active_signals(signals, bad)
+
+
+def test_prob_bet_size_applies_side_for_two_classes():
+    # A short side must flip the sign of the two-class bet, not be silently dropped.
+    long_bet = prob_bet_size([0.7])
+    np.testing.assert_allclose(prob_bet_size([0.7], side=[1]), long_bet)
+    np.testing.assert_allclose(prob_bet_size([0.7], side=[-1]), -long_bet)
