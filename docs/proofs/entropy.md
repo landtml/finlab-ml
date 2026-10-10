@@ -117,7 +117,7 @@ Two claims from the text, using the snippet's formula:
 Kontoyiannis (1998) proves `H_hat -> H` a.s. under stationarity, ergodicity and the
 Doeblin condition. Gao et al. (2008) remove the Doeblin condition by using the
 `log2(n+1)` modification, and recommend `N ~ n + (log2 n)^2` (e.g. `N = 2^8`
-gives `n ~ 198`, `k ~ 58`). Those statements are cited from the book, not derived
+gives `n ~ 198`, `k ~ 58`; `tests/test_doc_claims.py::test_entropy_gao_window_arithmetic` checks that `198 + (log2 198)^2` is within 0.5 of 256). Those statements are cited from the book, not derived
 here.
 
 **Test status [checked by test].** `test_match_length_matches_literal_snippet`
@@ -159,7 +159,7 @@ exact multiple of `sigma`, where the unclipped code would be `K`. The test
 For `X ~ N(0, sigma^2)`, the differential entropy is `h = (1/2) log(2 pi e sigma^2)`.
 **[standard result; not implemented]**. The book prints `H ~ 1.42` for the standard
 normal. With the natural logarithm, `(1/2) ln(2 pi e) = 1.4189`, so the printed
-value is in nats, not bits. In bits it is `2.048`. This is noted here only for
+value is in nats, not bits. In bits it is `2.047` (`0.5 log2(2 pi e) = 2.04710`; `tests/test_doc_claims.py::test_entropy_gaussian_constant_in_bits`). This is noted here only for
 readers who compare the book's numbers with the code. The Gaussian benchmark and
 the entropy-implied volatility are out of scope.
 
@@ -179,6 +179,6 @@ the entropy-implied volatility are out of scope.
 | Kontoyiannis consistency, bias/variance rule | claimed from the book only (Kontoyiannis 1998; Gao et al. 2008) |
 | Book's `10000111` / `10000110` equality | checked by test (exact) |
 | Book's `0.96` for `11100001` | **discrepancy**: snippet gives 0.968; test checks 0.968 and 0.96 to 0.01 |
-| Book's `0.84` for `01100001` | checked by test (0.8432) |
+| Book's `0.84` for `01100001` | checked by test (0.8432; the value 0.843241 is pinned in `tests/test_doc_claims.py`) |
 | Binary, quantile, sigma encoders | proved here (sign, monotone, width); tie caveat noted |
 | Gaussian entropy constant 1.42 | book value is in nats; not implemented |

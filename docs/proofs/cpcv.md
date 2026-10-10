@@ -4,7 +4,7 @@
 
 `tools/verify_leakage.py` (ported from purgedcv) checks properties D, L, E, Q and C
 across a grid of configurations, horizons, embargoes and anchors. The run below was
-made in this repository with `python3 tools/verify_leakage.py --synthetic`:
+made in this repository with `python3 tools/verify_leakage.py --synthetic` (exit status 0):
 
 ```
   data source            : synthetic (seeded random walks, offline)
@@ -146,7 +146,7 @@ Two **independent** leakage oracles were run and agreed everywhere:
 * **equiv**: library purge output compared element-for-element to a from-scratch
   per-observation brute-force purge (embargo-free).
 
-Reproduce with `python verify_leakage.py`. Result of the run on this machine:
+Reproduce with `python tools/verify_leakage.py` (needs yfinance and network access). Recorded result of a live-data run made by the purgedcv project (its v0.1.0), not by finlab:
 
 Configuration grid behind the numbers below: `(N,k)` in `(6,2) (8,2) (10,3)
 (8,3)`; horizons `1, 5, 21, 63` bars; `embargo_pct` in `0.0, 0.02`;
@@ -172,16 +172,16 @@ PURGEDCV LEAKAGE VERIFICATION CERTIFICATE
 ======================================================================
 ```
 
-This is the exact output `python verify_leakage.py` prints (see
-[verify_leakage.py](verify_leakage.py)), not a paraphrase. The run above was
+This is the output `python tools/verify_leakage.py` printed for v0.1.0 (see
+[tools/verify_leakage.py](../../tools/verify_leakage.py)), not a paraphrase. The run above was
 produced on v0.1.0; v0.2.0 changed only validation and error paths, leaving the
 purge and embargo arithmetic the theorems describe untouched.
 
-Unit suite: `pytest` → **115 tests** (incl. the live-yfinance integration test,
+Unit suite: `tests/test_cpcv.py` collects 102 items (`pytest --collect-only -q tests/test_cpcv.py`; incl. the live-yfinance integration test,
 which skips offline), covering counts, no-leakage, embargo, disjointness, the
 canonical (6,2) path-stitch regression, coverage, determinism, the
-`envelope == brute-force` equivalence, all input-validation paths, and -- in
-`tests/test_sklearn.py` -- the scikit-learn integration against a real install.
+`envelope == brute-force` equivalence and all input-validation paths. There is
+no scikit-learn integration test.
 
 ---
 

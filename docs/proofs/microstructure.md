@@ -61,8 +61,9 @@ of the lagged pairs. It returns the full spread, not the half spread the book
 writes as `c`.
 
 **[checked by test]** The estimator matches a loop-based implementation to
-machine precision. On a simulated bounce series with `c = 0.05` and 200,000
-observations, the estimate is within 5% of `2c`.
+machine precision. On a simulated bounce series with `c = 0.5`, a random-walk midprice
+with increment sd 0.05, and 200,000 observations, the estimate is within
+5% of `2c` (`test_roll_recovers_spread_from_bid_ask_bounce`).
 
 **[claimed from the book only]** Consistency of the sample covariance under
 stationarity and finite fourth moments (law of large numbers). The book gives
@@ -116,12 +117,17 @@ path gives a strictly positive spread.
     clipped at 0.                                         [claimed from the book only]
 
 We cannot derive this from the model. Two checks were made. (a) On simulated
-GBM bars (sigma = 0.02, 20,000 bars, 400 monitoring steps per bar), the snippet's
-coefficient `(2^{-1/2} - 1)` gives an average estimate of 0.0206. The alternative
-`(2^{1/2} - 1)` gives 0.138, which is off by a factor of about seven, so it is
-rejected. The residual 3% is the downward bias of discrete monitoring, not an
-error in the formula. The test asserts agreement within 10%. (b) The vectorized
-output matches the formula computed in loops.
+GBM bars (sigma = 0.02, 20,000 bars of 400 monitoring steps each, generated with
+`default_rng(0)` as in `test_becker_parkinson_recovers_volatility_on_gbm`; the values are pinned in `tests/test_doc_claims.py::test_becker_parkinson_seed0_values_and_alternative_coefficient`), the
+snippet's coefficient `(2^{-1/2} - 1)` gives a mean estimate of 0.01893, which is
+5.3% below sigma. Seeds 0 to 3 give 4.5% to 5.8% below. The alternative
+`(2^{1/2} - 1)` gives 0.1333 on the same bars, about 7.0 times the snippet's
+estimate, so it is rejected. The test asserts agreement within 10%, which the
+-5.3% passes. Monitoring does not account for all of the gap. With 16 steps per
+bar (seed 0) the mean is 6.8% low. With 2,000 bars, the average over seeds 0 to 3
+is 4.4% low at 400 steps and 4.2% low at 16,000 steps, a difference inside the
+sampling noise. The source of the remaining bias is not established here. (b)
+The vectorized output matches the formula computed in loops.
 
 ## 5. Kyle's lambda (AFML 19.4.1)
 
@@ -208,7 +214,7 @@ Poisson mixture underlying these is not re-derived here.
   (`naive_vpin`, which expands each unit of volume) to 1e-9, for integer volumes and
   bucket size. This checks the straddle split and the window.
 - On random data, every VPIN value lies in `[0, 1]`.
-- With every price rise far above `sigma`, every buy fraction tends to 1 and
+- With every price rise far above `sigma` (`test_vpin_one_sided_flow_is_one`), every buy fraction tends to 1 and
   VPIN tends to 1 once the first bucket (which has no prior price, so `phi = 1/2`)
   has left the window.
 
@@ -230,7 +236,7 @@ observation is applied to every bucket it touches.
 | Parkinson constants `k1`, `k2` | claimed from the book only |
 | Corwin-Schultz alpha derivation | claimed from the book only |
 | CS spread non-negativity, monotonicity (Prop. 4.1) | proved here; checked by test |
-| Becker-Parkinson coefficient `(2^{-1/2}-1)` | claimed from the book only; checked by simulation (within 4%) |
+| Becker-Parkinson coefficient `(2^{-1/2}-1)` | claimed from the book only; checked by test within 10% (mean estimate 5.3% below sigma at the test's seed) |
 | Kyle OLS and t-statistic (Prop. 5.1) | proved here; checked by test |
 | Kyle equilibrium `lambda = (1/2) sqrt(Sigma/sigma_u^2)` | claimed from the book only |
 | Amihud regression closed form (Prop. 6.1) | proved here; checked by test |

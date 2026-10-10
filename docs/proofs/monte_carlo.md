@@ -130,9 +130,9 @@ against the book's output.
 * **Snippet 4.4.** `getAvgUniqueness` takes the uniqueness of each column over the rows it covers,
   with the concurrency taken over the matrix passed in. Snippet 4.8 applies it to the bootstrapped
   matrix, so repeats are counted, as in `sample_average_uniqueness`.
-* **Figure 4.2 text (p. 68).** The book states, in the text after the figure, that "the median of the average uniqueness for the
-  standard method is 0.6, and the median of the average uniqueness for the sequential method is
-  0.7." The experiment's measured medians match this to one decimal place (section 4).
+* **Figure 4.2 text (p. 68).** The text after the figure gives the median average uniqueness as 0.6 for the
+  standard method and 0.7 for the sequential method. (Paraphrased; the book's wording is not reproduced here.)
+  The experiment's measured medians match these to one decimal place (section 4).
 
 Differences from the book's run, which the comparison has to allow for:
 
@@ -149,7 +149,9 @@ settings listed. They are not theorems.
 
 **Statistical gap, default sizes.** `bootstrap_uniqueness_mc(n_iter=2000, seed=s)` with `n_obs=10`,
 `n_bars=100`, `max_h=5`. `d = seq_u - std_u` is taken per trial. Its standard error is the sample
-standard deviation of `d` over `sqrt(2000)`.
+standard deviation of `d` over `sqrt(2000)`. The table is seeded, so it reproduces on any
+machine: `tests/test_doc_claims.py::test_monte_carlo_gap_table` (parametrized over seeds 0, 1, 2, 3, 42) pins the
+mean `d` and its standard error to 1e-6, and the means of `std_u` and `seq_u` to 5e-5, since the table rounds those to four decimals.
 
 | seed | mean `d` | standard error | ratio | mean `std_u` | mean `seq_u` |
 |---|---|---|---|---|---|
@@ -160,7 +162,8 @@ standard deviation of `d` over `sqrt(2000)`.
 | 42 | 0.085824 | 0.002858 | 30.0 | 0.6073 | 0.6932 |
 
 **Medians against the book's text (p. 68).** `bootstrap_uniqueness_mc(n_iter=20000, seed=0, num_threads=4)`
-gives medians of `0.6` for `std_u` and `0.7` for `seq_u`, to four decimal places. The book's
+gives medians of `0.600000` for `std_u` and `0.700000` for `seq_u`
+(`tests/test_doc_claims.py::test_monte_carlo_medians_seeds_0_and_7`). The book's
 text gives 0.6 and 0.7 for the same two statistics. Seed 7, the slow test's seed, gives the same
 medians. This is a comparison at one decimal place, from a run of 20,000 trials and not 1E6. It
 supports that the design matches the book's experiment closely enough to reproduce those
@@ -168,14 +171,15 @@ medians. It is not a test of the book's full distribution.
 
 **Repeated starts.** With 10 draws on 100 start bars, the chance of at least one repeated start is
 `1 - prod_{i=0}^{9} (1 - i/100)`, about `0.372`. For seeds `s = 0..1999`, `random_t1(10, 100, 5, seed=np.random.default_rng(s))` gives fewer than 10 labels in
-`0.369` of label sets. This matches the calculation.
+`0.369` of label sets. This matches the calculation (`0.3718`, which is the exact probability). Checked by
+`tests/test_doc_claims.py::test_monte_carlo_repeated_start_fraction`.
 
 **Another experiment in this repository, not comparable.** [weights.md](weights.md) reports `0.1963` (sequential)
 against `0.1913` (standard) over 200 seeds. That design has 200 bars, 60 labels and spans up to 30,
 as described there. Its settings differ from the experiment above, so the two results must not be
 compared as one number.
 
-**Benchmark, one run.** `benchmarks/bench_monte_carlo.py`, default sizes (`n_obs=10`, `n_bars=100`,
+**Measured (benchmarks/bench_monte_carlo.py, not a test).** Default sizes (`n_obs=10`, `n_bars=100`,
 `max_h=5`). The numbers below are from a single run on a shared 4-core machine, and they vary by
 about 10% between runs. Three measurements answer different questions, and they must not be mixed:
 
@@ -203,13 +207,13 @@ than `1e-9`. That check is in the script, not in the test suite.
 
 These statements are about AFML and were not checked here.
 
-* **The sequential sample is closer to IID.** The book says the sequential bootstrap sample "will be
-  much closer to IID than samples drawn from the standard bootstrap method", and that this "can be
-  verified by measuring an increase in" average uniqueness. The experiment here measures average
+* **The sequential sample is closer to IID.** The book says the sequential bootstrap sample is much
+  closer to IID than a standard bootstrap sample, and that an increase in average uniqueness can be
+  used to check this. (Paraphrased.) The experiment here measures average
   uniqueness, which is the quantity the book proposes for that check. It does not measure closeness
   to IID, so it does not test the IID claim.
-* **The ANOVA result.** The text after Figure 4.2 says an ANOVA test on the difference of means gives "a
-  vanishingly small probability". This module does not run that test.
+* **The ANOVA result.** The text after Figure 4.2 says an ANOVA test on the difference of means gives a
+  very small probability. (Paraphrased.) This module does not run that test.
 * **The figure's source run.** The book does not state how many trials produced Figure 4.2. This
   document does not claim it was the 1E6 run, and makes no claim that the figure is reproduced.
 

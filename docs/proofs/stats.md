@@ -43,8 +43,8 @@ with a = sigma^{-1}(1+SR^2) and b = -SR/(2 sigma^2). Substituting mu/sigma = SR:
     2ab Cov(x, x^2)   = -(1 + SR^2) SR (2 SR + gamma3)
     b^2 Var(x^2)      = SR^4 + SR^3 gamma3 + SR^2 (gamma4 - 1)/4
 
-Summing and collecting terms (the SR^2 and SR^4 terms cancel, leaving
-1 - gamma3 SR + SR^2 (gamma4 - 1)/4) gives the claim.
+Summing and collecting terms (the SR^4 terms and the SR^2 cross terms cancel,
+leaving 1 - gamma3 SR + SR^2 (gamma4 - 1)/4) gives the claim.
 Check: gamma3 = 0, gamma4 = 3 gives (1 + SR^2/2)/T, the familiar Gaussian result.
 
 **Assumptions:** IID returns, finite fourth moment, a consistent estimator of
@@ -91,11 +91,14 @@ which is the expected maximum of a single draw with no selection effect.
 
 **Checked by test and simulation.**
 - Monotone increasing in N and proportional to sqrt(V). (`test_expected_max_sharpe_properties`)
-- Below the bound sqrt(2 log N) quoted by the book (checked at N = 1000).
+- Below the classical bound sqrt(2 log N) (cited from the literature, not verified here;
+  checked at N = 1000 by `test_expected_max_sharpe_properties`).
 - Monte Carlo of E[max of N standard normals] (20,000 draws) against the
   formula, sigma = 1: N = 2: 0.570 vs 0.520; N = 10: 1.542 vs 1.575;
-  N = 100: 2.508 vs 2.531; N = 1000: 3.244 vs 3.255. The error is at most
-  about 0.05 over this range.
+  N = 100: 2.508 vs 2.531; N = 1000: 3.244 vs 3.255. The largest error is
+  0.0504 (N = 2). The draws use `numpy.random.default_rng(0)`, with
+  one `standard_normal((20000, N))` call per N in the order 2, 10, 100, 1000
+  (`tests/test_doc_claims.py::test_stats_expected_max_monte_carlo_seed0`).
 
 ## 4. Deflated Sharpe ratio
 
@@ -122,15 +125,17 @@ Solving for T:
 
 PSR is increasing in T when SR > SR*, so minTRL is the unique threshold for PSR >= p.
 The implementation raises a ValueError for SR <= SR*, where no finite T
-gives p > 1/2. The formula is from Bailey and Lopez de Prado (2012), which is
-**not** in the AFML text supplied with this repo; cited from the literature.
+gives p > 1/2. The formula is from Bailey and Lopez de Prado (2012). It is cited from the
+literature here, not from AFML.
 
 **Hand computation (checked by test).** Gaussian returns (gamma3 = 0, gamma4 = 3),
 SR = 0.5, SR* = 0, p = 0.95:
 D^2 = 1 + (2/4)(0.25) = 1.125, Phi^{-1}(0.95) = 1.6448536,
-minTRL = 1 + 1.125 (1.6448536/0.5)^2 = 13.174943.
-**Checked by test:** `test_min_track_record_length_hand_computation`. The
-round trip PSR(ceil(minTRL)) >= p > PSR(ceil(minTRL) - 1) is also checked.
+minTRL = 1 + 1.125 (1.6448536/0.5)^2 = 13.1749455 (13.174946 to six decimals).
+**Checked by test:** `test_min_track_record_length_hand_computation` (tolerance 1e-5),
+and to 1e-9 in `tests/test_doc_claims.py::test_stats_min_track_record_length_exact`.
+The round trip PSR(ceil(minTRL)) >= p > PSR(ceil(minTRL) - 1) is checked by
+`test_min_track_record_length_round_trip_gives_target_psr`, at other parameters.
 
 ## Summary
 

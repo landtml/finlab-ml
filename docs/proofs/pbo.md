@@ -14,8 +14,10 @@ blocks in J and the test set is the complement J-bar. There are
 C(S, S/2) such splits. The procedure follows AFML 11.6 steps 1-7.
 
 **Proved here (count).** The number of splits is C(S, S/2) by definition of
-the binomial coefficient. For S = 16, C(16, 8) = 12,870. The book's text says
-12,780 in the surrounding paragraph, which is a typo.
+the binomial coefficient. For S = 16, C(16, 8) = 12,870
+(`tests/test_doc_claims.py::test_pbo_split_count_s16`). The book's text gives
+12,780 in the surrounding paragraph. That is a claim about the book's text and
+is not checked here.
 
 ## 2. Relative rank and logit
 
@@ -40,8 +42,8 @@ over splits.
 
 The book's remarks about PBO are about overfit selection. For pure noise the
 selected trial is unrelated to its out-of-sample performance, so the expected
-PBO is 1/2 when N is even. The book does not contain this statement; it is
-derived here.
+PBO is 1/2 when N is even. It is derived here and is not attributed to the
+book.
 
 **Proved here.** Assume the N columns are independent, identically distributed
 across trials (pure noise, same distribution in each column), with continuous
@@ -59,17 +61,18 @@ Taking expectations over the data gives E[PBO] = P(lambda_c <= 0) by linearity.
 
 **Realised values are noisy.** The C(S, S/2) splits share blocks, so their
 logits are dependent, and the realised PBO for one matrix has a large spread.
-**Checked by simulation** (T = 320, N = 60, S = 8, 60 seeds, standard normal
-returns with sd 0.01): mean PBO = 0.503, sd = 0.157, 5th and 95th percentiles
-0.255 and 0.745. For N = 10 the sd is 0.235; for N = 2 it is 0.298 (mean 0.469).
-These are simulation results, not proofs.
+**Checked by test** (`tests/test_doc_claims.py::test_pbo_pure_noise_simulation_seeds_0_to_59`):
+T = 320, S = 8, normal returns with mean 0 and sd 0.01, seeds 0 to 59 (`numpy.random.default_rng(seed)`).
+For N = 60: mean PBO = 0.5029, sd = 0.1566 (population sd, `ddof=0`), 5th and 95th
+percentiles 0.255 and 0.745. For N = 10 the sd is 0.2355; for N = 2 the mean is 0.4686
+and the sd is 0.2978. These are simulation results, not proofs.
 
 **Checked by test.** `test_pure_noise_many_trials_gives_pbo_near_half` averages
 PBO over 30 seeds and asserts the mean is in [0.4, 0.6].
 
 ## 4. One real edge gives PBO near 0
 
-**Proved here (sketch).** Suppose column 1 has a persistent positive mean
+**Sketch only (not a proof).** Suppose column 1 has a persistent positive mean
 mu > 0 in every block and the other columns are pure noise with variance
 sigma^2 small relative to mu. With high probability the in-sample winner is
 column 1 in every split, and its out-of-sample score is the top score, so
@@ -105,11 +108,11 @@ exactly, on random matrices with (T, N, S) in {(48,2,4), (64,5,8), (96,7,6),
 
 | Statement | Status |
 |---|---|
-| Number of splits C(S, S/2); 12,780 is a typo for 12,870 | Proved here |
+| Number of splits C(S, S/2); C(16, 8) = 12,870 (the book's 12,780 is a book claim, not checked) | Proved here |
 | omega in (0,1), lambda finite, lambda <= 0 iff rank <= (N+1)/2 | Proved here |
 | Pure noise gives P(lambda <= 0) = floor((N+1)/2)/N, so E[PBO] = 1/2 for even N | Proved here |
 | Pure-noise PBO is near 1 | Not supported; contradicted by the proof above |
-| Pure-noise PBO sd across seeds (about 0.16 at N = 60) | Checked by simulation |
+| Pure-noise PBO mean, sd and percentiles at N = 60, 10, 2 (seeds 0 to 59) | Checked by test (`test_pbo_pure_noise_simulation_seeds_0_to_59`) |
 | One real edge gives PBO near 0 | Checked by test; bound sketched only |
 | Fast kernel equals naive loop | Checked by test |
 | CSCV procedure and PBO definition | Claimed from book (AFML 11.6; Bailey et al. 2017) |

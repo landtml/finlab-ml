@@ -31,8 +31,8 @@ scale. ∎
 that noise from the estimated matrix cannot produce NaN. Clipping changes
 nothing for a valid correlation matrix.
 
-**[checked by test]** Book's Example 16.1 (`rho = [[1, .7, .2], [.7, 1, -.2], [.2, -.2, 1]]`)
-gives the book's distance matrix to 5e-5.
+**[checked by test]** `test_correlation_distance_book_example_16_1` (`rho = [[1, .7, .2], [.7, 1, -.2], [.2, -.2, 1]]`)
+compares `correlation_distance` with the 4-decimal matrix written in the test, to 5e-5. That matrix is `sqrt(1/2 (1 - rho))` rounded to 4 decimals. Whether it equals the book's printed table is not checked here.
 
 ## 2. Tree clustering (AFML 16.4.1, Snippet 16.1)
 
@@ -42,7 +42,7 @@ The tree is `scipy.cluster.hierarchy.linkage(squareform(D), method)`.
 `D` directly to `linkage`. SciPy treats a square matrix as `N` observation
 vectors, not as a distance matrix, and emits a `ClusterWarning`. For a 3-asset
 example it returns merge heights `0.566` and `0.975`, not the distances
-`0.387` and `0.632`. The implementation therefore uses `squareform` to condense
+`0.387` and `0.632` (`tests/test_doc_claims.py::test_hrp_square_matrix_linkage_heights`). The implementation therefore uses `squareform` to condense
 `D` first. This is a deviation from the printed snippet, and it is required for
 the book's stated intent.
 
@@ -69,7 +69,7 @@ its two constituents, keeping their positions (`sort_index` on the even/odd
 index layout). That is an in-order expansion of the tree, which is the depth-first
 left-to-right traversal above. ∎
 
-**[checked by test]** For random covariances (N up to 25), the output is a
+**[checked by test]** For random covariances (10 seeds, N from 2 to 24, `test_quasi_diagonalize_is_permutation_and_matches_naive`), the output is a
 permutation, and it equals a recursive list-based expansion of the same linkage.
 
 ## 4. Inverse-variance allocation is optimal for diagonal covariance (Appendix 16.A.2)

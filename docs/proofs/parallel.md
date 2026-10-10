@@ -21,8 +21,9 @@ identical.
 submission order which we consume in order. ∎ The test `test_serial_and_parallel_agree`
 checks this equality.
 
-**Q3 (`nested_parts` is an exact cover).** The boundaries are the sorted unique clipped
-values of `[0, ..., n]`, so the chunks are disjoint and cover `[0, n)`.
+**Q3 (`nested_parts` is an exact cover).** The boundaries are the sorted unique values of the
+list `[0, b_1, ..., b_{T-1}, n]` after clipping to `[0, n]`, so the chunks are disjoint and
+cover `[0, n)`.
 *Proof.* `np.unique` removes duplicates and `np.clip` keeps values in `[0, n]`. ∎
 
 ## Claimed or not proved

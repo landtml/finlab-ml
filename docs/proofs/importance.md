@@ -89,7 +89,7 @@ permutation randomness by $R$ (for i.i.d. draws).
 **[Checked]** On data where only feature 0 carries the label (test
 `test_mda_informative_feature_has_largest_drop_and_noise_is_near_zero`), the drop for
 feature 0 is about 0.48 across seeds 0–5, and the drops for the four noise features stay
-within $\pm 0.003$.
+within $\pm 0.003$. The test itself uses data seed 0 only. The seeds 0–5 values are pinned in `tests/test_doc_claims.py::test_importance_mda_seeds_0_to_5`: feature 0 between 0.447 and 0.499, and the largest absolute noise drop 0.0022.
 
 **[Checked]** The MDA output equals a naive loop-based reference exactly, with the same
 RNG draw order (test `test_mda_matches_naive_reference_exactly`). This checks
@@ -128,7 +128,7 @@ majority-class rate. The module reports this honestly.
 
 **[Checked]** On the same data as the MDA test, feature 0 scores about 0.98 and the noise
 features score about 0.47–0.54 across seeds 0–5. The test asserts the ranking and a
-noise band of $\pm 0.1$ around chance.
+noise band of $\pm 0.1$ around chance (the test uses data seed 2, and checks the mean noise score). The seeds 0–5 values (feature 0 between 0.975 and 0.992, noise scores between 0.468 and 0.543) are pinned in `tests/test_doc_claims.py::test_importance_sfi_seeds_0_to_5`.
 
 ---
 

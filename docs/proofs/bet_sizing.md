@@ -45,7 +45,7 @@ most `Q`.
 
 ## Checked by test
 
-- Book worked examples: calibrating `m* = 0.95` at `x = 10` gives `w = 10.8033`; at
+- Book worked examples: calibrating `m* = 0.95` at `x = 10` gives `w = 10.8033` (pinned in `tests/test_doc_claims.py`); at
   forecast 110 the target is 95; at forecast 115 the target is 97, and the breakeven
   limit price for the order of 97 from flat is 112.3657 (AFML 10.6).
 - `average_active_signals` matches a naive loop over all timestamps (exact to 1e-12).

@@ -37,7 +37,7 @@ with seed `b_0 in {-1, +1}`.
 
 *Proof.* Let `S_T` be the running sum since the last close. Each tick adds `x_t >= 0`, so `S_T` is nondecreasing, and the first `T` with `S_T >= h` is well-defined. At the close, the sum resets to `0`. For tick bars `x_t = 1`, so the bar closes exactly when its count reaches `h`. Hence each bar has `h` ticks, and `N` ticks yield `floor(N/h)` complete bars. For (2), before the last tick the sum is `< h`, and the last tick adds at most `max_t x_t`. ∎
 
-**[checked by test]** Tick, volume and dollar bars match a naive threshold loop with OHLCV aggregation to `1e-12` (`test_tick_bars_match_naive`, `test_volume_and_dollar_bars_match_naive`). Tick bar counts and overshoot are asserted (`test_standard_bars_hit_threshold_exactly`), and high/low/volume invariants hold (`test_bar_invariants`).
+**[checked by test]** Tick, volume and dollar bars match a naive threshold loop with OHLCV aggregation to `1e-12` (`test_tick_bars_match_naive`, `test_volume_and_dollar_bars_match_naive`). Tick bar counts are asserted, and each volume bar would fall below its threshold without its last tick (minimal close), in `test_standard_bars_hit_threshold_exactly`. The overshoot bound `h + max_t x_t` of Proposition 2.1(2) is not asserted by any test. High/low/volume invariants hold (`test_bar_invariants`).
 
 **[claimed from the book only]** Tick and volume bars give returns closer to IID normal (Mandelbrot and Taylor 1967; Ane and Geman 2000), and dollar bars are more stable under share-count changes (2.3.1.4). These are empirical claims, not tested here.
 

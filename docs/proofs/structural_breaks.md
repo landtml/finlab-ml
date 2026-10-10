@@ -88,7 +88,7 @@ before it.
 **Test status [checked by test].** `test_cusum_matches_naive_*` compares `w_t` and
 `S_t` against a literal refit-OLS loop on seeded random inputs (mean model and a
 two-column design). `test_cusum_grows_after_known_mean_shift` injects a shift of
-3 sd at `t = 100` and checks `|S_last| > 1.5 max_{t<100} |S_t|` (last index 199). Observed values:
+3 sd at `t = 100` and checks `|S_last| > 1.5 max_{t<100} |S_t|` (last index 199). Observed values (seed 42; pinned in `tests/test_doc_claims.py`):
 `max_{t<100}|S_t| = 3.78`, `|S_last| = 117.6`.
 
 ---
@@ -109,7 +109,7 @@ which holds when `E[Delta y_i^4] < inf`), Slutsky's lemma gives
 
 ### 2.2 Critical value **[claimed from the book only, with a reading of the radical]**
 
-`c_alpha[n, t] = sqrt(b_alpha + log(t - n))`, with `b_0.05 = 4.6` (Monte Carlo,
+`c_alpha[n, t] = sqrt(b_alpha + log(t - n))`, with `b_0.05 = 4.6`, taken as given; its source page has not been checked. (Monte Carlo,
 Chu, Stinchcombe and White; Homm and Breitung 2012). The book's printed radical
 is ambiguous. We read the radical as covering `b + log(t-n)`. The code exposes
 `b` as a parameter, so the reading can be changed without touching the kernel.
@@ -129,7 +129,7 @@ supremum.
 `test_csw_sup_matches_naive` compare against literal loops (the sup test also
 checks the argmax). `test_csw_detects_late_drift` shows a drift of 1.0 over the
 second half of a 300-point series gives `S_{140,299} = 6.48` against `c = 3.11`,
-and no rejection without drift.
+and no rejection without drift. The value 6.48 (6.4823) and the `c` of 3.11 are pinned in `tests/test_doc_claims.py`.
 
 ---
 
@@ -186,7 +186,7 @@ design built from first principles and `np.linalg.lstsq`, for all four constant
 options and `L in {0,1,3}`. `test_sadf_matches_naive` compares the full SADF
 series for two constants. `test_sadf_random_walk_vs_explosive` on seeded inputs:
 random walk `max SADF = 1.37`; exponential growth `exp(0.02 t) (1 + 0.01 eps)`
-gives `SADF_{199} = 14.6`. These numbers show the expected separation on this
+gives `SADF_{199} = 14.55` (pinned in `tests/test_doc_claims.py`, together with the random-walk value 1.37). These numbers show the expected separation on this
 sample. They are not a size or power study.
 
 ### 3.5 Log prices **[claimed from the book only]**
