@@ -335,6 +335,15 @@ def get_events(
             if np.any(ends_v < starts[has_vert]):
                 raise ValueError("a vertical barrier falls before its event start.")
             ends[has_vert] = ends_v
+            # The scan stops at the prior bar while get_bins prices t1 at the next one,
+            # so a barrier between bars makes the two disagree.
+            if np.any(grid.get_indexer(vert_time[has_vert]) < 0):
+                warnings.warn(
+                    "a vertical barrier falls between bars: the path is cut at the prior "
+                    "bar, but get_bins prices t1 at the next bar. Place barriers on the bar grid.",
+                    UserWarning,
+                    stacklevel=2,
+                )
 
     hit_pos, code = _scan_first_touch(
         px,

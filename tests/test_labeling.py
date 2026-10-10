@@ -8,6 +8,8 @@ scanning against scipy.stats.linregress.
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -420,3 +422,22 @@ def test_vertical_barrier_and_events_keep_index_timezone():
     assert ev["t1"].dtype == close.index.dtype
     bins = get_bins(ev, close)
     assert len(bins) == len(events)
+
+
+# ---------------------------------------------------------------------------
+# Vertical barrier between bars (W3-L03)
+# ---------------------------------------------------------------------------
+
+
+def test_get_events_warns_when_vertical_barrier_falls_between_bars():
+    c = _random_walk(40, seed=13)
+    t0 = c.index[0]
+    between = pd.Series([c.index[10] + pd.Timedelta(hours=12)], index=[t0])
+    on_grid = pd.Series([c.index[10]], index=[t0])
+    trgt = pd.Series(10.0, index=c.index)
+    with pytest.warns(UserWarning, match="between bars"):
+        ev = get_events(c, [t0], (10, 10), trgt, 0.01, vertical_barrier_times=between)
+    assert ev.loc[t0, "t1"] == c.index[10] + pd.Timedelta(hours=12)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", UserWarning)
+        get_events(c, [t0], (10, 10), trgt, 0.01, vertical_barrier_times=on_grid)
