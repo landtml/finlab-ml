@@ -54,9 +54,12 @@ def correlation_distance(corr: MatrixLike) -> MatrixLike:
 
     Notes
     -----
-    AFML section 16.4.1 proves that this is a metric (Appendix 16.A.1). The
-    correlations are clipped to ``[-1, 1]`` first, so floating-point noise
-    in an estimated matrix does not produce NaN.
+    The distance is zero exactly when the correlation is 1, which includes any
+    positively scaled or shifted copy of a series. So it is a metric on
+    standardized series, not on raw series. The book states the metric property
+    in AFML section 16.4.1 (Appendix 16.A.1); that statement was not checked in
+    this repository. The correlations are clipped to ``[-1, 1]`` first, so
+    floating-point noise in an estimated matrix does not produce NaN.
 
     Scope: square input only; no symmetry check is performed beyond the
     shape test.
