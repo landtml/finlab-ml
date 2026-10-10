@@ -3,7 +3,7 @@
 Status labels used throughout:
 
 - **Proved here**: derived in this document from stated assumptions.
-- **Checked by test**: a numerical property asserted in `tests/test_stats.py`.
+- **Checked by test** (the claim names its test function, for example `test_psr_matches_closed_form`): a numerical property asserted in `tests/test_stats.py`.
 - **Claimed from the book only**: stated in AFML or the cited papers; not re-derived here.
 - **Convention (not from the book)**: a choice made in this code, not a published value.
 - **Numerical reference, approximation error measured, not a book value**: compared with an
@@ -67,7 +67,7 @@ P(SR > SR* | data) is approximated by Phi of the standardised statistic.
 Replacing T by T - 1 is the small-sample convention of the book, which is
 **claimed from the book only**.
 
-**Checked by test.**
+**Checked by test (`test_psr_is_half_when_sr_equals_benchmark`, `test_psr_matches_closed_form`, `test_psr_fat_tails_lower_confidence`).**
 - PSR = 0.5 exactly when SR_hat = SR* (any skew, kurtosis, T): the argument of
   Phi is 0. (`test_psr_is_half_when_sr_equals_benchmark`)
 - The implementation equals the closed form for a non-trivial (SR, gamma3, gamma4, T). (`test_psr_matches_closed_form`)
@@ -92,7 +92,7 @@ and only the standard-normal term is approximate.
 formula is undefined (Phi^{-1}(0) = -inf); the implementation returns 0,
 which is the expected maximum of a single draw with no selection effect.
 
-**Checked by test and simulation.**
+**Checked by test (`test_expected_max_sharpe_properties`, `test_expected_max_matches_independent_numerical_reference`) and simulation (`test_stats_expected_max_monte_carlo_seed0`).**
 - Monotone increasing in N and proportional to sqrt(V). (`test_expected_max_sharpe_properties`)
 - Below the classical bound sqrt(2 log N) (cited from the literature, not verified here;
   checked at N = 1000 by `test_expected_max_sharpe_properties`).
@@ -145,7 +145,7 @@ The implementation raises a ValueError for SR <= SR*, where no finite T
 gives p > 1/2. The formula is from Bailey and Lopez de Prado (2012). It is cited from the
 literature here, not from AFML.
 
-**Hand computation (checked by test).** Gaussian returns (gamma3 = 0, gamma4 = 3),
+**Hand computation (checked by test: `test_min_track_record_length_hand_computation`).** Gaussian returns (gamma3 = 0, gamma4 = 3),
 SR = 0.5, SR* = 0, p = 0.95:
 D^2 = 1 + (2/4)(0.25) = 1.125, Phi^{-1}(0.95) = 1.6448536,
 minTRL = 1 + 1.125 (1.6448536/0.5)^2 = 13.1749455 (13.174946 to six decimals).
@@ -168,7 +168,7 @@ convention in `expected_max_sharpe` (0 for N = 1), so the convention is also the
 **Proved here (N = 2, exact maximum).** max(a, b) = (a + b)/2 + |a - b|/2. For Z1, Z2 IID
 N(0, 1), E|Z1 - Z2| = sqrt(2) * sqrt(2/pi) = 2/sqrt(pi). Hence E[max of 2] = 1/sqrt(pi) = 0.5641895835.
 The implementation gives 0.5197553443, an error of -0.0444342393 (-7.876 %).
-**Checked by test (closed form, approximation error recorded):**
+**Checked by test (closed form, approximation error recorded: `test_expected_max_n2_closed_form_for_exact_maximum_approximation_error_recorded`):**
 `test_expected_max_n2_closed_form_for_exact_maximum_approximation_error_recorded`.
 
 **Numerical reference.** The exact E[max of N IID N(0, 1)] is the integral of
@@ -194,7 +194,7 @@ section 3 (same seeded draws) differ from the exact values by 1.0, 0.7, 0.1 and 
 standard errors for N = 2, 10, 100 and 1000 (standard errors 0.0058, 0.0041, 0.0030, 0.0025),
 so they do not contradict the quadrature.
 
-**Checked by test (hand cases).**
+**Checked by test (hand cases: `test_psr_hand_case_gaussian_denominator_sqrt3`, `test_min_track_record_length_hand_case_gives_four`).**
 - Gaussian moments, denominator sqrt(3): with SR_hat = 2 and T = 4, the PSR denominator is
   sqrt(1 + 4/2) = sqrt(3) and sqrt(T - 1) = sqrt(3), so z = 2 at benchmark 0 and z = 1 at
   benchmark 1. PSR = Phi(2) = 0.97725 and Phi(1) = 0.84134 (standard table values, compared to
@@ -209,9 +209,9 @@ so they do not contradict the quadrature.
 | Var[SR_hat] asymptotic formula | Proved here (delta method) |
 | PSR form and T-1 convention | Proved here asymptotically; T-1 claimed from book |
 | Expected-max approximation | Claimed from book; scaling by sqrt(V) proved here; accuracy checked by MC and by numerical reference (section 6) |
-| Expected max at N = 1 and the N = 2 exact value 1/sqrt(pi) | Proved here; checked by test |
+| Expected max at N = 1 and the N = 2 exact value 1/sqrt(pi) | Proved here; checked by test (`test_expected_max_n1_convention_agrees_with_exact_value`, `test_expected_max_n2_closed_form_for_exact_maximum_approximation_error_recorded`) |
 | Approximation error against exact quadrature | Numerical reference, approximation error measured, not a book value (section 6) |
 | DSR monotone in N | Proved here |
 | minTRL formula | Proved here; formula from literature (not in AFML text) |
 | 0.95 level (DSR threshold, minTRL default) | Convention (not from the book) |
-| PSR = 0.5 at equality, hand values, monotonicity checks | Checked by test |
+| PSR = 0.5 at equality, hand values, monotonicity checks | Checked by test (`test_psr_is_half_when_sr_equals_benchmark`, `test_psr_hand_case_gaussian_denominator_sqrt3`, `test_expected_max_sharpe_properties`) |

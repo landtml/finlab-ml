@@ -26,7 +26,7 @@ on a set of positive probability. ∎
 Consequence: `best_score` overstates the performance of the chosen model on new data.
 Nested CV is needed for an unbiased estimate and is not implemented here.
 
-## Checked by test
+## Checked by test (`test_grid_search_recovers_best_threshold`, `test_grid_search_ties_prefer_first_candidate`, `test_randomized_search_is_reproducible`, `test_cv_score_matches_manual_loop`, `test_empty_grid_rejected`)
 
 - Grid search recovers the best threshold on a dataset built with a known optimum.
 - Ties prefer the first candidate.

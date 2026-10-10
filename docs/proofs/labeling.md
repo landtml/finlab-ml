@@ -6,7 +6,7 @@ Source: AFML Chapter 3 (Labeling), Snippets 3.1 to 3.8, and trend scanning
 Every claim is tagged with one of three labels:
 
 * **Proved here**: a proof is given in this document.
-* **Checked by test**: a property is verified by `tests/test_labeling.py` against a
+* **Checked by test** (the claim names its test function, for example `test_daily_vol_matches_per_bar_reference`): a property is verified by `tests/test_labeling.py` against a
   brute-force reference. It is not proved here.
 * **Claimed from the book only**: stated in AFML and used as given. Not proved
   or tested here.
@@ -94,8 +94,7 @@ rising path swaps the roles: `R_j < 0`, so the stop loss is touched at `t0 + 1`.
 **Vertical barrier (Snippet 3.4).** The book's `t1 = searchsorted(t + days)`
 gives the first bar at or after `t + days`. `add_vertical_barrier` returns the same bar,
 and NaT when no bar exists. *(Proved here, by the definition of
-`searchsorted(side="left")`.)* Checked by test:
-`test_vertical_barrier_is_first_bar_at_or_after_expiry`.
+`searchsorted(side="left")`.)* Checked by test: `test_vertical_barrier_is_first_bar_at_or_after_expiry`.
 
 ## 3. Side and size labels (Snippet 3.5)
 

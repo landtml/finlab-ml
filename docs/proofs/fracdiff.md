@@ -6,7 +6,7 @@ Tests: [`tests/test_fracdiff.py`](../../tests/test_fracdiff.py). Benchmark: [`be
 Tags used below:
 
 - **[proved here]**: a derivation is given in this document.
-- **[checked by test]**: the implementation agrees with a naive reference or with a closed form on seeded inputs. This is evidence on fixed data, not a proof.
+- **[checked by test]** (the claim names its test function, for example `test_ffd_kernel_matches_naive_dot`): the implementation agrees with a naive reference or with a closed form on seeded inputs. This is evidence on fixed data, not a proof.
 - **[claimed from the book only]**: from AFML, not proved or tested here.
 
 Notation. `B` is the backshift operator, `B^k X_t = X_{t-k}`. Generalised binomial coefficients are `C(x, k) = x(x-1)...(x-k+1) / k!` for real `x` and integer `k >= 0`, with `C(x, 0) = 1`.
@@ -117,14 +117,14 @@ Consequence: the rule "keep weights while `|omega_k| >= thres`" in `get_weights_
 | Item | Status |
 | --- | --- |
 | Binomial recursion for omega_k (Eq. 5.2) | proved here |
-| d = 0 and d = 1 weights | proved here; checked by test |
-| Partial sums `(-1)^L C(d-1, L)` (Prop. 2.1) | proved here (Pascal's rule); checked by test |
-| Partial sums in (0,1] and decreasing for 0<d<1 (Prop. 2.2) | proved here; checked by test |
+| d = 0 and d = 1 weights | proved here; checked by test (`test_weights_d0_is_identity`, `test_weights_d1_is_first_difference`) |
+| Partial sums `(-1)^L C(d-1, L)` (Prop. 2.1) | proved here (Pascal's rule); checked by test (`test_ffd_weight_partial_sums_have_closed_form`) |
+| Partial sums in (0,1] and decreasing for 0<d<1 (Prop. 2.2) | proved here; checked by test (`test_ffd_weight_partial_sums_have_closed_form`) |
 | Omitted tail mass for 0<d<1 | proved here |
 | Monotone `abs(omega_k)` for 0<d<1 (Prop. 3.1) | proved here |
 | Expanding-window `lambda_t` monotone, `t*` well-defined | proved here |
-| Blocked kernels match naive dot products | proved here (ordering argument); checked by test |
-| Memory correlation decreases in d | checked by test on five seeded random walks; claimed from the book in general |
+| Blocked kernels match naive dot products | proved here (ordering argument); checked by test (`test_ffd_kernel_matches_naive_dot`, `test_expanding_matches_naive`) |
+| Memory correlation decreases in d | checked by test (`test_memory_correlation_decreases_with_d`) on five seeded random walks; claimed from the book in general |
 | FFD yields stationarity at `d*` (AFML 5.6) | claimed from the book only |
 | Correlation about 0.995 at the ADF threshold (Figure 5.5) | claimed from the book only (futures data) |
-| `find_min_d` returns the first passing grid value | checked by test, with an injected test |
+| `find_min_d` returns the first passing grid value | checked by test (`test_find_min_d_returns_first_passing_grid_value`), with an injected test |

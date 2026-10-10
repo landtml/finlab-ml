@@ -4,7 +4,7 @@ Component: [`src/finlab/hrp.py`](../../src/finlab/hrp.py).
 Tests: [`tests/test_hrp.py`](../../tests/test_hrp.py).
 
 Status tags as in [`microstructure.md`](microstructure.md):
-**[proved here]**, **[checked by test]**, **[claimed from the book only]**.
+**[proved here]**, **[checked by test]** (the claim names its test function, for example `test_hrp_bisection_cost_bound_n2_to_30`), **[claimed from the book only]**.
 
 ---
 
@@ -45,7 +45,7 @@ compares `correlation_distance` with the 4-decimal matrix written in the test, t
 
 The tree is `scipy.cluster.hierarchy.linkage(squareform(D), method)`.
 
-**Implementation note [checked by test].** Snippet 16.1 passes the square matrix
+**Implementation note [checked by test: `test_hrp_square_matrix_linkage_heights`].** Snippet 16.1 passes the square matrix
 `D` directly to `linkage`. SciPy treats a square matrix as `N` observation
 vectors, not as a distance matrix, and emits a `ClusterWarning`. For a 3-asset
 example it returns merge heights `0.566` and `0.975`, not the distances
@@ -89,7 +89,7 @@ KKT conditions are necessary and sufficient. The Lagrangian gives
 `2 s_i^2 w_i = mu` for every `i`, so `w_i = mu / (2 s_i^2)`. Imposing `1'w = 1`
 gives `mu = 2 / sum_j (1/s_j^2)`, which yields `w_i = (1/s_i^2) / sum_j (1/s_j^2)`. ∎
 
-**[checked by test]** `hrp_weights(diag(1, 4, 0.25, 9))` equals the inverse-variance weights to 1e-12.
+**[checked by test: `test_hrp_diagonal_covariance_is_inverse_variance`]** `hrp_weights(diag(1, 4, 0.25, 9))` equals the inverse-variance weights to 1e-12.
 
 ## 5. Cluster variance and the bisection split (AFML 16.4.3, Snippet 16.3)
 
@@ -118,7 +118,7 @@ root's weight, 1. ∎
 diagonal entries make `V_L > 0`, so this branch is never reached from a valid
 input.
 
-**[checked by test]** Weights sum to 1 to 1e-12 and are nonnegative on 25 seeded
+**[checked by test: `test_hrp_weights_nonnegative_and_sum_to_one`, `test_hrp_singular_covariance_is_allowed`, `test_hrp_matches_naive_reference`]** Weights sum to 1 to 1e-12 and are nonnegative on 25 seeded
 random covariances, including singular ones (`T < N` and an explicit rank-2 case).
 Results match a list-based recursive reference for `single`, `complete` and
 `average` linkages (rtol 1e-10).
@@ -205,14 +205,14 @@ is dominated by that step for large `N`.
 
 | Result | Status |
 |---|---|
-| `d = sqrt(1/2(1-rho))` is a pseudometric on series, a metric on standardized series (Prop. 1.1) | proved here; checked by test for scaled copies; book cites App. 16.A.1 |
-| Example 16.1 distance matrix | checked by test |
-| `squareform` is required for `linkage` (Snippet 16.1) | checked by test (deviation from printed snippet) |
-| Quasi-diagonalization is a permutation (Prop. 3.1) | proved here; checked by test |
-| Quasi-diagonal order equals Snippet 16.2 (Prop. 3.2) | proved here (sketch); checked by test |
-| Inverse-variance optimal for diagonal covariance (Prop. 4.1) | proved here; checked by test |
-| Bisection split is inverse-variance (Prop. 5.1) | proved here; checked by test |
-| Weights nonnegative, sum to 1 (Prop. 5.2) | proved here; checked by test on 25 random covariances, incl. singular |
-| Block-diagonal cluster-level allocation (Prop. 6.1, Cor. 6.2) | proved here; checked by test |
-| Bisection cost `H(N) <= N^2 ceil(log2 N)`, so `O(N^2 log N)` (Prop. 7.1) | proved here; checked by test for N = 2 to 30; the book's `T(n)=Theta(n)` is claimed from the book only |
+| `d = sqrt(1/2(1-rho))` is a pseudometric on series, a metric on standardized series (Prop. 1.1) | proved here; checked by test for scaled copies (`test_hrp_scaled_copy_has_zero_correlation_distance`); book cites App. 16.A.1 |
+| Example 16.1 distance matrix | checked by test (`test_correlation_distance_book_example_16_1`) |
+| `squareform` is required for `linkage` (Snippet 16.1) | checked by test (`test_hrp_square_matrix_linkage_heights`; deviation from printed snippet) |
+| Quasi-diagonalization is a permutation (Prop. 3.1) | proved here; checked by test (`test_quasi_diagonalize_is_permutation_and_matches_naive`) |
+| Quasi-diagonal order equals Snippet 16.2 (Prop. 3.2) | proved here (sketch); checked by test (`test_quasi_diagonalize_is_permutation_and_matches_naive`) |
+| Inverse-variance optimal for diagonal covariance (Prop. 4.1) | proved here; checked by test (`test_hrp_diagonal_covariance_is_inverse_variance`) |
+| Bisection split is inverse-variance (Prop. 5.1) | proved here; checked by test (`test_hrp_matches_naive_reference`, `test_hrp_block_diagonal_matches_cluster_level_inverse_variance`) |
+| Weights nonnegative, sum to 1 (Prop. 5.2) | proved here; checked by test (`test_hrp_weights_nonnegative_and_sum_to_one`, `test_hrp_singular_covariance_is_allowed`) on 25 random covariances, incl. singular |
+| Block-diagonal cluster-level allocation (Prop. 6.1, Cor. 6.2) | proved here; checked by test (`test_hrp_block_diagonal_matches_cluster_level_inverse_variance`, `test_hrp_diagonal_covariance_is_inverse_variance`) |
+| Bisection cost `H(N) <= N^2 ceil(log2 N)`, so `O(N^2 log N)` (Prop. 7.1) | proved here; checked by test (`test_hrp_bisection_cost_bound_n2_to_30`) for N = 2 to 30; the book's `T(n)=Theta(n)` is claimed from the book only |
 | The book reports lower out-of-sample variance for HRP than CLA and IVP (Section 16.6) | claimed from the book only; not reproduced here |

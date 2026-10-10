@@ -43,7 +43,7 @@ so `|m - m*| <= d/2` for `d` in `(0,1]`.
 `int(m * Q)` with `|m| < 1` truncates toward zero to a value of absolute value at
 most `Q`.
 
-## Checked by test
+## Checked by test (`test_book_sigmoid_calibration_and_targets`, `test_book_limit_price`, `test_bet_sizing_calibrated_width`, `test_average_active_signals_matches_naive_loop`, `test_two_class_probability_mapping`)
 
 - Book worked examples: calibrating `m* = 0.95` at `x = 10` gives `w = 10.8033` (pinned in `tests/test_doc_claims.py`); at
   forecast 110 the target is 95; at forecast 115 the target is 97, and the breakeven

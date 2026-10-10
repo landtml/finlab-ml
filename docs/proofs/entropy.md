@@ -4,7 +4,7 @@ Component under test: [`src/finlab/entropy.py`](../../src/finlab/entropy.py).
 Tests: [`tests/test_entropy.py`](../../tests/test_entropy.py).
 Benchmark: [`benchmarks/bench_entropy.py`](../../benchmarks/bench_entropy.py).
 
-Status tags: **[proved here]**, **[checked by test]** (numerical evidence on
+Status tags: **[proved here]**, **[checked by test]** (the claim names its test function, for example `test_kontoyiannis_expanding_matches_naive`; numerical evidence on
 seeded inputs), **[claimed from the book only]** (stated in AFML or its cited
 papers and not re-derived here).
 
@@ -79,7 +79,7 @@ That is valid: if `x_i^{i+l}` has a match at `j`, then so does the prefix of
 length `l-1` (same `j`), so matchability is monotone in the length. The result is
 the same as the snippet's loop over all `l`.
 
-### 4.2 Estimator **[proved here as a definition; checked by test]**
+### 4.2 Estimator **[proved here as a definition; checked by test: `test_kontoyiannis_expanding_matches_naive`, `test_kontoyiannis_sliding_matches_naive`]**
 
 Expanding window (`n = i`, centres `i = 1..floor(N/2)`):
 
@@ -98,12 +98,12 @@ normalisation, so we do not return it.
 `i <= floor(N/2)`, so when `N` is odd the last symbol is never a centre. It can
 still lie inside a match. This is why the book asks for an even length.
 
-### 4.3 Book examples (AFML 18.4) **[checked by test, with one discrepancy]**
+### 4.3 Book examples (AFML 18.4) **[checked by test: `test_kontoyiannis_book_worked_examples`, `test_entropy_book_example_values`; with one discrepancy]**
 
 Two claims from the text, using the snippet's formula:
 
 - `10000111` and `10000110` have the same estimate (the final bit is irrelevant
-  because of the unmatchable `11`). **Checked by test, exact equality.**
+  because of the unmatchable `11`). **Checked by test (`test_kontoyiannis_book_worked_examples`), exact equality.**
 - The book states the entropy rates of `11100001` and `01100001` (as given, forward
   order) as 0.96 and 0.84. The snippet gives `0.9682` and `0.8432`. **The second
   matches to rounding. The first is 0.968 by the snippet, which rounds to 0.97,
@@ -142,7 +142,7 @@ With edges `e_k = Q(k/q)` (the empirical `k/q` quantiles of the reference sample
 - `c` is non-decreasing in `r`, takes values in `{0..q-1}`, and `c(r) = k` iff
   `e_k <= r < e_{k+1}`. **[proved here]**
 - The in-sample bin counts are `n/q` up to ties and interpolation (linear
-  quantiles can fall between observations). **Checked by test:** for `n = 1000`,
+  quantiles can fall between observations). **Checked by test (`test_encode_quantile_balances_in_sample_bins`):** for `n = 1000`,
   `q = 10`, every bin has 99 to 101 points. The exact count is not guaranteed by
   the construction.
 
@@ -174,11 +174,11 @@ the entropy-implied volatility are out of scope.
 | Word-code overflow guard | proved here |
 | LZ parse: distinct phrases, `c <= n` | proved here |
 | LZ entropy `c log2 c / n` | **not in AFML**; standard LZ78 normalisation, labelled external |
-| Match length monotone, early exit is exact | proved here; checked by test |
-| Kontoyiannis estimator as implemented | proved here as definition; checked by test vs literal snippet |
+| Match length monotone, early exit is exact | proved here; checked by test (`test_match_length_matches_literal_snippet`) |
+| Kontoyiannis estimator as implemented | proved here as definition; checked by test vs literal snippet (`test_kontoyiannis_expanding_matches_naive`, `test_kontoyiannis_sliding_matches_naive`) |
 | Kontoyiannis consistency, bias/variance rule | claimed from the book only (Kontoyiannis 1998; Gao et al. 2008) |
-| Book's `10000111` / `10000110` equality | checked by test (exact) |
+| Book's `10000111` / `10000110` equality | checked by test (exact; `test_kontoyiannis_book_worked_examples`) |
 | Book's `0.96` for `11100001` | **discrepancy**: snippet gives 0.968; test checks 0.968 and 0.96 to 0.01 |
-| Book's `0.84` for `01100001` | checked by test (0.8432; the value 0.843241 is pinned in `tests/test_doc_claims.py`) |
+| Book's `0.84` for `01100001` | checked by test (0.8432; the value 0.843241 is pinned in `tests/test_doc_claims.py::test_entropy_book_example_values`) |
 | Binary, quantile, sigma encoders | proved here (sign, monotone, width); tie caveat noted |
 | Gaussian entropy constant 1.42 | book value is in nats; not implemented |

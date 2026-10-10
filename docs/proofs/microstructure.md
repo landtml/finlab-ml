@@ -6,7 +6,7 @@ Tests: [`tests/test_microstructure.py`](../../tests/test_microstructure.py).
 Every result is tagged with one of three statuses:
 
 - **[proved here]**: derived in this document from stated assumptions.
-- **[checked by test]**: verified numerically by the test suite against a naive
+- **[checked by test]** (the claim names its test function, for example `test_tick_rule_matches_naive`): verified numerically by the test suite against a naive
   reference or a simulation. This is evidence, not a proof.
 - **[claimed from the book only]**: stated in AFML or the cited paper and used
   as given. It is not re-derived here, and the tests check at most a consequence.
@@ -30,7 +30,7 @@ if `t >= 1` and some `s` in `1..t` has `dp_s != 0`, then `b_t` equals the sign o
 `b_{t-1}` is the sign of the last nonzero move at or before `t-1`, which is also
 the last nonzero move at or before `t`. Both cases give values in `{-1, +1}`. ∎
 
-**[checked by test]** Hand-made path `10, 10.5, 10.5, 10.2, 10.2, 10.3` gives
+**[checked by test: `test_tick_rule_hand_path`, `test_tick_rule_matches_naive`]** Hand-made path `10, 10.5, 10.5, 10.2, 10.2, 10.3` gives
 `[1, 1, 1, -1, -1, 1]`. Randomized paths on a tick grid match the naive loop.
 
 ---
@@ -60,7 +60,7 @@ uncorrelated with everything in `dp_{t-1}`, so
 of the lagged pairs. It returns the full spread, not the half spread the book
 writes as `c`.
 
-**[checked by test]** The estimator matches a loop-based implementation to
+**[checked by test: `test_roll_matches_naive`, `test_roll_recovers_spread_from_bid_ask_bounce`]** The estimator matches a loop-based implementation to
 machine precision. On a simulated bounce series with `c = 0.5`, a random-walk midprice
 with increment sd 0.05, and 200,000 observations, the estimate is within
 5% of `2c` (`test_roll_recovers_spread_from_bid_ask_bounce`).
@@ -106,7 +106,7 @@ range splits into a volatility part, which scales with the square root of time,
 and a spread part. We did not re-derive it. Snippet 19.1 is implemented exactly as
 written, with the rolling windows re-derived in closed form.
 
-**[checked by test]** Vectorized output matches a loop-based implementation of the
+**[checked by test: `test_corwin_schultz_matches_naive_and_is_nonnegative`, `test_corwin_schultz_clips_negative_alpha_to_zero`]** Vectorized output matches a loop-based implementation of the
 same formula for `sl` in {1, 2, 4} on random bars (rtol 1e-10). Every output is
 non-negative. A gapped path with alpha < 0 gives exactly 0, and a constant-range
 path gives a strictly positive spread.
@@ -147,7 +147,7 @@ so `Var(lambda_hat) = sigma^2 / sum x^2`, which is estimated by
 **Note on the data.** Element `t` of `signed_volume` is paired with `p_t - p_{t-1}`.
 This is why element 0 of the regressor is discarded.
 
-**[checked by test]** An exact linear path returns `lambda = 2.5` to 1e-12, with
+**[checked by test: `test_kyle_lambda_recovers_known_slope_exactly`, `test_kyle_lambda_noisy_matches_lstsq`]** An exact linear path returns `lambda = 2.5` to 1e-12, with
 `t = inf` (zero residual). A noisy path matches `numpy.linalg.lstsq` to 1e-10 and
 recovers `0.8` within 0.05.
 
@@ -167,7 +167,7 @@ same argument as Proposition 5.1.
 The two are different statistics. We return the regression form by default
 (`method="regression"`), and the ratio form with `method="ratio"`.
 
-**[checked by test]** Both forms match loop-based sums to 1e-12.
+**[checked by test: `test_amihud_regression_and_ratio_match_naive`]** Both forms match loop-based sums to 1e-12.
 
 ## 7. Bulk volume classification and VPIN (AFML 19.5.2)
 
@@ -209,7 +209,7 @@ terms and dividing by `nV` gives a value in `[0, 1]`. ∎
 `VPIN = E|2 v - 1| = alpha mu / (alpha mu + 2 eps)` under a volume clock. The
 Poisson mixture underlying these is not re-derived here.
 
-**[checked by test]**
+**[checked by test: `test_vpin_matches_trade_level_reference`, `test_vpin_bounded_in_unit_interval`, `test_vpin_one_sided_flow_is_one`]**
 - The bucketed VPIN from the kernel equals a trade-by-trade reference
   (`naive_vpin`, which expands each unit of volume) to 1e-9, for integer volumes and
   bucket size. This checks the straddle split and the window.
@@ -230,16 +230,16 @@ observation is applied to every bucket it touches.
 
 | Result | Status |
 |---|---|
-| Tick rule signs (Prop. 1.1) | proved here; checked by test |
-| Roll covariance identities (Prop. 2.1, Cor. 2.2) | proved here; bounce recovery checked by test |
+| Tick rule signs (Prop. 1.1) | proved here; checked by test (`test_tick_rule_hand_path`, `test_tick_rule_matches_naive`) |
+| Roll covariance identities (Prop. 2.1, Cor. 2.2) | proved here; bounce recovery checked by test (`test_roll_recovers_spread_from_bid_ask_bounce`) |
 | Roll consistency | claimed from the book only |
 | Parkinson constants `k1`, `k2` | claimed from the book only |
 | Corwin-Schultz alpha derivation | claimed from the book only |
-| CS spread non-negativity, monotonicity (Prop. 4.1) | proved here; checked by test |
-| Becker-Parkinson coefficient `(2^{-1/2}-1)` | claimed from the book only; checked by test within 10% (mean estimate 5.3% below sigma at the test's seed) |
-| Kyle OLS and t-statistic (Prop. 5.1) | proved here; checked by test |
+| CS spread non-negativity, monotonicity (Prop. 4.1) | proved here; checked by test for non-negativity (`test_corwin_schultz_matches_naive_and_is_nonnegative`); monotonicity not checked by test |
+| Becker-Parkinson coefficient `(2^{-1/2}-1)` | claimed from the book only; checked by test within 10% (`test_becker_parkinson_recovers_volatility_on_gbm`; mean estimate 5.3% below sigma at the test's seed) |
+| Kyle OLS and t-statistic (Prop. 5.1) | proved here; checked by test (`test_kyle_lambda_recovers_known_slope_exactly`, `test_kyle_lambda_noisy_matches_lstsq`) |
 | Kyle equilibrium `lambda = (1/2) sqrt(Sigma/sigma_u^2)` | claimed from the book only |
-| Amihud regression closed form (Prop. 6.1) | proved here; checked by test |
+| Amihud regression closed form (Prop. 6.1) | proved here; checked by test (`test_amihud_regression_and_ratio_match_naive`) |
 | BVC buy fraction in `[0,1]`, mean 1/2 (Prop. 7.1) | proved here; source is Easley et al. (2012), not AFML |
-| VPIN identity and bound in `[0,1]` (Prop. 7.2) | proved here; checked by test |
+| VPIN identity and bound in `[0,1]` (Prop. 7.2) | proved here; checked by test (`test_vpin_matches_trade_level_reference`, `test_vpin_bounded_in_unit_interval`) |
 | VPIN `E|V^B - V^S| ~ alpha mu` | claimed from the book only |

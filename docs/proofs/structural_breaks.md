@@ -7,7 +7,7 @@ Benchmark: [`benchmarks/bench_structural_breaks.py`](../../benchmarks/bench_stru
 Each result below carries one status tag:
 
 - **[proved here]**: derived in this document.
-- **[checked by test]**: the code is compared with a brute-force reference, or a
+- **[checked by test]** (the claim names its test function, for example `test_csw_sup_matches_naive`): the code is compared with a brute-force reference, or a
   property is asserted on seeded inputs. This is numerical evidence, not a proof.
 - **[claimed from the book only]**: stated in AFML (or the cited paper) and used
   as given. We did not re-derive it here.
@@ -70,7 +70,7 @@ corresponds to a convention where the initial block is of size `k+1`. The code
 reports the count `t - p + 1` (0-based `t`), which is `t - p` in 1-based indexing,
 and the `z` field divides by `sqrt` of that count.
 
-### 1.5 Scale estimate **[checked by test; the formula is a book choice]**
+### 1.5 Scale estimate **[checked by test: `test_cusum_matches_naive_mean_model`, `test_cusum_matches_naive_with_features`; the formula is a book choice]**
 
 The book's `sigma_w^2 = (T-k)^{-1} sum (w_t - E[w_t])^2`. We take `E[w_t] = 0`
 (its value under H0), so `sigma_w^2 = mean(w_t^2)`. The book's text does not say
@@ -201,7 +201,7 @@ They do not take logs, and the docstrings say so.
 
 | Result | Status |
 |---|---|
-| RLS update (Sherman-Morrison), `beta_t`, `P_t`, `f_t` | proved here; checked by test |
+| RLS update (Sherman-Morrison), `beta_t`, `P_t`, `f_t` | proved here; checked by test (`test_cusum_matches_naive_mean_model`, `test_cusum_matches_naive_with_features`) |
 | Recursive residual mean 0 and variance `sigma^2` | proved here |
 | Independence of recursive residuals | claimed from the book only (BDE 1975) |
 | BDE `S_t` null variance `t - k` (book: `t - k - 1`) | proved here under 1.3; convention discrepancy noted |
@@ -213,4 +213,4 @@ They do not take logs, and the docstrings say so.
 | ADF null distribution | claimed from the book only |
 | SADF definition, regression count `(T-m+1)(T-m+2)/2` | proved here |
 | Explosive tau diverges | claimed from the book only (PWY 2011) |
-| Fast kernels equal literal references | checked by test |
+| Fast kernels equal literal references | checked by test (`test_cusum_matches_naive_mean_model`, `test_csw_sup_matches_naive`, `test_adf_matches_naive`, `test_sadf_matches_naive`) |

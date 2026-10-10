@@ -21,7 +21,7 @@ satisfies the triangle inequality. ∎
 `k` maximises the mean silhouette over `k in [2, max_k]`, with ties to the smaller `k`.
 *Proof.* The loop updates only on strict improvement. ∎
 
-## Checked by test
+## Checked by test (`test_recovers_block_structure`, `test_silhouette_matches_naive_reference`, `test_silhouette_zero_for_singletons`, `test_deterministic_for_fixed_seed`, `test_invalid_inputs_rejected`)
 
 - On a block-structured correlation matrix with noise and shuffled rows, `onc` recovers
   the true partition for a fixed seed.

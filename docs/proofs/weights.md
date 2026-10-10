@@ -5,7 +5,7 @@ Source: AFML Chapter 4 (Sample Weights), Snippets 4.1 to 4.11.
 Each claim is tagged as one of:
 
 * **Proved here**: a proof is given in this document.
-* **Checked by test**: verified by `tests/test_weights.py` against a brute-force reference.
+* **Checked by test** (the claim names its test function, for example `test_num_co_events_matches_naive_double_loop`): verified by `tests/test_weights.py` against a brute-force reference.
 * **Claimed from the book only**: stated in AFML and used as given.
 
 ## Notation
@@ -106,7 +106,7 @@ unchanged by a permutation of the draws. *(Proved here.)*
   checks Proposition 2a.2 and the repeat case `[2, 2, 2]`, which gives `1/3`.
 * **Checked by test.** `test_sample_average_uniqueness_identical_spans_give_one_over_n`
   checks Proposition 2a.3 for sample sizes 1, 3 and 8, with repeats.
-* **Checked by test (hand-computed value).**
+* **Checked by test (hand-computed value: `test_sample_average_uniqueness_hand_computed_repeat_case`).**
   `test_sample_average_uniqueness_hand_computed_repeat_case`. Labels cover bars
   `{0, 1}` and `{1, 2}`. The sample `[0, 0, 1]` has `c = [2, 3, 1]` and gives
   `S = 1/2`. The sample `[0, 1]` gives `3/4`.
@@ -119,7 +119,7 @@ unchanged by a permutation of the draws. *(Proved here.)*
   the uniqueness of each column over the rows it covers, with concurrency taken from the matrix
   passed in. Snippet 4.8 applies it to the bootstrapped matrix, so repeats count. This function
   computes that quantity. The check was made by reading the listing; no book figure is reproduced.
-* **Checked by test (two implementations).** `S` has two implementations, on purpose.
+* **Checked by test (two implementations: `test_both_implementations_agree_on_random_samples`, `test_size_corners_agree` in `tests/test_uniqueness_equivalence.py`).** `S` has two implementations, on purpose.
   `sample_average_uniqueness` in `finlab.weights` is the dense reference: it takes the indicator
   matrix and the draws. `_sample_uniqueness` in `finlab.monte_carlo` is the numba kernel that the
   Monte Carlo path calls: it takes the bar count and the span of each draw. The test file

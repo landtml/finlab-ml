@@ -11,7 +11,7 @@ book was not run, and no number below is a book figure unless it is marked as on
 Each claim is tagged as one of:
 
 * **Proved here**: a proof is given in this document.
-* **Checked by test**: asserted by `tests/test_monte_carlo.py` or `tests/test_weights.py`.
+* **Checked by test** (the claim names its test function, for example `test_identical_spans_give_one_over_n`): asserted by `tests/test_monte_carlo.py` or `tests/test_weights.py`.
 * **Checked against the printed book text**: a comparison made by reading the book, not by a test.
 * **Measured (not a proof)**: a number from a run on the development machine, with its settings.
 * **Claimed from the book only**: a statement about AFML that was not checked here.
@@ -73,7 +73,7 @@ every time. So `seq_u = 1` as well. *(Proved here.)*
 identity applies to inputs of `_trial_uniqueness` where the spans are equal, which is how the
 test below exercises it.
 
-## 2. Checked by test
+## 2. Checked by test (`test_trial_uniqueness_kernel_matches_dense_reference`, `test_num_threads_does_not_change_result`, `test_prefix_property`, `test_trial_matches_direct_call`, `test_identical_spans_give_one_over_n`, `test_single_draw_sample_has_uniqueness_one`)
 
 * **Kernel against dense reference (rtol 1e-12).** `test_trial_uniqueness_kernel_matches_dense_reference`
   (6 seeds, 30 bars, `n_obs = 12`, `max_h = 6`) compares `_trial_uniqueness` with a dense

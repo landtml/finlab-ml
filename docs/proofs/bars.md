@@ -6,7 +6,7 @@ Tests: [`tests/test_bars.py`](../../tests/test_bars.py). Benchmark: [`benchmarks
 Every claim below carries one tag:
 
 - **[proved here]**: a derivation is given in this document.
-- **[checked by test]**: the implementation agrees with an independent naive reference on seeded inputs, or satisfies a stated invariant. This is evidence on fixed data, not a proof.
+- **[checked by test]** (the claim names its test function, for example `test_tick_bars_match_naive`): the implementation agrees with an independent naive reference on seeded inputs, or satisfies a stated invariant. This is evidence on fixed data, not a proof.
 - **[claimed from the book only]**: taken from AFML and not proved or tested here. Some are empirical statements about markets.
 
 ---
@@ -127,15 +127,15 @@ with the empty sum (`tau = t`) equal to `0`.
 
 | Item | Status |
 | --- | --- |
-| Tick rule invariants and carry-over (Eq. 2.1) | proved here; checked by test |
-| Standard bar counts and overshoot (Prop. 2.1) | proved here; checked by test |
+| Tick rule invariants and carry-over (Eq. 2.1) | proved here; checked by test (`test_tick_rule_matches_naive`, `test_tick_rule_carries_sign_through_zero_changes`) |
+| Standard bar counts and overshoot (Prop. 2.1) | proved here; checked by test for bar counts and the minimal close (`test_tick_bars_match_naive`, `test_standard_bars_hit_threshold_exactly`); overshoot not checked by test |
 | Expected imbalance via Wald (Prop. 3.1) | proved here under i.i.d. and stopping-time hypotheses the book does not state |
-| EWMA closed form (Eq. 3.2) | proved here; checked by test |
+| EWMA closed form (Eq. 3.2) | proved here; checked by test (`test_imbalance_bars_match_naive`, `test_run_bars_match_naive`) |
 | Degenerate zero threshold when E[s] = 0 | proved here; documented limitation |
 | Runs expectation (Prop. 4.1) | proved here |
-| Book's max-of-expectations runs threshold vs expectation of max | proved here: equality iff one count dominates a.s.; strict for the bar stopping rule; checked by test; the code uses the book's form |
-| CUSUM Lindley identity (Lemma 5.1) | proved here; checked by test against Snippet 2.4 |
+| Book's max-of-expectations runs threshold vs expectation of max | proved here: equality iff one count dominates a.s.; strict for the bar stopping rule; checked by test (`test_runs_bars_jensen_strict_for_bar_stopping_rule`, `test_runs_bars_jensen_equality_for_first_passage`); the code uses the book's form |
+| CUSUM Lindley identity (Lemma 5.1) | proved here; checked by test against Snippet 2.4 (`test_cusum_on_levels_matches_snippet_2_4`) |
 | Strict vs non-strict CUSUM comparison | noted; follows the snippet |
-| Imbalance/runs/standard bars match naive references | checked by test |
+| Imbalance/runs/standard bars match naive references | checked by test (`test_tick_bars_match_naive`, `test_volume_and_dollar_bars_match_naive`, `test_imbalance_bars_match_naive`, `test_run_bars_match_naive`) |
 | Bars sample more uniformly and give closer-to-IID returns | claimed from the book only |
 | CUSUM avoids repeated triggering near a threshold | claimed from the book only |

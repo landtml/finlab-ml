@@ -3,7 +3,7 @@
 Status labels:
 
 - **Proved here**: derived in this document.
-- **Checked by test**: asserted in `tests/test_pbo.py`, or measured by simulation (stated as such).
+- **Checked by test** (the claim names its test function, for example `test_fast_cscv_matches_naive_loop`): asserted in `tests/test_pbo.py`, or measured by simulation (stated as such).
 - **Claimed from the book only**: stated in AFML or Bailey et al. (2017), not re-derived.
 
 ## 1. CSCV construction
@@ -91,7 +91,7 @@ order), the same first-index argmax, and the same `<=` rank rule. They differ
 only in floating-point summation order (numba uses a two-pass sequential sum;
 numpy uses pairwise summation).
 
-**Checked by test.** Logits agree to rtol 1e-10 and atol 1e-12, and PBO matches
+**Checked by test (`test_fast_cscv_matches_naive_loop`, `test_callable_path_agrees_with_default_sharpe`).** Logits agree to rtol 1e-10 and atol 1e-12, and PBO matches
 exactly, on random matrices with (T, N, S) in {(48,2,4), (64,5,8), (96,7,6),
 (120,10,4), (80,3,8)}. `test_fast_cscv_matches_naive_loop`. The callable path
 (`performance=` with a Sharpe function) matches the default path too.
@@ -99,8 +99,7 @@ exactly, on random matrices with (T, N, S) in {(48,2,4), (64,5,8), (96,7,6),
 ## 6. Limitations
 
 - The rank uses ties in the selected trial's favour (`<=`). With continuous
-  returns ties have probability zero. Checked by test:
-  `test_hand_computed_out_of_sample_tie_counts_for_selected_trial`. In-sample ties
+  returns ties have probability zero. Checked by test: `test_hand_computed_out_of_sample_tie_counts_for_selected_trial`. In-sample ties
   go to the first index (`>`), checked by the same test.
 - Sharpe is undefined for zero-variance columns; the kernel returns 0 or +/-inf by
   the rule in the module docstring, which is a convention and not from the book.
@@ -163,8 +162,8 @@ finite. `test_all_equal_returns_give_finite_pbo_and_logits`,
 | Pure noise gives P(lambda <= 0) = floor((N+1)/2)/N, so E[PBO] = 1/2 for even N | Proved here |
 | Pure-noise PBO is near 1 | Not supported; contradicted by the proof above |
 | Pure-noise PBO mean, sd and percentiles at N = 60, 10, 2 (seeds 0 to 59) | Checked by test (`test_pbo_pure_noise_simulation_seeds_0_to_59`) |
-| One real edge gives PBO near 0 | Checked by test; bound sketched only |
-| Fast kernel equals naive loop | Checked by test |
+| One real edge gives PBO near 0 | Checked by test (`test_true_edge_gives_pbo_near_zero`); bound sketched only |
+| Fast kernel equals naive loop | Checked by test (`test_fast_cscv_matches_naive_loop`) |
 | Hand-computed logits and PBO at T = 8, N = 2, S = 4, and the out-of-sample tie rule | Checked by test (`test_hand_computed_T8_N2_S4_logits_and_pbo`, `test_hand_computed_out_of_sample_tie_counts_for_selected_trial`) |
 | Closed forms (a) identical columns, (b) dominant column, (c) mirror construction | Checked by test (`test_closed_form_*`); (c) shown for N = 2, S = 4 only |
 | Zero variance gives Sharpe 0 or +/-inf (exact test); all-equal matrices give PBO = 0 | Checked by test (`test_zero_variance_sharpe_is_exactly_inf_not_rounding_dependent`, `test_all_equal_returns_give_finite_pbo_and_logits`) |
