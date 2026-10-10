@@ -331,3 +331,9 @@ def test_mda_and_sfi_reject_sample_weight_of_wrong_length(length):
         mda(NearestCentroid, X, y, cv, sample_weight=np.ones(length))
     with pytest.raises(ValueError, match="sample_weight.*300"):
         sfi(NearestCentroid, X, y, cv, sample_weight=np.ones(length))
+
+
+def test_mdi_rejects_infinite_impurity():
+    imp = np.array([[np.inf, 1.0], [1.0, 1.0]])
+    with pytest.raises(ValueError, match="infinite"):
+        mdi_from_matrix(imp, ["a", "b"])

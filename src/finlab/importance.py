@@ -255,6 +255,9 @@ def mdi_from_matrix(imp: Any, names: Sequence[Any] | None = None) -> pd.DataFram
     names = list(range(p)) if names is None else list(names)
     if len(names) != p:
         raise ValueError(f"Got {len(names)} names for {p} features.")
+    # Infinity would turn its column into NaN and zero out the others after normalizing.
+    if np.isinf(arr).any():
+        raise ValueError("imp contains infinite values; impurity decreases must be finite.")
 
     mean, se = _mdi_column_stats(np.ascontiguousarray(arr))
     total = float(np.nansum(mean))
