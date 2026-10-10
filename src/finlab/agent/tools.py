@@ -402,8 +402,12 @@ def call_tool(name: str, arguments: dict[str, Any] | None) -> tuple[dict[str, An
     tool = TOOLS.get(name)
     if tool is None:
         return {"error": f"unknown tool '{name}'"}, True
+    if arguments is None:
+        arguments = {}
+    if not isinstance(arguments, dict):
+        return {"error": "arguments must be a JSON object"}, True
     try:
-        return tool.handler(arguments or {}), False
+        return tool.handler(arguments), False
     except ToolError as exc:
         return {"error": str(exc)}, True
     except (ValueError, TypeError) as exc:
