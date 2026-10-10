@@ -441,3 +441,15 @@ def test_get_events_warns_when_vertical_barrier_falls_between_bars():
     with warnings.catch_warnings():
         warnings.simplefilter("error", UserWarning)
         get_events(c, [t0], (10, 10), trgt, 0.01, vertical_barrier_times=on_grid)
+
+
+# ---------------------------------------------------------------------------
+# Input order does not change daily volatility (W3-L04)
+# ---------------------------------------------------------------------------
+
+
+def test_get_daily_vol_is_independent_of_input_order():
+    s = _random_walk(30, seed=14)
+    shuffled = s.iloc[np.random.default_rng(1).permutation(len(s))]
+    expected = get_daily_vol(s, 5).reindex(shuffled.index)
+    pd.testing.assert_series_equal(get_daily_vol(shuffled, 5), expected)

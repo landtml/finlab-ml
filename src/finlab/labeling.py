@@ -88,6 +88,9 @@ def get_daily_vol(close: pd.Series, span: int = 100) -> pd.Series:
     _require_type(close, "close", pd.Series)
     if not isinstance(close.index, pd.DatetimeIndex):
         raise TypeError("close must be indexed by a DatetimeIndex.")
+    # The lookback and the EWM recursion both need time order, whatever order the input has.
+    orig_index = close.index
+    close = close.sort_index()
     px = close.to_numpy(dtype=float)
     idx = close.index
     prev = idx.searchsorted(idx - pd.Timedelta(days=1), side="left") - 1
@@ -96,7 +99,7 @@ def get_daily_vol(close: pd.Series, span: int = 100) -> pd.Series:
     rets = px[cur] / px[prev[valid]] - 1.0
     ret_s = pd.Series(rets, index=idx[cur])
     vol = ret_s.ewm(span=span).std()
-    out = vol.reindex(idx)
+    out = vol.reindex(orig_index)
     out.name = "daily_vol"
     return out
 
