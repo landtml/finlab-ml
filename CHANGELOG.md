@@ -160,6 +160,10 @@ All notable changes to this project are documented in this file. The format foll
 - **Skipped tests.** `tests/test_cpcv.py` skips its integration test when `yfinance` is not
   installed; it is marked `integration` and no extra installs it. Without the `plot` extra,
   the plotting tests skip; without the `notebooks` extra, the notebook-format test skips.
+- **Tolerances in the new tests.** The notebook tests compare key numbers with `1e-9` against
+  the values measured on the committed seeds (`tests/test_example_*.py`). The plotting and
+  notebook tests use the same tolerances as the rest of the suite. The minTRL constant in
+  `tests/test_stats.py` was tightened from `1e-5` to `1e-9` after its exact value was checked.
 - **Timings.** The benchmark table is one run per script on a 4-vCPU machine shared with other
   jobs; the numbers vary between runs.
 

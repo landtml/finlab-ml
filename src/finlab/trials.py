@@ -4,7 +4,9 @@ Every trial a researcher runs is registered with its parameters and its return
 series. :class:`TrialRegistry` then builds the performance matrix for
 :func:`finlab.pbo.probability_of_backtest_overfitting` and the inputs of
 :func:`finlab.stats.deflated_sharpe_ratio` from that record, so N and the
-performance matrix never come from a typed-in number::
+performance matrix never come from a typed-in number. The record itself is not an
+AFML construct; it supplies the inputs that AFML chapter 11 (PBO) and chapter 14
+(deflated Sharpe) need::
 
     reg = TrialRegistry()
     reg.record("fast=10", {"fast": 10}, returns_fast_10)

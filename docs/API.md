@@ -129,7 +129,7 @@ Backtest statistics (AFML ch. 14)
 
 ## `finlab.trials`
 
-Trial records feeding PBO and deflated Sharpe (AFML ch. 11, 14)
+Trial records that feed PBO and deflated Sharpe (not AFML; feeds ch. 11 and 14)
 
 - **`TrialRecord(name: 'str', params: 'ParamsInput', returns: 'ReturnsInput') -> None`** (class). One registered trial: a name, its parameters and its return series.
 - **`TrialRegistry() -> 'None'`** (class). Ordered record of the trials run in one research project.

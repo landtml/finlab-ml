@@ -102,7 +102,7 @@ def test_min_track_record_length_hand_computation() -> None:
     assert min_track_record_length(0.5, 0.0, 0.0, 3.0, 0.95) == pytest.approx(
         hand, rel=1e-12
     )
-    assert hand == pytest.approx(13.174943, abs=1e-5)
+    assert hand == pytest.approx(13.1749455434, abs=1e-9)
 
 
 def test_min_track_record_length_round_trip_gives_target_psr() -> None:

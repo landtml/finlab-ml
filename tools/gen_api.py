@@ -21,7 +21,7 @@ MODULES = [
     ("finlab.bet_sizing", "Bet sizing (AFML ch. 10)"),
     ("finlab.pbo", "Backtest overfitting via CSCV (AFML ch. 11)"),
     ("finlab.stats", "Backtest statistics (AFML ch. 14)"),
-    ("finlab.trials", "Trial records feeding PBO and deflated Sharpe (AFML ch. 11, 14)"),
+    ("finlab.trials", "Trial records that feed PBO and deflated Sharpe (not AFML; feeds ch. 11 and 14)"),
     ("finlab.plot", "Plotly figures for PBO, deflated Sharpe and the Monte Carlo experiment (optional extra)"),
     ("finlab.hrp", "Hierarchical risk parity (AFML ch. 16)"),
     ("finlab.structural_breaks", "Structural breaks (AFML ch. 17)"),

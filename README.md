@@ -99,7 +99,9 @@ tools with compact JSON output. See [`docs/AGENTS.md`](docs/AGENTS.md).
 | `finlab.tuning` | 9 | grid and randomized search scored by purged CV |
 | `finlab.bet_sizing` | 10 | probability and sigmoid bet sizing, target positions, limit prices, discretisation |
 | `finlab.pbo` | 11 | probability of backtest overfitting by CSCV |
-| `finlab.trials` | 11, 14 | trial registry (`TrialRegistry`) that feeds PBO and deflated Sharpe the number of trials and the performance matrix |
+| `finlab.trials` | not AFML (feeds 11 and 14) | trial registry (`TrialRegistry`) that supplies the number of trials and the performance matrix to PBO and deflated Sharpe |
+| `finlab.onc` | not AFML | ONC correlation clustering, without the repair step |
+| `finlab.agent` | not AFML | MCP server exposing selected computations as tools (see [`docs/AGENTS.md`](docs/AGENTS.md)) |
 | `finlab.stats` | 14 | Sharpe, probabilistic and deflated Sharpe, minimum track record length |
 | `finlab.plot` | optional | plotly figures for PBO, deflated Sharpe and the Monte Carlo experiment (needs the `plot` extra) |
 | `finlab.hrp` | 16 | hierarchical risk parity |
@@ -108,8 +110,9 @@ tools with compact JSON output. See [`docs/AGENTS.md`](docs/AGENTS.md).
 | `finlab.microstructure` | 19 | tick rule, Roll, Corwin-Schultz, Becker-Parkinson, Kyle lambda, Amihud, VPIN |
 | `finlab.parallel` | 20 | molecule partitioning and `mp_pandas_obj` on `concurrent.futures` |
 
-Each module has its own page with a runnable example in
-[`docs/modules/`](docs/modules/) (the examples are executed by
+Each module in the map has its own page with a runnable example in
+[`docs/modules/`](docs/modules/), except `finlab.trials` and `finlab.plot`, which are
+described in the API reference (the examples are executed by
 `tests/test_doc_examples.py`). The full signature list is in
 [`docs/API.md`](docs/API.md), generated from the code by `tools/gen_api.py`.
 
@@ -201,7 +204,7 @@ Measured on 2026-10-10 on a shared machine (4 vCPU, Python 3.13.16, numpy 2.5.3,
 
 ## Contributing
 
-Each module has a test file in `tests/` and a page in `docs/modules/`. Most also have a
+Each module has a test file in `tests/`. Except `finlab.trials` and `finlab.plot`, each has a page in `docs/modules/`. Most also have a
 benchmark in `benchmarks/` and a proof note in `docs/proofs/` (no benchmark for
 `finlab.stats` and `finlab.tuning`; no proof note for `finlab.agent`). Keep claims in the
 proof notes to four kinds: proved here, checked by test, measured, or claimed from the
