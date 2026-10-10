@@ -52,8 +52,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=7.4"]
+dev = ["pytest>=7.4", "ruff>=0.5"]
 bench = ["pytest-benchmark>=4.0"]
+plot = ["plotly>=5.0"]
+notebooks = ["jupyter>=1.0", "nbconvert>=7.0", "jupytext>=1.16", "ipykernel>=6.0"]
 
 [project.scripts]
 finlab-mcp = "finlab.agent.server:main"
@@ -63,7 +65,7 @@ Homepage = "https://github.com/landtml/finlab-ml"
 Repository = "https://github.com/landtml/finlab-ml"
 Documentation = "https://github.com/landtml/finlab-ml/tree/main/docs"
 Issues = "https://github.com/landtml/finlab-ml/issues"
-Changelog = "https://github.com/landtml/finlab-ml/releases"
+Changelog = "https://github.com/landtml/finlab-ml/blob/main/CHANGELOG.md"
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -77,3 +79,10 @@ markers = [
     "slow: long-running brute-force cross-checks",
     "integration: requires network access (live data); skipped when unavailable",
 ]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+# Syntax errors (E9) and pyflakes checks (F) only. Style rules are not enforced.
+select = ["E9", "F"]

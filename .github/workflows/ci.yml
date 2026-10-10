@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: ["**"]
   pull_request:
-    branches: [main]
+    branches: ["**"]
 
 jobs:
   test:
@@ -25,8 +25,49 @@ jobs:
       - name: Install package
         run: pip install -e ".[dev]"
 
+      - name: Lint
+        run: ruff check src tests tools benchmarks
+
       - name: Run test suite
-        run: pytest -v
+        run: pytest -q
+
+  install:
+    # Tests the built wheel, not the checkout, so a package that only works
+    # from the source tree fails here.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Build sdist and wheel into a temp directory
+        run: |
+          python -m pip install build
+          python -m build --outdir "$RUNNER_TEMP/dist"
+
+      - name: Install the wheel into a fresh venv outside the checkout
+        run: |
+          python -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/python" -m pip install "$RUNNER_TEMP"/dist/*.whl "pytest>=7.4"
+
+      - name: Confirm finlab imports from the installed venv
+        run: |
+          cd "$RUNNER_TEMP"
+          "$RUNNER_TEMP/venv/bin/python" -c "import finlab, os, sys; print(finlab.__file__); assert finlab.__file__.startswith(sys.prefix), finlab.__file__; assert not finlab.__file__.startswith(os.environ['GITHUB_WORKSPACE']), finlab.__file__"
+
+      - name: Run test suite against the installed package
+        run: |
+          # tests/test_doc_examples.py reads docs/modules relative to its own
+          # location, so docs/ is copied next to tests/. pyproject.toml is
+          # copied so the pytest markers resolve as they do in the checkout.
+          suite="$RUNNER_TEMP/suite"
+          rm -rf "$suite" && mkdir "$suite"
+          cp -r tests docs pyproject.toml "$suite/"
+          cd "$suite"
+          "$RUNNER_TEMP/venv/bin/python" -m pytest -q
 
   build:
     runs-on: ubuntu-latest
