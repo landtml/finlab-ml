@@ -201,9 +201,10 @@ class TrialRegistry:
         Raises
         ------
         ValueError
-            If no trial is registered, or a trial has zero return variance
-            (its Sharpe ratio is infinite and the cross-trial variance is
-            undefined).
+            If no trial is registered, or a trial is a nonzero constant (zero
+            return variance with a nonzero mean, so its Sharpe ratio is infinite
+            and the cross-trial variance is undefined). A trial that is identically
+            zero has Sharpe ratio 0 and is not an error.
         """
         if self.n_trials == 0:
             raise ValueError("deflated_sharpe needs at least one registered trial")
