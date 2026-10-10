@@ -174,7 +174,8 @@ def limit_price(
     ``p_bar = (1/|target - current|) sum_j L(f, w, j / Q)`` over
     ``j = |current + sgn(target - current)| .. |target|``, where
     ``L(f, w, m) = f - m sqrt(w / (1 - m^2))`` inverts the sigmoid in the market
-    price. Returns ``nan`` when ``target == current`` (no order).
+    price. Returns ``nan`` when ``target == current`` (no order) and when
+    ``abs(target) == max_position`` (the cap term has no finite limit).
 
     Notes
     -----
@@ -185,6 +186,8 @@ def limit_price(
         raise ValueError(f"max_position must be >= 1, got {max_position!r}.")
     if target == current:
         return float("nan")
+    if abs(target) == max_position:
+        return float("nan")  # the cap term m == 1 has no finite limit price
     step = 1 if target > current else -1
     lo = abs(current + step)
     hi = abs(target)
