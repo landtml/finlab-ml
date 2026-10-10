@@ -99,8 +99,11 @@ def cv_score(
     """
     Xa, ya, w = _as_arrays(X, y, sample_weight)
     score_fn = scoring or _accuracy
+    # Pandas input goes to the splitter unchanged so a datetime-indexed t1 resolves
+    # against the real index; numpy input keeps its positional RangeIndex.
+    split_input = X if isinstance(X, (pd.DataFrame, pd.Series)) else Xa
     scores = []
-    for train_idx, test_idx in cv.split(Xa) if hasattr(cv, "split") else cv:
+    for train_idx, test_idx in cv.split(split_input) if hasattr(cv, "split") else cv:
         model = model_factory(**params)
         w_tr = None if w is None else w[train_idx]
         model.fit(Xa[train_idx], ya[train_idx], sample_weight=w_tr)

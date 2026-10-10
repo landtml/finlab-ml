@@ -1,8 +1,9 @@
 """Tests for finlab.tuning (AFML ch. 9)."""
 import numpy as np
+import pandas as pd
 import pytest
 
-from finlab.cv import PurgedKFold
+from finlab.cv import PurgedKFold, make_t1
 from finlab.tuning import cv_score, grid_search, randomized_search
 
 
@@ -109,3 +110,48 @@ def test_all_finite_grid_ranking_unchanged():
     assert res.best_params == {"threshold": 0.5}
     means = res.results["mean_score"].to_numpy()
     assert res.best_score == means.max()
+def _datetime_frame(n=300, seed=0):
+    """The same data as ``_data``, carried on a DatetimeIndex."""
+    x, y = _data(n, seed)
+    idx = pd.date_range("2020-01-01", periods=n, freq="D")
+    return pd.DataFrame(x, index=idx, columns=["x"]), pd.Series(y, index=idx, name="y")
+
+
+def test_grid_search_datetime_index_matches_numpy_index():
+    # A datetime-indexed t1 must resolve against the DataFrame's own index. Splitting
+    # a numpy copy of X would give a RangeIndex and fail to compare with the dates.
+    n, horizon = 300, 5
+    X_np, y_np = _data(n)
+    X_df, y_df = _datetime_frame(n)
+    grid = {"threshold": [-1.0, 0.0, 0.5, 2.0]}
+    res_dt = grid_search(
+        Threshold, grid, X_df, y_df,
+        PurgedKFold(n_splits=5, t1=make_t1(X_df.index, horizon)),
+    )
+    res_np = grid_search(
+        Threshold, grid, X_np, y_np,
+        PurgedKFold(n_splits=5, t1=make_t1(pd.RangeIndex(n), horizon)),
+    )
+    assert res_dt.best_params == res_np.best_params
+    assert res_dt.best_score == pytest.approx(res_np.best_score)
+    np.testing.assert_allclose(
+        res_dt.results["mean_score"].to_numpy(), res_np.results["mean_score"].to_numpy()
+    )
+
+
+def test_randomized_search_datetime_index_runs():
+    X_df, y_df = _datetime_frame(200)
+    cv = PurgedKFold(n_splits=4, t1=make_t1(X_df.index, 3))
+    res = randomized_search(Threshold, {"threshold": [-1.0, 0.0, 0.5]}, 4, X_df, y_df, cv, seed=1)
+    assert len(res.results) == 4
+    assert res.best_score >= 0.0
+
+
+def test_cv_score_dataframe_range_index_matches_numpy():
+    # A plain RangeIndex DataFrame must score exactly like the numpy array it wraps.
+    X_np, y_np = _data(120)
+    X_df = pd.DataFrame(X_np)
+    cv = PurgedKFold(n_splits=4)
+    assert cv_score(Threshold, {"threshold": 0.5}, X_df, y_np, cv) == pytest.approx(
+        cv_score(Threshold, {"threshold": 0.5}, X_np, y_np, cv)
+    )
