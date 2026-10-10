@@ -24,6 +24,8 @@ When the version in `pyproject.toml` has no tag, the workflow:
 The release notes come from `.github/releases/vX.Y.Z.md`. Without that file, they are an install line
 followed by the `CHANGELOG.md` section.
 
-A version that already has a tag is skipped. A version with no `CHANGELOG.md` section fails the run and
+A version that already has a tag is skipped, unless its GitHub release exists but lacks the sdist or the
+wheel. In that case the run builds both from the tag and uploads them to that release, replacing any file
+with the same name; no tag is created. A version with no `CHANGELOG.md` section fails the run and
 publishes nothing. A README that names another version raises a warning. A failed run is retried by the
 next passing CI run on `main`, or from the Actions tab.
