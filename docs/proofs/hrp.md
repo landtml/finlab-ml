@@ -12,10 +12,13 @@ Status tags as in [`microstructure.md`](microstructure.md):
 
 **Definition.** `d_ij = sqrt(1/2 (1 - rho_ij))`.
 
-**Proposition 1.1 [proved here].** `d` is a metric on `N` return series, that is,
-non-negative, zero exactly on identical series, symmetric, and it satisfies the
-triangle inequality. (The book proves this in Appendix 16.A.1. The proof below is
-an independent route.)
+**Proposition 1.1 [proved here].** `d` is a pseudometric on `N` return series: it is
+non-negative, symmetric, satisfies the triangle inequality, and `d_ij = 0` if and only if
+`rho_ij = 1`. The condition `rho_ij = 1` holds exactly when series `j` is a positive affine
+function of series `i`, that is, `X_j = a + b X_i` with `b > 0`. So a scaled or shifted copy
+has distance zero without being identical to the original. Hence `d` is a metric on the
+standardized series, that is, on series taken up to positive affine maps. (The book proves
+the metric property in Appendix 16.A.1. The proof below is an independent route.)
 
 *Proof.* Standardize each series `X_i` to a vector `z_i` with zero mean and
 `||z_i||^2 = T`. Then `rho_ij = z_i . z_j / T`, and
@@ -24,8 +27,10 @@ an independent route.)
 
 Hence `d_ij = ||z_i - z_j|| / (2 sqrt(T))`. This is a positive multiple of the
 Euclidean distance between the embedded vectors, so the four metric axioms hold.
-Zero distance means `z_i = z_j`, that is, `rho = 1`, which is coincidence up to
-scale. ∎
+Zero distance means `z_i = z_j`, that is, `rho = 1`. Since `z_i` and `z_j` are standardized
+copies of `X_i` and `X_j`, `z_i = z_j` holds if and only if `X_j = a + b X_i` with `b > 0`
+(the standardization removes the shift and the positive scale). Identical series are the
+case `a = 0`, `b = 1`. ∎
 
 **Note.** The correlation is clipped to `[-1, 1]` before the square root, so
 that noise from the estimated matrix cannot produce NaN. Clipping changes
@@ -33,6 +38,8 @@ nothing for a valid correlation matrix.
 
 **[checked by test]** `test_correlation_distance_book_example_16_1` (`rho = [[1, .7, .2], [.7, 1, -.2], [.2, -.2, 1]]`)
 compares `correlation_distance` with the 4-decimal matrix written in the test, to 5e-5. That matrix is `sqrt(1/2 (1 - rho))` rounded to 4 decimals. Whether it equals the book's printed table is not checked here.
+
+**[checked by test]** `test_hrp_scaled_copy_has_zero_correlation_distance` takes a seeded series `x` (250 draws) and its copies `2x + 1` and `0.5x - 3`, which are not identical to `x`. Their distance is `0` to 1e-7 (for `0.5x - 3`, `rho = 1 - 2e-16` in floating point, so `d` is about `1e-8`). The copy `-3x` has `rho = -1` and distance `1`.
 
 ## 2. Tree clustering (AFML 16.4.1, Snippet 16.1)
 
@@ -157,19 +164,40 @@ weights.
 
 ## 7. Complexity
 
-**Proposition 7.1 [proved here].** The bisection costs `sum over all internal
-blocks of (size)^2` operations, which is at most `N^3 / 3` (a chain-shaped tree).
-The sum over each level is at most `N^2`.
+**Proposition 7.1 [proved here].** Let `H(N)` be the sum of `size^2` over the internal
+blocks of the bisection of `N >= 2` leaves, where a block of size `k >= 2` splits into
+`floor(k/2)` and `ceil(k/2)` (Snippet 16.3 cuts the quasi-diagonal list at its midpoint).
+Then `H(N) <= N^2 ceil(log2 N)`. The variance work of the bisection, the sum over splits of
+`|L1|^2 + |L2|^2`, is at most `H(N)`.
 
-*Proof.* Each block of size `k` costs `O(k^2)` to compute its two cluster variances
-(an inverse-variance vector and a quadratic form). The blocks of one tree level are
-disjoint, so their costs sum to at most `N^2`. Each leaf has `O(log N)` ancestors
-in a balanced tree, but a chain-shaped tree has `N - 1` levels, giving `N^3/3`. ∎
+*Proof.* Each child of a block of size `k` has size at most `ceil(k/2)`, and
+`ceil(ceil(x)/2) = ceil(x/2)`. By induction on depth `j`, every block at depth `j` has
+size at most `ceil(N/2^j)`. Blocks at one depth are disjoint, so their sizes sum to at most
+`N`, and their squares sum to at most `N ceil(N/2^j) <= N^2`. An internal block at depth `j`
+needs `ceil(N/2^j) >= 2`, that is `2^j < N`, which holds for exactly `ceil(log2 N)` depths
+`j = 0, ..., ceil(log2 N) - 1`. Summing over them gives the bound. For the second claim,
+`|L1|^2 + |L2|^2 <= (|L1| + |L2|)^2` for each split. ∎
+
+*Note.* The split tree depends only on `N`. The linkage tree fixes the leaf order, not the
+splits, so a chain-shaped linkage tree does not make the bisection expensive. The bound
+`N^3/3` fails for `N = 2` to `5`, for example `H(3) = 13 > 9`, and it is not used. The values
+are `H(N) = 4, 13, 24, 42` for `N = 2, 3, 4, 5`.
+
+**[checked by test]** `test_hrp_bisection_cost_bound_n2_to_30` checks the bound for
+`N = 2` to `30`, the identity `W = H + N - N^2` for the variance work `W`, and the failure of
+`N^3/3` at `N = 2` to `5`. It replicates the split schedule in Python and checks that the
+replica gives the same weights as `_recursive_bisection`. Numerically, `H(N)/N^2` stays
+below 2 for `N = 2` to `30` (observed only, not proved).
+
+Each split computes two cluster variances, each costing `O(k^2)` for its block (an
+inverse-variance vector and a quadratic form). By Proposition 7.1 the bisection's worst case is
+therefore `O(N^2 log N)`.
 
 **[claimed from the book only]** The book states best-case `O(log N)` and
 worst-case `O(N)` for the bisection (`T(n) = Theta(n)`). Those counts are of
-bisection steps and omit the cost of each cluster variance. With the `O(k^2)`
-variance cost, the implementation's worst case is `O(N^3)`. The linkage step is
+bisection steps and omit the cost of each cluster variance. Including that cost, the bound
+above gives `O(N^2 log N)`. A chain-shaped split tree would give `O(N^3)`, but the midpoint
+split never produces one. The linkage step is
 `O(N^2)` in SciPy's single-linkage implementation, and the benchmark (`benchmarks/bench_hrp.py`)
 is dominated by that step for large `N`.
 
@@ -177,7 +205,7 @@ is dominated by that step for large `N`.
 
 | Result | Status |
 |---|---|
-| `d = sqrt(1/2(1-rho))` is a metric (Prop. 1.1) | proved here; book proves it in App. 16.A.1 |
+| `d = sqrt(1/2(1-rho))` is a pseudometric on series, a metric on standardized series (Prop. 1.1) | proved here; checked by test for scaled copies; book cites App. 16.A.1 |
 | Example 16.1 distance matrix | checked by test |
 | `squareform` is required for `linkage` (Snippet 16.1) | checked by test (deviation from printed snippet) |
 | Quasi-diagonalization is a permutation (Prop. 3.1) | proved here; checked by test |
@@ -186,5 +214,5 @@ is dominated by that step for large `N`.
 | Bisection split is inverse-variance (Prop. 5.1) | proved here; checked by test |
 | Weights nonnegative, sum to 1 (Prop. 5.2) | proved here; checked by test on 25 random covariances, incl. singular |
 | Block-diagonal cluster-level allocation (Prop. 6.1, Cor. 6.2) | proved here; checked by test |
-| Complexity `O(N^3)` worst case (Prop. 7.1) | proved here; the book's `T(n)=Theta(n)` is claimed from the book only |
+| Bisection cost `H(N) <= N^2 ceil(log2 N)`, so `O(N^2 log N)` (Prop. 7.1) | proved here; checked by test for N = 2 to 30; the book's `T(n)=Theta(n)` is claimed from the book only |
 | The book reports lower out-of-sample variance for HRP than CLA and IVP (Section 16.6) | claimed from the book only; not reproduced here |

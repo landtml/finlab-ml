@@ -299,3 +299,136 @@ def test_monte_carlo_repeated_start_fraction() -> None:
 
 def test_bet_sizing_calibrated_width() -> None:
     assert calibrate_sigmoid_width(10.0, 0.95) == pytest.approx(10.8033, abs=1e-4)
+
+
+# ---------------------------------------------------------------------------
+# bars.md (section 4 remark on the runs threshold; tick runs, v = 1)
+# ---------------------------------------------------------------------------
+
+
+def test_runs_bars_jensen_strict_for_bar_stopping_rule() -> None:
+    # T = first t with max{B_t, S_t} >= c, P[b=1] = p. Exact rational arithmetic:
+    # first-step analysis for E[T] over the states (B, S) with B, S < c.
+    from fractions import Fraction
+
+    c, p = 3, Fraction(3, 4)
+    q = 1 - p
+    memo: dict[tuple[int, int], Fraction] = {}
+
+    def expected_steps(b: int, s: int) -> Fraction:
+        if b >= c or s >= c:
+            return Fraction(0)
+        if (b, s) not in memo:
+            memo[(b, s)] = 1 + p * expected_steps(b + 1, s) + q * expected_steps(b, s + 1)
+        return memo[(b, s)]
+
+    e_T = expected_steps(0, 0)
+    assert e_T == Fraction(483, 128)
+    # max{B_T, S_T} = c exactly at T, since the maximum rises by one per tick.
+    e_max = Fraction(c)
+    # Wald: E[B_T] = p E[T] and E[S_T] = q E[T].
+    assert max(p * e_T, q * e_T) == Fraction(1449, 512)
+    assert e_max > max(p * e_T, q * e_T)  # strict
+    # Neither B_T >= S_T nor S_T >= B_T holds a.s.: the first c ticks all buy (B_T = c > 0 = S_T)
+    # or all sell (S_T = c > 0 = B_T), with probabilities p^c and q^c.
+    assert p**c == Fraction(27, 64)
+    assert q**c == Fraction(1, 64)
+
+
+def test_runs_bars_jensen_equality_for_first_passage() -> None:
+    # T = first t with B_t - S_t = 1, P[b=1] = p = 3/4. Hitting-time theorem:
+    # P(T = 2k-1) = C(2k-1, k) p^k q^(k-1) / (2k-1). Truncated at k = 200 (tail below 1e-20).
+    p, q = 0.75, 0.25
+    prob = {
+        2 * k - 1: math.comb(2 * k - 1, k) * p**k * q ** (k - 1) / (2 * k - 1)
+        for k in range(1, 201)
+    }
+    assert sum(prob.values()) == pytest.approx(1.0, abs=1e-12)
+    e_T = sum(t * pr for t, pr in prob.items())
+    assert e_T == pytest.approx(2.0, abs=1e-9)  # E[T] = 1 / (2p - 1)
+    e_B, e_S = p * e_T, q * e_T  # Wald
+    # B_T - S_T = 1 exactly, so max{B_T, S_T} = B_T and E[max] = E[B_T] = max{E[B_T], E[S_T]}.
+    assert e_B == pytest.approx(1.5, abs=1e-9)
+    assert e_S == pytest.approx(0.5, abs=1e-9)
+    assert max(e_B, e_S) == pytest.approx(1.5, abs=1e-9)
+
+
+# ---------------------------------------------------------------------------
+# hrp.md Proposition 1.1: d = 0 iff rho = 1 (scaled copies included)
+# ---------------------------------------------------------------------------
+
+
+def test_hrp_scaled_copy_has_zero_correlation_distance() -> None:
+    from finlab.hrp import correlation_distance
+
+    x = np.random.default_rng(0).standard_normal(250)
+    cases = {"2x+1": 2.0 * x + 1.0, "0.5x-3": 0.5 * x - 3.0, "-3x": -3.0 * x}
+    d = {}
+    for name, y in cases.items():
+        assert not np.array_equal(x, y)  # not identical series
+        rho = float(np.corrcoef(x, y)[0, 1])
+        d[name] = float(correlation_distance(np.array([[1.0, rho], [rho, 1.0]]))[0, 1])
+    assert d["2x+1"] == pytest.approx(0.0, abs=1e-7)  # rho = 1 exactly in floating point
+    assert d["0.5x-3"] == pytest.approx(0.0, abs=1e-7)  # rho = 1 - 2e-16, so d about 1e-8
+    assert d["-3x"] == pytest.approx(1.0, abs=1e-7)  # rho = -1
+
+
+# ---------------------------------------------------------------------------
+# hrp.md Proposition 7.1: bisection cost, N = 2 to 30
+# ---------------------------------------------------------------------------
+
+
+def test_hrp_bisection_cost_bound_n2_to_30() -> None:
+    from finlab.hrp import _recursive_bisection
+
+    def schedule(n: int) -> tuple[int, int]:
+        # Split schedule of _recursive_bisection: a block [s, e) with e - s >= 2 is cut at
+        # m = s + (e - s) // 2. H = sum of size^2 over internal blocks; W = sum of |L1|^2 + |L2|^2.
+        h = w = 0
+        stack = [(0, n)]
+        while stack:
+            s, e = stack.pop()
+            if e - s < 2:
+                continue
+            m = s + (e - s) // 2
+            h += (e - s) ** 2
+            w += (m - s) ** 2 + (e - m) ** 2
+            stack.extend([(s, m), (m, e)])
+        return h, w
+
+    def block_variance(cov: np.ndarray, s: int, e: int) -> float:
+        inv = 1.0 / np.diag(cov)[s:e]
+        wt = inv / inv.sum()
+        return float(wt @ cov[s:e, s:e] @ wt)
+
+    def replica_weights(cov: np.ndarray) -> np.ndarray:
+        w = np.ones(cov.shape[0])
+        stack = [(0, cov.shape[0])]
+        while stack:
+            s, e = stack.pop()
+            if e - s < 2:
+                continue
+            m = s + (e - s) // 2
+            v1, v2 = block_variance(cov, s, m), block_variance(cov, m, e)
+            alpha = 1.0 - v1 / (v1 + v2) if v1 + v2 > 0 else 0.5
+            w[s:m] *= alpha
+            w[m:e] *= 1.0 - alpha
+            stack.extend([(s, m), (m, e)])
+        return w
+
+    # The replica is the schedule the compiled code runs.
+    A = np.random.default_rng(1).standard_normal((40, 60))
+    cov = np.cov(A)
+    for n in (2, 3, 7, 16, 25):
+        sub = np.ascontiguousarray(cov[:n, :n])
+        assert np.allclose(replica_weights(sub), _recursive_bisection(sub), rtol=1e-12, atol=0)
+
+    for n in range(2, 31):
+        h, w = schedule(n)
+        assert h <= n * n * math.ceil(math.log2(n))  # Prop. 7.1
+        assert w <= h
+        assert w == h + n - n * n  # each non-root block is a child of exactly one split
+    # The former bound N^3/3 fails for N = 2 to 5 (H(3) = 13 > 9) and holds for N = 6 to 30.
+    assert schedule(3)[0] == 13
+    assert all(schedule(n)[0] > n**3 / 3 for n in (2, 3, 4, 5))
+    assert all(schedule(n)[0] <= n**3 / 3 for n in range(6, 31))

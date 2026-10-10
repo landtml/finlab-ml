@@ -83,7 +83,15 @@ The book writes the expectation as `E0[theta_T] = E0[T] * (2 P[b=1] - 1)` for ti
 
 *Proof.* Apply Wald's identity to the i.i.d. indicators `1{b_t = 1}` and `1{b_t = -1}`. ∎
 
-**Remark on the book's threshold [proved here].** The book writes `E0[theta_T] = E0[T] max{P[b=1], 1-P[b=1]}`. Under the same hypotheses, the expected run count `E0[max{B_T, S_T}]` satisfies `E0[max{B_T, S_T}] >= max{E0[B_T], E0[S_T]}` by Jensen's inequality, for the convex function `max`. The inequality is strict unless one side is almost surely zero. The book's threshold is therefore the max of two expectations, not the expectation of the max. This is a choice, and the code implements the book's threshold as written, with `max{E[buy], E[sell]}` from the EWMA estimates.
+**Remark on the book's threshold [proved here].** The book writes `E0[theta_T] = E0[T] max{P[b=1], 1-P[b=1]}`. For tick runs let `B_T` and `S_T` be the two counts, so `theta_T = max{B_T, S_T}`. Under the same hypotheses, `max{B_T, S_T} >= B_T` and `max{B_T, S_T} >= S_T` pointwise, so `E0[max{B_T, S_T}] >= max{E0[B_T], E0[S_T]}`. Equality holds if and only if one count dominates the other almost surely, that is, `B_T >= S_T` a.s. or `S_T >= B_T` a.s. A count that is almost surely zero is one such case, not the only one. The book's threshold is therefore the max of two expectations, not the expectation of the max. This is a choice, and the code implements the book's threshold as written, with `max{E[buy], E[sell]}` from the EWMA estimates.
+
+*Proof of the equality condition.* Suppose `E0[B_T] >= E0[S_T]`, so the right side is `E0[B_T]`. Then `E0[max{B_T, S_T}] - E0[B_T] = E0[(S_T - B_T)^+]`, which is zero if and only if `S_T <= B_T` a.s. The case `E0[S_T] >= E0[B_T]` is symmetric, and dominance gives equality directly. ∎
+
+*Strictness for the bar stopping rule.* Let `T` be the first `t` with `max{B_t, S_t} >= c`, for an integer `c >= 1`. A positive real threshold stops at the same `T` as `c = ceil(threshold)`, because the maximum is integer valued. Then `max{B_T, S_T} = c` exactly, since the maximum rises by at most one per tick. If `0 < P[b=1] < 1`, both `B_T > S_T` (the first `c` ticks all buy) and `S_T > B_T` (the first `c` ticks all sell) have positive probability, so the inequality is strict. Example: `c = 3` and `P[b=1] = 3/4` give `E0[T] = 483/128` and `E0[max{B_T, S_T}] = 3 > 1449/512 = max{E0[B_T], E0[S_T]}`.
+
+*Equality without a zero side.* Let `T` be the first `t` with `B_t - S_t = 1`, with `P[b=1] = 3/4`. This is a stopping time with `E0[T] = 2`. Then `B_T = S_T + 1` a.s., so `E0[max{B_T, S_T}] = E0[B_T] = 3/2 = max{E0[B_T], E0[S_T]}`, and neither count is zero.
+
+**[checked by test]** `test_runs_bars_jensen_strict_for_bar_stopping_rule` checks `E0[T] = 483/128` and the strict inequality in exact rational arithmetic. `test_runs_bars_jensen_equality_for_first_passage` checks `E0[T] = 2` and the equality case from the hitting-time law.
 
 **[checked by test]** The kernel matches a naive reference with closed-form EWMA estimates, for all three kinds (`test_run_bars_match_naive`).
 
@@ -125,7 +133,7 @@ with the empty sum (`tau = t`) equal to `0`.
 | EWMA closed form (Eq. 3.2) | proved here; checked by test |
 | Degenerate zero threshold when E[s] = 0 | proved here; documented limitation |
 | Runs expectation (Prop. 4.1) | proved here |
-| Book's max-of-expectations runs threshold vs expectation of max | proved here (Jensen); the code uses the book's form |
+| Book's max-of-expectations runs threshold vs expectation of max | proved here: equality iff one count dominates a.s.; strict for the bar stopping rule; checked by test; the code uses the book's form |
 | CUSUM Lindley identity (Lemma 5.1) | proved here; checked by test against Snippet 2.4 |
 | Strict vs non-strict CUSUM comparison | noted; follows the snippet |
 | Imbalance/runs/standard bars match naive references | checked by test |
