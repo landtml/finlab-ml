@@ -134,6 +134,14 @@ Trial records that feed PBO and deflated Sharpe (not AFML; feeds ch. 11 and 14)
 - **`TrialRecord(name: 'str', params: 'ParamsInput', returns: 'ReturnsInput') -> None`** (class). One registered trial: a name, its parameters and its return series.
 - **`TrialRegistry() -> 'None'`** (class). Ordered record of the trials run in one research project.
 
+## `finlab.onc`
+
+ONC correlation clustering (not AFML)
+
+- **`ONCResult(labels: 'npt.NDArray[np.int64]', n_clusters: 'int', silhouette: 'float', scores: 'dict[int, float]') -> None`** (class). Outcome of :func:`onc`.
+- **`onc(corr: 'pd.DataFrame | npt.ArrayLike', max_k: 'int | None' = None, n_init: 'int' = 10, seed: 'int | None' = 0) -> 'ONCResult'`** (function). Cluster the variables of a correlation matrix, choosing ``k`` by silhouette.
+- **`silhouette_scores(dist: 'npt.NDArray[np.float64]', labels: 'npt.ArrayLike') -> 'npt.NDArray[np.float64]'`** (function). Per-variable silhouette ``s_i = (b_i - a_i) / max(a_i, b_i)``.
+
 ## `finlab.plot`
 
 Plotly figures for PBO, deflated Sharpe and the Monte Carlo experiment (optional extra)

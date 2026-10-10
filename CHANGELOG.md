@@ -75,6 +75,8 @@ All notable changes to this project are documented in this file. The format foll
   `finlab.trials` and `finlab.plot`, which are described in the API reference.
 - `finlab.trials` is documented as not an AFML construct: it supplies the inputs that
   chapters 11 and 14 need.
+- `docs/API.md` lists `finlab.onc`, which the generator had omitted; the README's link to the
+  full signature list now covers every public module.
 - Monte Carlo, weights and microstructure tests check exact values where a value was only
   checked for shape or sign (Kyle t, Corwin-Schultz, BVC, time decay).
 
