@@ -361,3 +361,15 @@ def test_expected_max_matches_independent_numerical_reference() -> None:
     assert expected_max_sharpe(2, 1.0) < _exact_expected_max(2)
     for n in (5, 10, 50, 100, 1000):
         assert expected_max_sharpe(n, 1.0) > _exact_expected_max(n)
+
+
+@pytest.mark.parametrize("returns", [[], [0.003547]], ids=["empty", "single"])
+def test_sharpe_ratio_warns_on_fewer_than_two_observations(returns: list[float]) -> None:
+    with pytest.warns(UserWarning, match="sharpe_ratio.*fewer than two"):
+        assert math.isnan(sharpe_ratio(returns, periods_per_year=252.0))
+
+
+def test_psr_warns_on_infinite_sharpe_and_still_returns_nan() -> None:
+    # skew/kurtosis chosen so the variance term is infinite rather than raising.
+    with pytest.warns(UserWarning, match="probabilistic_sharpe_ratio.*non-finite"):
+        assert math.isnan(probabilistic_sharpe_ratio(np.inf, 0.0, 60, -0.2, 3.5))

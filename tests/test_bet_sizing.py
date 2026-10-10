@@ -103,3 +103,15 @@ def test_average_active_signals_matches_naive_loop():
     got = average_active_signals(sig, t1, index=idx).to_numpy()
     want = _naive_average(sig, t1, idx)
     np.testing.assert_allclose(got, want, atol=1e-12)
+
+
+def test_calibrate_sigmoid_width_warns_on_infinite_x_and_still_returns_inf() -> None:
+    with pytest.warns(UserWarning, match="calibrate_sigmoid_width.*non-finite"):
+        assert calibrate_sigmoid_width(np.inf, 0.5) == math.inf
+
+
+def test_discretize_signal_warns_on_infinite_element_and_still_returns_inf() -> None:
+    signal = np.array([0.2, np.inf, -0.3])
+    with pytest.warns(UserWarning, match="discretize_signal.*non-finite"):
+        out = discretize_signal(signal, 0.1)
+    assert np.isinf(out[1])
