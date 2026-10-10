@@ -1,0 +1,128 @@
+name: Notebooks
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+permissions:
+  contents: read
+
+jobs:
+  examples:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Require the example set (at least four pairs)
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          py=(examples/*.py)
+          nb=(examples/*.ipynb)
+          echo "found ${#py[@]} .py and ${#nb[@]} .ipynb files in examples/"
+          if [ "${#py[@]}" -lt 4 ] || [ "${#nb[@]}" -lt 4 ]; then
+            echo "::error::expected at least 4 examples/*.py and 4 examples/*.ipynb"
+            exit 1
+          fi
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install package with plot and notebook extras
+        run: pip install -e ".[dev,plot,notebooks]"
+
+      - name: Sync check (each .py regenerates the committed .ipynb)
+        run: |
+          set -euo pipefail
+          tmp="$RUNNER_TEMP/sync"
+          mkdir -p "$tmp"
+          for f in examples/*.py; do
+            name="$(basename "$f" .py)"
+            if [ ! -f "examples/$name.ipynb" ]; then
+              echo "::error::examples/$name.ipynb is missing for examples/$name.py"
+              exit 1
+            fi
+            jupytext --test --to ipynb "$f"
+            jupytext --to ipynb --output "$tmp/$name.ipynb" "$f"
+            # Compare cell types and sources only; outputs and metadata are
+            # checked by the output check below.
+            python - "$tmp/$name.ipynb" "examples/$name.ipynb" <<'PY'
+          import json, sys
+
+          def cells(path):
+              with open(path, encoding="utf-8") as fh:
+                  return [(c["cell_type"], "".join(c["source"])) for c in json.load(fh)["cells"]]
+
+          if cells(sys.argv[1]) != cells(sys.argv[2]):
+              print(f"::error::{sys.argv[2]} does not match its .py (cell types or sources differ)")
+              sys.exit(1)
+          PY
+          done
+
+      - name: Output check (committed notebooks have no outputs or execution counts)
+        run: |
+          set -euo pipefail
+          python -c "
+          import glob, json, sys
+          bad = []
+          for path in sorted(glob.glob('examples/*.ipynb')):
+              with open(path, encoding='utf-8') as fh:
+                  nb = json.load(fh)
+              for idx, cell in enumerate(nb['cells']):
+                  if cell['cell_type'] != 'code':
+                      continue
+                  if cell.get('outputs') or cell.get('execution_count') is not None:
+                      bad.append(f'{path} cell {idx}')
+          print('\n'.join(bad) if bad else 'no outputs or execution counts found')
+          sys.exit(1 if bad else 0)
+          "
+
+      - name: Execute notebooks
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/executed"
+          for nb in examples/*.ipynb; do
+            name="$(basename "$nb" .ipynb)"
+            timeout 300 jupyter nbconvert --to notebook --execute \
+              --output-dir "$RUNNER_TEMP/executed" \
+              --output "$name.executed.ipynb" "$nb"
+          done
+
+      - name: Upload executed notebooks
+        uses: actions/upload-artifact@v4
+        with:
+          name: executed-notebooks
+          # The action does not expand shell variables, so the runner path is
+          # written as an expression.
+          path: "${{ runner.temp }}/executed/*.ipynb"
+          if-no-files-found: error
+
+      - name: Plot tests (with plotly)
+        run: pytest -q tests/test_plot.py
+
+  examples-without-plotly:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install without the plot extra
+        run: pip install -e ".[dev,notebooks]"
+
+      - name: Confirm plotly is absent
+        run: |
+          set -euo pipefail
+          python -c "import importlib.util, sys; sys.exit(importlib.util.find_spec('plotly') is not None)"
+
+      - name: Plot tests without plotly
+        run: pytest -q -rs tests/test_plot.py
