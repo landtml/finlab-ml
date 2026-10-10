@@ -410,5 +410,5 @@ def call_tool(name: str, arguments: dict[str, Any] | None) -> tuple[dict[str, An
         return tool.handler(arguments), False
     except ToolError as exc:
         return {"error": str(exc)}, True
-    except (ValueError, TypeError) as exc:
+    except Exception as exc:  # any tool failure is an isError result, not a dead server
         return {"error": f"{type(exc).__name__}: {exc}"}, True

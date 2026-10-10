@@ -196,3 +196,22 @@ def test_stdio_loop_survives_unexpected_exception(monkeypatch):
     assert [r["id"] for r in replies] == [1, 2]
     assert replies[0]["error"]["code"] == -32603
     assert replies[1] == {"jsonrpc": "2.0", "id": 2, "result": {}}
+
+
+def test_deeply_nested_line_is_parse_error_and_server_survives():
+    lines = "[" * 100_000 + "\n" + json.dumps({"jsonrpc": "2.0", "id": 9, "method": "ping"}) + "\n"
+    out = io.StringIO()
+    srv.main(io.StringIO(lines), out)
+    replies = [json.loads(x) for x in out.getvalue().splitlines()]
+    assert replies[0]["error"]["code"] == -32700
+    assert replies[1] == {"jsonrpc": "2.0", "id": 9, "result": {}}
+
+
+def test_tool_overflow_is_reported_as_tool_error(monkeypatch):
+    def handler(args):
+        raise OverflowError("int too large")
+
+    monkeypatch.setitem(tl.TOOLS, "boom", tl.Tool("boom", "raises", {"type": "object", "properties": {}}, handler))
+    result, is_error = tl.call_tool("boom", {})
+    assert is_error is True
+    assert result["error"].startswith("OverflowError")
