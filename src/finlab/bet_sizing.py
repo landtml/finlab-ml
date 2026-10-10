@@ -92,16 +92,20 @@ def prob_bet_size(
         raise ValueError("probabilities must lie in [0, 1].")
     if num_classes < 2:
         raise ValueError(f"num_classes must be >= 2, got {num_classes!r}.")
+    s = None if side is None else np.asarray(side, dtype=np.float64)
+    if s is not None and s.ndim > 0 and s.shape != p.shape:
+        # Checked here so the mismatch names both lengths, not a numpy broadcast error.
+        n_prob = p.shape[0] if p.ndim else 1
+        raise ValueError(f"side has length {s.shape[0]} but prob has length {n_prob}.")
     with np.errstate(divide="ignore", invalid="ignore"):
         if num_classes == 2:
             z = (p - 0.5) / np.sqrt(p * (1.0 - p))
             m = 2.0 * ndtr(z) - 1.0
-            if side is not None:
-                m = np.asarray(side, dtype=np.float64) * m
+            if s is not None:
+                m = s * m
         else:
-            if side is None:
+            if s is None:
                 raise ValueError("side is required when num_classes > 2.")
-            s = np.asarray(side, dtype=np.float64)
             z = (p - 1.0 / num_classes) / np.sqrt(p * (1.0 - p))
             m = s * (2.0 * ndtr(z) - 1.0)
     # Degenerate endpoints: p in {0, 1} gives z = +/- inf; ndtr handles it, but the
