@@ -135,6 +135,15 @@ def _end_positions(index: pd.Index, t1: pd.Series | None) -> npt.NDArray[np.int_
     """
     n = len(index)
     if t1 is None:
+        # Warn only: the default (no purging, one-bar events) is unchanged.
+        warnings.warn(
+            "t1 is None: purging is skipped and every observation is treated as "
+            "a one-bar event, so overlapping labels can leak across the train/test "
+            "boundary. The embargo is still applied. Pass t1 (see finlab.cv.make_t1) "
+            "to purge.",
+            UserWarning,
+            stacklevel=3,
+        )
         return np.arange(n)
     if not isinstance(t1, pd.Series):
         raise TypeError(
