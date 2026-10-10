@@ -107,6 +107,11 @@ class SequentialBootstrapBagging:
         if ya.shape[0] != n:
             raise ValueError("X and y must have the same number of rows.")
         w = None if sample_weight is None else np.asarray(sample_weight, dtype=float)
+        if w is not None and w.shape != (n,):
+            # A longer array would be silently truncated when the bags index it.
+            raise ValueError(
+                f"sample_weight has shape {w.shape} but X has {n} rows; expected length {n}."
+            )
         rng = np.random.default_rng(self.seed)
         size = n if self.max_samples is None else int(self.max_samples)
         if size < 1:

@@ -157,12 +157,19 @@ def _summarize(per_fold: npt.NDArray[np.float64], names: list[Any]) -> pd.DataFr
     return pd.DataFrame({"mean": mean, "std": se}, index=names)
 
 
-def _check_xy(X: Any, y: Any) -> tuple[int, npt.NDArray[Any]]:
+def _check_xy(X: Any, y: Any, sample_weight: Any = None) -> tuple[int, npt.NDArray[Any]]:
     p = _n_features(X)
     y_arr = np.asarray(y)
-    if y_arr.shape[0] != np.shape(X)[0]:
+    n = np.shape(X)[0]
+    if y_arr.shape[0] != n:
         raise ValueError(
-            f"X and y disagree on the number of samples: {np.shape(X)[0]} vs {y_arr.shape[0]}."
+            f"X and y disagree on the number of samples: {n} vs {y_arr.shape[0]}."
+        )
+    if sample_weight is not None and np.shape(sample_weight) != (n,):
+        # Checked here because a longer array would be silently truncated by the fold indexing.
+        raise ValueError(
+            f"sample_weight has shape {np.shape(sample_weight)} but X has {n} rows; "
+            f"expected length {n}."
         )
     return p, y_arr
 
@@ -319,7 +326,7 @@ def mda(
     """
     if n_repeats < 1:
         raise ValueError(f"n_repeats must be >= 1, got {n_repeats}.")
-    p, y_arr = _check_xy(X, y)
+    p, y_arr = _check_xy(X, y, sample_weight)
     w_arr = None if sample_weight is None else np.asarray(sample_weight, dtype=np.float64)
     names = _feature_names(X, p)
     rng = np.random.default_rng(seed)
@@ -387,7 +394,7 @@ def sfi(
     with another can score at chance. A score at chance is not evidence the feature
     is useless.
     """
-    p, y_arr = _check_xy(X, y)
+    p, y_arr = _check_xy(X, y, sample_weight)
     w_arr = None if sample_weight is None else np.asarray(sample_weight, dtype=np.float64)
     names = _feature_names(X, p)
 

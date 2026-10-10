@@ -165,3 +165,11 @@ def test_generator_cv_is_usable_by_every_candidate():
     res = grid_search(Threshold, {"threshold": [-1.0, 0.5]}, X, y, cv.split(X))
     assert len(res.results) == 2
     assert res.results["mean_score"].tolist() == pytest.approx(expected.results["mean_score"].tolist())
+
+
+def test_sample_weight_length_must_match_rows():
+    X, y = _data()
+    with pytest.raises(ValueError, match="sample_weight.*300"):
+        grid_search(Threshold, {"threshold": [0.0]}, X, y, PurgedKFold(3), sample_weight=np.ones(10))
+    with pytest.raises(ValueError, match="sample_weight.*300"):
+        cv_score(Threshold, {"threshold": 0.0}, X, y, PurgedKFold(3), sample_weight=np.ones(301))

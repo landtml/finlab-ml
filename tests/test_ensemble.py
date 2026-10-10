@@ -93,3 +93,11 @@ def test_sequential_requires_t1():
     X, y, _ = _data(40)
     with pytest.raises(ValueError):
         SequentialBootstrapBagging(NearestCentroid, 3).fit(X, y)
+
+
+@pytest.mark.parametrize("length", [10, 400])
+def test_sample_weight_length_must_match_rows(length):
+    X, y, t1 = _data()
+    bag = SequentialBootstrapBagging(NearestCentroid, n_estimators=2)
+    with pytest.raises(ValueError, match="sample_weight.*200"):
+        bag.fit(X, y, t1=t1, sample_weight=np.ones(length))

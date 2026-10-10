@@ -319,3 +319,15 @@ def test_orthogonal_features_dataframe_round_trip_and_constant_column_rejected()
         orthogonal_features(np.column_stack([X, np.ones(100)]))
     with pytest.raises(RuntimeError):
         OrthogonalFeatures().transform(X)
+
+
+@pytest.mark.parametrize("length", [10, 400])
+def test_mda_and_sfi_reject_sample_weight_of_wrong_length(length):
+    rng = np.random.default_rng(0)
+    X = rng.normal(size=(300, 2))
+    y = (X[:, 0] > 0).astype(int)
+    cv = PurgedKFold(n_splits=3)
+    with pytest.raises(ValueError, match="sample_weight.*300"):
+        mda(NearestCentroid, X, y, cv, sample_weight=np.ones(length))
+    with pytest.raises(ValueError, match="sample_weight.*300"):
+        sfi(NearestCentroid, X, y, cv, sample_weight=np.ones(length))

@@ -68,6 +68,12 @@ def _as_arrays(X, y, sample_weight):
     ya = y.to_numpy() if isinstance(y, (pd.DataFrame, pd.Series)) else np.asarray(y)
     if sample_weight is not None:
         sample_weight = np.asarray(sample_weight, dtype=float)
+        # A longer array would be silently truncated by the row indexing below.
+        if sample_weight.shape != (Xa.shape[0],):
+            raise ValueError(
+                f"sample_weight has shape {sample_weight.shape} but X has {Xa.shape[0]} rows; "
+                f"expected length {Xa.shape[0]}."
+            )
     return Xa, ya, sample_weight
 
 
