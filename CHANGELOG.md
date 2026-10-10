@@ -97,6 +97,8 @@ All notable changes to this project are documented in this file. The format foll
   entropy check uses the exact bin count. A test that could not run under its name was
   renamed to what it checks.
 - The structural-breaks documentation example is marked slow.
+- The CI install job and the lint step now include `examples/`. Without it, the example tests
+  could not find their notebooks when the suite ran against the installed wheel.
 
 ### Removed
 
@@ -160,6 +162,9 @@ All notable changes to this project are documented in this file. The format foll
 - **Skipped tests.** `tests/test_cpcv.py` skips its integration test when `yfinance` is not
   installed; it is marked `integration` and no extra installs it. Without the `plot` extra,
   the plotting tests skip; without the `notebooks` extra, the notebook-format test skips.
+- **Plotting imports lazily.** `import finlab.plot` succeeds without plotly. Calling any
+  plotting function without plotly raises an ImportError with the install command. This is
+  the intended lazy-import design; a bare import is not an error.
 - **Tolerances in the new tests.** The notebook tests compare key numbers with `1e-9` against
   the values measured on the committed seeds (`tests/test_example_*.py`). The plotting and
   notebook tests use the same tolerances as the rest of the suite. The minTRL constant in

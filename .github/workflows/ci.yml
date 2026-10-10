@@ -26,7 +26,7 @@ jobs:
         run: pip install -e ".[dev]"
 
       - name: Lint
-        run: ruff check src tests tools benchmarks
+        run: ruff check src tests tools benchmarks examples
 
       - name: Run test suite
         run: pytest -q
@@ -60,12 +60,13 @@ jobs:
 
       - name: Run test suite against the installed package
         run: |
-          # tests/test_doc_examples.py reads docs/modules relative to its own
-          # location, so docs/ is copied next to tests/. pyproject.toml is
-          # copied so the pytest markers resolve as they do in the checkout.
+          # tests/test_doc_examples.py reads docs/modules, and the example tests
+          # read examples/, relative to the repository root, so both are copied
+          # next to tests/. pyproject.toml is copied so the pytest markers resolve
+          # as they do in the checkout.
           suite="$RUNNER_TEMP/suite"
           rm -rf "$suite" && mkdir "$suite"
-          cp -r tests docs pyproject.toml "$suite/"
+          cp -r tests docs examples pyproject.toml "$suite/"
           cd "$suite"
           "$RUNNER_TEMP/venv/bin/python" -m pytest -q
 
