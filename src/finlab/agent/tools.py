@@ -364,7 +364,6 @@ def _cpcv(args):
     if n > MAX_ELEMENTS:
         raise ToolError(f"n_samples above {MAX_ELEMENTS}")
     horizon = _int(args, "horizon", 1)
-    idx = np.arange(n)
     import pandas as pd
 
     index = pd.RangeIndex(n)

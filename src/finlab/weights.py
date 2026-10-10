@@ -36,7 +36,7 @@ from typing import Sequence
 import numpy as np
 import pandas as pd
 
-from ._jit import jit, pjit
+from ._jit import jit
 
 __all__ = [
     "num_co_events",
