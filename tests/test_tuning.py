@@ -73,3 +73,39 @@ def test_empty_grid_rejected():
     X, y = _data(60)
     with pytest.raises(ValueError):
         grid_search(Threshold, {}, X, y, PurgedKFold(3))
+
+
+def _nan_when_all_zero(y_true, y_pred, sample_weight=None):
+    # A candidate that predicts only zeros scores NaN, as a zero-weight test fold would.
+    if np.asarray(y_pred).sum() == 0:
+        return float("nan")
+    return float((np.asarray(y_true) == np.asarray(y_pred)).mean())
+
+
+def test_nan_first_candidate_loses_to_finite_later_candidate():
+    X, y = _data()
+    cv = PurgedKFold(n_splits=3)
+    res = grid_search(Threshold, {"threshold": [100.0, 0.5]}, X, y, cv,
+                      scoring=_nan_when_all_zero)
+    assert np.isnan(res.results["mean_score"].iloc[0])
+    assert res.best_params == {"threshold": 0.5}
+    assert res.best_score == pytest.approx(1.0)
+
+
+def test_all_nan_grid_returns_first_candidate_without_raising():
+    X, y = _data()
+    cv = PurgedKFold(n_splits=3)
+    res = grid_search(Threshold, {"threshold": [100.0, 200.0]}, X, y, cv,
+                      scoring=_nan_when_all_zero)
+    assert res.results["mean_score"].isna().all()
+    assert res.best_params == {"threshold": 100.0}
+    assert np.isnan(res.best_score)
+
+
+def test_all_finite_grid_ranking_unchanged():
+    X, y = _data()
+    cv = PurgedKFold(n_splits=5)
+    res = grid_search(Threshold, {"threshold": [2.0, -1.0, 0.5, 0.0]}, X, y, cv)
+    assert res.best_params == {"threshold": 0.5}
+    means = res.results["mean_score"].to_numpy()
+    assert res.best_score == means.max()
