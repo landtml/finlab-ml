@@ -5,62 +5,46 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
-## [0.1.0] - 2026-10-10
+## [0.1.1] - 2026-10-10
 
-First release.
+Changes since 0.1.0.
 
 ### Added
 
-- Cross-validation for overlapping labels (`finlab.cv`, chapter 7): `PurgedKFold`,
-  `CombinatorialPurgedCV` with path stitching, and `make_t1`, with purging and embargo.
-- Financial data structures (`finlab.bars`, chapter 2): time, tick, volume, dollar,
-  imbalance and run bars, and the CUSUM filter.
-- Labelling (`finlab.labeling`, chapter 3): daily volatility, triple-barrier events, bin
-  labels, meta-labels, rare-label dropping, and trend-scanning labels (not in AFML).
-- Sample weights (`finlab.weights`, chapter 4): concurrency, average uniqueness, the
-  sequential bootstrap, return attribution and time decay.
-- The chapter 4 Monte Carlo experiment (`finlab.monte_carlo`): a seeded trial runner
-  (`run_trials`), random label sets (`random_t1`) and the standard against sequential
-  bootstrap uniqueness experiment (`bootstrap_uniqueness_mc`), following Snippets 4.7 and 4.8.
-- Fractional differentiation (`finlab.fracdiff`, chapter 5): fixed-width and
-  expanding-window weights, and a minimum-`d` search with an injected ADF test.
-- Ensembles (`finlab.ensemble`, chapter 6): `SequentialBootstrapBagging`.
-- Feature importance (`finlab.importance`, chapter 8): MDI, MDA, SFI and orthogonal
-  features.
-- Hyper-parameter search scored by purged CV (`finlab.tuning`, chapter 9).
-- Bet sizing (`finlab.bet_sizing`, chapter 10): probability and sigmoid sizing, target
-  positions, limit prices and discretisation.
-- Backtest statistics: the probability of backtest overfitting by CSCV (`finlab.pbo`,
-  chapter 11); Sharpe, probabilistic and deflated Sharpe ratios and the minimum track record
-  length (`finlab.stats`, chapter 14), with result objects `PBOResult` and
-  `DeflatedSharpeResult` that render as HTML tables in notebooks.
 - Trial records (`finlab.trials`, not an AFML construct): `TrialRecord` and `TrialRegistry`
-  count the trials and feed the performance matrix to PBO and the number of trials to the
-  deflated Sharpe ratio. Both round-trip through dict and JSON.
-- Portfolio construction: hierarchical risk parity (`finlab.hrp`, chapter 16) and ONC
-  correlation clustering without the repair step (`finlab.onc`).
-- Structural breaks (`finlab.structural_breaks`, chapter 17): CUSUM tests,
-  Chu-Stinchcombe-White and SADF.
-- Entropy (`finlab.entropy`, chapter 18): plug-in, Lempel-Ziv and Kontoyiannis estimators
-  and encoders.
-- Microstructure (`finlab.microstructure`, chapter 19): tick rule, Roll, Corwin-Schultz,
-  Becker-Parkinson, Kyle lambda, Amihud and VPIN with bulk-volume classification.
-- Multiprocessing helpers (`finlab.parallel`, chapter 20): molecule partitioning and
-  `mp_pandas_obj` on `concurrent.futures`.
+  count the trials, feed the performance matrix to PBO and the number of trials to the
+  deflated Sharpe ratio, and round-trip through dict and JSON.
+- `DeflatedSharpeResult` and `deflated_sharpe`, with validated inputs. PBO and deflated
+  Sharpe results render as HTML tables in notebooks.
 - Plotting (`finlab.plot`, optional `plot` extra): plotly figures for PBO, the deflated
-  Sharpe ratio and the Monte Carlo experiment.
-- An MCP server (`finlab-mcp`, `finlab.agent`) that exposes selected computations as tools
-  with JSON input and output; see `docs/AGENTS.md`.
-- Numba kernels for the hot loops, most of them tested against a plain NumPy or Python
-  reference, and benchmarks for them in `benchmarks/`.
+  Sharpe ratio and the Monte Carlo experiment. `import finlab.plot` works without plotly.
 - Worked notebooks in `examples/` for PBO, the deflated Sharpe ratio with trial records,
-  the Monte Carlo experiment and fractional differentiation, each with a fixed seed and a
-  test that checks its key numbers. CI executes them.
-- Module pages in `docs/modules/`, an API reference in `docs/API.md`, and proof notes in
-  `docs/proofs/` that label each claim as proved, checked by test, measured, or claimed
-  from the book only.
-- CI on Python 3.10 to 3.13: lint, the test suite, and the suite against the installed
-  wheel with and without optional extras.
+  the Monte Carlo experiment and fractional differentiation. Each has a fixed seed and a
+  test of its key numbers, and CI executes them.
+- Gallery figures in `docs/images/`, shown in the README.
+- Ruff linting, `plot` and `notebooks` extras, and CI jobs that install the built wheel
+  with and without the extras.
+
+### Changed
+
+- The Monte Carlo trial draws use numpy directly. End to end, one trial takes 54.0 us
+  against 207.0 us for a dense NumPy trial with the same seeds. Measured on a shared
+  4-vCPU machine; see `docs/proofs/monte_carlo.md`.
+- The Monte Carlo experiment follows AFML Snippets 4.7 and 4.8.
+- The README benchmark table is re-measured, and each row names its script in
+  `benchmarks/`.
+
+### Fixed
+
+- `probability_of_backtest_overfitting` rejects non-integer and boolean `n_partitions`
+  before use, and detects zero-variance columns exactly.
+- The test suite gives each run a fresh numba cache, because a stale cache can keep an
+  old cross-module callee.
+- The proof notes correct the runs-bar Jensen condition, the HRP bisection cost bound and
+  the minTRL check. The minTRL check now uses a tolerance of 1e-9. Each "checked by test"
+  label names a test.
+- The HRP distance docstring (a metric only on standardized series) and the zero-variance
+  note in `TrialRegistry` match the code.
 
 ### Known limitations
 
@@ -92,5 +76,10 @@ First release.
 - Benchmark timings are single runs on a shared 4-vCPU machine and vary between runs.
 - `tests/test_cpcv.py` skips its live-data integration test unless `yfinance` is installed.
 
-[Unreleased]: https://github.com/landtml/finlab-ml/compare/v0.1.0...HEAD
+## [0.1.0] - 2026-10-09
+
+First tagged release. No changelog was kept for it. Its source is at the `v0.1.0` tag.
+
+[Unreleased]: https://github.com/landtml/finlab-ml/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/landtml/finlab-ml/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/landtml/finlab-ml/releases/tag/v0.1.0
