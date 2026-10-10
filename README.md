@@ -138,24 +138,21 @@ Each module has its own page with a runnable example in
 <details>
 <summary><strong>Benchmark table</strong> (click to expand)</summary>
 
-Measured on the development machine. Each row comes from the benchmark script for its
-module in `benchmarks/` (map in [`benchmarks/README.md`](benchmarks/README.md)), run as
-`PYTHONPATH=src python3 benchmarks/bench_<name>.py`. Single machine, numbers vary
-between runs.
+Measured on 2026-10-10 on a shared machine (4 vCPU, Python 3.13.16, numpy 2.5.3, numba 0.68.0), one run per script with other jobs sharing the machine, so numbers vary between runs. Each row names its script in `benchmarks/`.
 
 | Hot path | Naive reference | Jitted | Speedup |
 |---|---|---|---|
-| `get_events` (triple barrier; naive extrapolated from 1k events) | 2.66 s | 16.3 ms | ~163x |
-| `trend_scanning_labels` | 7.75 s | 7.8 ms | ~991x |
-| `sequential_bootstrap` | 1.50 s | 1.4 ms | ~1063x (the naive version is a dense loop, so this overstates the gain) |
-| `num_co_events` | 74.6 ms | 8.4 ms | ~8.9x |
-| SADF, n=300 | 8.31 s | 0.116 s | ~71x |
-| Kontoyiannis entropy, n=300 | 0.080 s | 0.00013 s | ~605x |
-| CUSUM test, n=2000 | 0.063 s | 0.00014 s | ~455x |
-| VPIN, n=20k | (trade-expanded reference) | | ~202x |
-| `tick_rule`, n=200k | | | ~59x |
-| PBO, T=1200, N=40, S=12 | 2.09 s | 0.11 s | ~19x |
-| HRP weights, n=200 | | | ~16x (SciPy linkage is not jitted and dominates at large N) |
+| `get_events` (triple barrier; naive extrapolated from 1k events; `bench_labeling.py`) | 1915.1 ms | 6.92 ms | 276.6x |
+| `trend_scanning_labels` (`bench_labeling.py`) | 6715.7 ms | 0.68 ms | 9870.9x |
+| `sequential_bootstrap` (`bench_weights.py`) | 1248.1 ms | 1.05 ms | 1185.7x (the naive version is a dense loop, so this overstates the gain) |
+| `num_co_events` (`bench_weights.py`) | 62.0 ms | 5.02 ms | 12.3x |
+| SADF, n=300 (`bench_structural_breaks.py`) | 5.5516 s | 0.111449 s | 50x |
+| Kontoyiannis entropy, n=300 (`bench_entropy.py`) | 0.0711 s | 0.000151 s | 471x |
+| CUSUM test, n=2000 (`bench_structural_breaks.py`) | 0.0459 s | 0.000090 s | 511x |
+| VPIN, n=20k (`bench_microstructure.py`) | 17517.37 ms (trade-expanded reference) | 1.045 ms | 16771.0x |
+| `tick_rule`, n=200k (`bench_microstructure.py`) | 28.95 ms | 1.380 ms | 21.0x |
+| PBO, T=1200, N=40, S=12 (`bench_pbo.py`) | 1.0137 s | 0.0633 s | 16.0x |
+| HRP weights, n=200 (`bench_hrp.py`) | 5.26 ms | 0.806 ms | 6.5x (SciPy linkage is not jitted and is inside the timed call; in the same run the speedup is 8.1x at n=50 and 3.9x at n=500) |
 
 
 </details>
