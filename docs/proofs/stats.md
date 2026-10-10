@@ -5,6 +5,9 @@ Status labels used throughout:
 - **Proved here**: derived in this document from stated assumptions.
 - **Checked by test**: a numerical property asserted in `tests/test_stats.py`.
 - **Claimed from the book only**: stated in AFML or the cited papers; not re-derived here.
+- **Convention (not from the book)**: a choice made in this code, not a published value.
+- **Numerical reference, approximation error measured, not a book value**: compared with an
+  independent quadrature in `tests/test_stats.py` (section 6).
 
 Notation: T observations, non-annualised Sharpe ratio SR = mu/sigma, skewness
 gamma3, non-excess kurtosis gamma4 (gamma4 = 3 for Normal), Phi = standard
@@ -99,6 +102,10 @@ which is the expected maximum of a single draw with no selection effect.
   0.0504 (N = 2). The draws use `numpy.random.default_rng(0)`, with
   one `standard_normal((20000, N))` call per N in the order 2, 10, 100, 1000
   (`tests/test_doc_claims.py::test_stats_expected_max_monte_carlo_seed0`).
+- **Numerical reference, approximation error measured, not a book value.** The exact E[max]
+  by quadrature shows the formula is 7.9% below the exact maximum at N = 2, 2.5% above at N = 5,
+  and 0.4% above at N = 1000 (table in section 6). The formula is not exact for small N.
+  (`test_expected_max_matches_independent_numerical_reference`)
 
 ## 4. Deflated Sharpe ratio
 
@@ -114,6 +121,16 @@ Phi is increasing and its argument (SR_hat - SR*) sqrt(T-1)/D is decreasing in S
 **Proved here (equality with PSR).** By construction,
 `deflated_sharpe_ratio(...) == probabilistic_sharpe_ratio(..., expected_max_sharpe(...), ...)`.
 **Checked by test:** `test_deflated_sharpe_equals_psr_against_expected_max`.
+
+**Proved here (result object).** `deflated_sharpe(...)` returns the same `dsr` as
+`deflated_sharpe_ratio(...)` (exact equality, since the latter returns `.dsr`), together with
+`sr_star`. Counts must be integers (bool rejected) and the other inputs must be finite.
+**Checked by test:** `test_deflated_sharpe_result_matches_float_api`,
+`test_deflated_sharpe_rejects_invalid_inputs`.
+
+**Convention (not from the book).** Values of DSR above 0.95 are a common significance
+convention (not from the book). The book is not consulted for it here, so it is not labelled as
+a book value.
 
 ## 5. Minimum track record length
 
@@ -137,13 +154,64 @@ and to 1e-9 in `tests/test_doc_claims.py::test_stats_min_track_record_length_exa
 The round trip PSR(ceil(minTRL)) >= p > PSR(ceil(minTRL) - 1) is checked by
 `test_min_track_record_length_round_trip_gives_target_psr`, at other parameters.
 
+The default `prob = 0.95` of minTRL is a common convention, not a book value.
+**Checked by test:** `test_min_track_record_length_hand_case_gives_four` (below).
+
+## 6. Closed-form and numerical-reference checks
+
+Label for this section: **numerical reference, approximation error measured, not a book value.**
+
+**Proved here (N = 1).** For one standard normal, E[max] = E[Z] = 0. This equals the
+convention in `expected_max_sharpe` (0 for N = 1), so the convention is also the exact value.
+**Checked by test:** `test_expected_max_n1_convention_agrees_with_exact_value`.
+
+**Proved here (N = 2, exact maximum).** max(a, b) = (a + b)/2 + |a - b|/2. For Z1, Z2 IID
+N(0, 1), E|Z1 - Z2| = sqrt(2) * sqrt(2/pi) = 2/sqrt(pi). Hence E[max of 2] = 1/sqrt(pi) = 0.5641895835.
+The implementation gives 0.5197553443, an error of -0.0444342393 (-7.876 %).
+**Checked by test (closed form, approximation error recorded):**
+`test_expected_max_n2_closed_form_for_exact_maximum_approximation_error_recorded`.
+
+**Numerical reference.** The exact E[max of N IID N(0, 1)] is the integral of
+x * N * phi(x) * Phi(x)^(N-1) dx, evaluated by `scipy.integrate.quad` on [-40, 40]. The density
+N * phi * Phi^(N-1) integrates to 1 (`test_numerical_reference_integrates_a_density`), and the
+N = 2 quadrature reproduces 1/sqrt(pi) to better than 1e-10. Measured (`expected_max_sharpe(N, 1.0)`
+against the quadrature):
+
+| N | exact (quadrature) | `expected_max_sharpe(N, 1)` | difference | relative |
+|---|---|---|---|---|
+| 2 | 0.5641895835 | 0.5197553443 | -0.0444342393 | -7.876 % |
+| 5 | 1.1629644736 | 1.1925940010 | +0.0296295274 | +2.548 % |
+| 10 | 1.5387527308 | 1.5745983013 | +0.0358455705 | +2.3295 % |
+| 50 | 2.2490736294 | 2.2763030934 | +0.0272294640 | +1.211 % |
+| 100 | 2.5075936364 | 2.5306028932 | +0.0230092568 | +0.918 % |
+| 1000 | 3.2414357691 | 3.2551215137 | +0.0136857445 | +0.422 % |
+
+The formula is below the exact maximum at N = 2 and above it for N >= 5. The relative error
+falls as N grows, but it is not small for small N. The test bounds on |relative error| are
+0.080, 0.026, 0.024, 0.0125, 0.0095 and 0.0045 for the six rows
+(`test_expected_max_matches_independent_numerical_reference`). The Monte Carlo means in
+section 3 (same seeded draws) differ from the exact values by 1.0, 0.7, 0.1 and 1.0 Monte Carlo
+standard errors for N = 2, 10, 100 and 1000 (standard errors 0.0058, 0.0041, 0.0030, 0.0025),
+so they do not contradict the quadrature.
+
+**Checked by test (hand cases).**
+- Gaussian moments, denominator sqrt(3): with SR_hat = 2 and T = 4, the PSR denominator is
+  sqrt(1 + 4/2) = sqrt(3) and sqrt(T - 1) = sqrt(3), so z = 2 at benchmark 0 and z = 1 at
+  benchmark 1. PSR = Phi(2) = 0.97725 and Phi(1) = 0.84134 (standard table values, compared to
+  1e-12). (`test_psr_hand_case_gaussian_denominator_sqrt3`)
+- minTRL: SR_hat = 2, benchmark 0, Gaussian, prob = Phi(2): minTRL = 1 + 3 (2/2)^2 = 4, and
+  PSR(T = 4) = prob. (`test_min_track_record_length_hand_case_gives_four`)
+
 ## Summary
 
 | Statement | Status |
 |---|---|
 | Var[SR_hat] asymptotic formula | Proved here (delta method) |
 | PSR form and T-1 convention | Proved here asymptotically; T-1 claimed from book |
-| Expected-max approximation | Claimed from book; scaling by sqrt(V) proved here; accuracy checked by MC |
+| Expected-max approximation | Claimed from book; scaling by sqrt(V) proved here; accuracy checked by MC and by numerical reference (section 6) |
+| Expected max at N = 1 and the N = 2 exact value 1/sqrt(pi) | Proved here; checked by test |
+| Approximation error against exact quadrature | Numerical reference, approximation error measured, not a book value (section 6) |
 | DSR monotone in N | Proved here |
 | minTRL formula | Proved here; formula from literature (not in AFML text) |
+| 0.95 level (DSR threshold, minTRL default) | Convention (not from the book) |
 | PSR = 0.5 at equality, hand values, monotonicity checks | Checked by test |

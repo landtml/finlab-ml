@@ -9,6 +9,8 @@ Implements the efficiency statistics of AFML chapter 14 (section 14.7):
   expected maximum of N IID Normal Sharpe estimates, AFML 14.7.3.
 * :func:`deflated_sharpe_ratio` -- DSR, AFML 14.7.3: PSR evaluated against the
   expected-maximum benchmark instead of a user-chosen SR*.
+* :func:`deflated_sharpe` -- the same DSR, returned with its inputs and SR* as a
+  :class:`DeflatedSharpeResult`.
 * :func:`min_track_record_length` -- minTRL, the smallest T at which PSR reaches
   a given confidence (Bailey and Lopez de Prado 2012; not in the AFML text).
 
@@ -35,6 +37,8 @@ left to the caller (``var_sr`` is an input).
 from __future__ import annotations
 
 import math
+import numbers
+from dataclasses import dataclass
 from typing import Union
 
 import numpy as np
@@ -46,6 +50,8 @@ __all__ = [
     "probabilistic_sharpe_ratio",
     "expected_max_sharpe",
     "deflated_sharpe_ratio",
+    "deflated_sharpe",
+    "DeflatedSharpeResult",
     "min_track_record_length",
 ]
 
@@ -163,10 +169,10 @@ def expected_max_sharpe(n_trials: int, var_sr: float) -> float:
     Parameters
     ----------
     n_trials : int
-        Number of independent trials N (>= 1).
+        Number of independent trials N (integer >= 1).
     var_sr : float
         Cross-trial variance V[{SR_n}] of the (non-annualised) Sharpe ratios.
-        Must be >= 0.
+        Finite and >= 0.
 
     Returns
     -------
@@ -175,21 +181,122 @@ def expected_max_sharpe(n_trials: int, var_sr: float) -> float:
         ``n_trials == 1`` (a single trial involves no selection); the book's
         formula is undefined there.
 
+    Raises
+    ------
+    ValueError
+        If ``n_trials`` is not an integer >= 1 (bool and non-integral values are
+        rejected), or ``var_sr`` is not finite and non-negative.
+
     Notes
     -----
     Approximation of E[max of N IID N(0,1)] from the book (Bailey et al. 2014
-    proof), accurate for N >> 1.
+    proof). It is not exact for small N. Against exact numerical integration
+    (``tests/test_stats.py``, numerical reference) it is 7.9% below the exact
+    maximum at N = 2, 2.5% above at N = 5, and 0.4% above at N = 1000.
     """
-    if n_trials < 1:
-        raise ValueError("n_trials must be >= 1")
-    if var_sr < 0:
-        raise ValueError("var_sr must be non-negative")
+    n_trials = _as_int("n_trials", n_trials, minimum=1)
+    var_sr = _check_var_sr(var_sr)
     if n_trials == 1:
         return 0.0
     n = float(n_trials)
     a = norm.ppf(1.0 - 1.0 / n)
     b = norm.ppf(1.0 - 1.0 / (n * math.e))
     return math.sqrt(var_sr) * ((1.0 - EULER_MASCHERONI) * a + EULER_MASCHERONI * b)
+
+
+@dataclass(frozen=True)
+class DeflatedSharpeResult:
+    """Deflated Sharpe ratio together with the benchmark and inputs it used.
+
+    Returned by :func:`deflated_sharpe`. All fields are scalars.
+
+    Attributes
+    ----------
+    dsr : float
+        Deflated Sharpe ratio: PSR evaluated at ``sr_star``, in [0, 1].
+    sr_hat : float
+        Observed non-annualised Sharpe ratio of the selected trial.
+    sr_star : float
+        Expected maximum Sharpe ratio of ``n_trials`` zero-skill trials.
+    n_trials : int
+        Number of trials N.
+    n_obs : int
+        Number of return observations T of the selected trial.
+    skew : float
+        Skewness of the selected trial's returns.
+    kurt : float
+        (Non-excess) kurtosis of the selected trial's returns.
+    """
+
+    dsr: float
+    sr_hat: float
+    sr_star: float
+    n_trials: int
+    n_obs: int
+    skew: float
+    kurt: float
+
+
+def deflated_sharpe(
+    sr_hat: float,
+    n_trials: int,
+    var_sr: float,
+    n_obs: int,
+    skew: float = 0.0,
+    kurt: float = 3.0,
+) -> DeflatedSharpeResult:
+    """Deflated Sharpe ratio with its benchmark and inputs, AFML 14.7.3.
+
+    Computes the same value as :func:`deflated_sharpe_ratio` and also returns
+    the expected-maximum benchmark ``sr_star``.
+
+    Parameters
+    ----------
+    sr_hat : float
+        Best observed non-annualised Sharpe ratio among the trials. Finite.
+    n_trials : int
+        Number of trials N that were run to select ``sr_hat``. Integer >= 1.
+    var_sr : float
+        Cross-trial variance of the non-annualised Sharpe ratios. Finite, >= 0.
+    n_obs : int
+        Number of return observations T of the selected strategy. Integer >= 2.
+    skew, kurt : float
+        Skewness and (non-excess) kurtosis of the selected strategy's returns.
+        Finite.
+
+    Returns
+    -------
+    DeflatedSharpeResult
+        ``result.dsr`` is the deflated Sharpe ratio.
+
+    Raises
+    ------
+    ValueError
+        If an argument is outside the ranges above, or the PSR variance term is
+        not positive. Bool values are rejected for the counts and the floats.
+
+    Notes
+    -----
+    Integral-valued floats such as ``40.0`` are accepted for ``n_trials`` and
+    ``n_obs``.
+    """
+    n_trials_i = _as_int("n_trials", n_trials, minimum=1)
+    n_obs_i = _as_int("n_obs", n_obs, minimum=2)
+    sr = _as_finite("sr_hat", sr_hat)
+    v = _check_var_sr(var_sr)
+    g3 = _as_finite("skew", skew)
+    g4 = _as_finite("kurt", kurt)
+    sr_star = float(expected_max_sharpe(n_trials_i, v))
+    dsr = probabilistic_sharpe_ratio(sr, sr_star, n_obs_i, g3, g4)
+    return DeflatedSharpeResult(
+        dsr=dsr,
+        sr_hat=sr,
+        sr_star=sr_star,
+        n_trials=n_trials_i,
+        n_obs=n_obs_i,
+        skew=g3,
+        kurt=g4,
+    )
 
 
 def deflated_sharpe_ratio(
@@ -221,11 +328,15 @@ def deflated_sharpe_ratio(
     -------
     float
         Probability that the selected strategy's true SR exceeds the
-        expected maximum of N zero-skill trials. Values above 0.95 are the
-        book's suggested threshold.
+        expected maximum of N zero-skill trials. Values above 0.95 are a
+        common significance convention (not from the book).
+
+    Raises
+    ------
+    ValueError
+        On the same inputs as :func:`deflated_sharpe`.
     """
-    sr_star = expected_max_sharpe(n_trials, var_sr)
-    return probabilistic_sharpe_ratio(sr_hat, sr_star, n_obs, skew, kurt)
+    return deflated_sharpe(sr_hat, n_trials, var_sr, n_obs, skew, kurt).dsr
 
 
 def min_track_record_length(
@@ -253,7 +364,8 @@ def min_track_record_length(
     skew, kurt : float
         Skewness and (non-excess) kurtosis of the returns.
     prob : float, default 0.95
-        Target PSR confidence, in (0, 1).
+        Target PSR confidence, in (0, 1). The default 0.95 is a common
+        convention, not a book value.
 
     Returns
     -------
@@ -284,6 +396,43 @@ def _psr_denominator(sr_hat: float, skew: float, kurt: float) -> float:
             "non-positive PSR variance term; skew/kurtosis incompatible with sr_hat"
         )
     return math.sqrt(inside)
+
+
+def _as_int(name: str, value: object, minimum: int) -> int:
+    """Return ``value`` as an int >= ``minimum``.
+
+    Accepts Python and NumPy integers and integral-valued floats such as 40.0.
+    Rejects bool, non-integral values, NaN and infinities.
+    """
+    if isinstance(value, (bool, np.bool_)) or not isinstance(value, numbers.Real):
+        raise ValueError(f"{name} must be an integer, got {type(value).__name__}")
+    if isinstance(value, numbers.Integral):
+        n = int(value)
+    elif math.isfinite(value) and float(value).is_integer():
+        n = int(float(value))
+    else:
+        raise ValueError(f"{name} must be an integer, got {value!r}")
+    if n < minimum:
+        raise ValueError(f"{name} must be >= {minimum}, got {n}")
+    return n
+
+
+def _as_finite(name: str, value: object) -> float:
+    """Return ``value`` as a finite float; reject bool, non-real and non-finite values."""
+    if isinstance(value, (bool, np.bool_)) or not isinstance(value, numbers.Real):
+        raise ValueError(f"{name} must be a real number, got {type(value).__name__}")
+    x = float(value)
+    if not math.isfinite(x):
+        raise ValueError(f"{name} must be finite, got {x}")
+    return x
+
+
+def _check_var_sr(var_sr: object) -> float:
+    """Return the cross-trial variance as a finite float >= 0."""
+    v = _as_finite("var_sr", var_sr)
+    if v < 0.0:
+        raise ValueError(f"var_sr must be non-negative, got {v}")
+    return v
 
 
 def _as_1d(x: ArrayLike) -> np.ndarray:
