@@ -44,6 +44,7 @@ from __future__ import annotations
 import itertools
 import math
 import numbers
+import warnings
 from dataclasses import dataclass
 from typing import Callable, Optional, Union
 
@@ -133,6 +134,16 @@ def probability_of_backtest_overfitting(
     ``docs/proofs/pbo.md``).
     """
     S = _partition_count(n_partitions)
+    if isinstance(performance_matrix, (pd.DataFrame, pd.Series)) and not (
+        performance_matrix.index.is_monotonic_increasing
+    ):
+        # Rows are used by position, so an unsorted index changes the blocks
+        # without any error. The index is ignored, so only warn.
+        warnings.warn(
+            "performance_matrix index is not increasing: rows are treated as time order, in the row order given",
+            UserWarning,
+            stacklevel=2,
+        )
     mat = _validate(performance_matrix, S)
     T, N = mat.shape
     L = T // S
