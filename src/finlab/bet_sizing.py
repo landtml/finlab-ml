@@ -190,9 +190,11 @@ def limit_price(
     hi = abs(target)
     if hi < lo:
         return float("nan")
+    # At m == 1 the inverse divides by zero; clamp m below 1 so the cap price is finite and low.
+    cap = math.nextafter(1.0, 0.0)
     total = 0.0
     for j in range(lo, hi + 1):
-        m = j / max_position
+        m = min(j / max_position, cap)
         total += forecast - m * math.sqrt(w / (1.0 - m * m))
     return total / (hi - lo + 1)
 
