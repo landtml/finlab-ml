@@ -43,6 +43,13 @@ def test_sharpe_ratio_annualisation_matches_manual() -> None:
     )
 
 
+@pytest.mark.parametrize("value", [0.01, -0.003, 1e-6])
+def test_sharpe_ratio_constant_returns_give_nan_with_warning(value: float) -> None:
+    # Float noise in np.std must not turn a constant series into a huge finite Sharpe.
+    with pytest.warns(UserWarning, match="constant"):
+        assert math.isnan(sharpe_ratio(np.full(10, value)))
+
+
 def test_psr_is_half_when_sr_equals_benchmark() -> None:
     for skew, kurt in [(0.0, 3.0), (-1.2, 6.0), (0.7, 4.5)]:
         for n in (10, 250, 5000):

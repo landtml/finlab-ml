@@ -105,12 +105,18 @@ def sharpe_ratio(
             stacklevel=2,
         )
         return float("nan")
-    sd = float(np.std(x, ddof=1))
     mu = float(np.mean(x))
-    if sd == 0.0:
-        sr = 0.0 if mu == 0.0 else math.copysign(math.inf, mu)
-    else:
-        sr = mu / sd
+    # Constant input still gives a tiny nonzero np.std from float noise, so test the
+    # range against a relative tolerance instead of testing the std for exact zero.
+    if float(np.ptp(x)) <= 1e-12 * max(1.0, abs(mu)):
+        warnings.warn(
+            "sharpe_ratio: returns are constant, so the Sharpe ratio is undefined; returning NaN",
+            UserWarning,
+            stacklevel=2,
+        )
+        return float("nan")
+    sd = float(np.std(x, ddof=1))
+    sr = mu / sd
     return sr * math.sqrt(periods_per_year) if annualize else sr
 
 
