@@ -139,3 +139,60 @@ def test_subprocess_round_trip():
     assert proc.returncode == 0, proc.stderr
     reply = json.loads(proc.stdout.splitlines()[0])
     assert reply["id"] == 7 and not reply["result"]["isError"]
+
+
+def test_non_string_method_is_invalid_request_not_crash():
+    reply = srv.handle_message({"jsonrpc": "2.0", "id": 3, "method": 5})
+    assert reply["id"] == 3 and reply["error"]["code"] == -32600
+
+
+def test_list_params_is_invalid_params_not_crash():
+    reply = srv.handle_message({"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": [1]})
+    assert reply["id"] == 4 and reply["error"]["code"] == -32602
+
+
+def test_list_arguments_reported_as_tool_error():
+    out, err = _call("sharpe_ratio", [1])
+    assert err and "object" in out["error"]
+
+
+def test_stdio_loop_survives_malformed_messages():
+    lines = "\n".join([
+        json.dumps({"jsonrpc": "2.0", "id": 1, "method": 5}),
+        json.dumps({"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": [1]}),
+        json.dumps({"jsonrpc": "2.0", "id": 3, "method": "tools/call",
+                    "params": {"name": "sharpe_ratio", "arguments": [1]}}),
+        "[1, 2]",
+        json.dumps({"jsonrpc": "2.0", "id": 4, "method": "ping"}),
+    ]) + "\n"
+    out = io.StringIO()
+    srv.main(io.StringIO(lines), out)
+    replies = [json.loads(x) for x in out.getvalue().splitlines()]
+    assert [r.get("id") for r in replies] == [1, 2, 3, None, 4]
+    assert replies[0]["error"]["code"] == -32600
+    assert replies[1]["error"]["code"] == -32602
+    assert replies[2]["result"]["isError"]
+    assert replies[3]["error"]["code"] == -32600
+    assert replies[4] == {"jsonrpc": "2.0", "id": 4, "result": {}}
+
+
+def test_stdio_loop_survives_unexpected_exception(monkeypatch):
+    real = srv.handle_message
+
+    def boom_on_method(msg):
+        if msg.get("method") == "boom":
+            raise RuntimeError("boom")
+        return real(msg)
+
+    monkeypatch.setattr(srv, "handle_message", boom_on_method)
+    lines = "\n".join([
+        json.dumps({"jsonrpc": "2.0", "id": 1, "method": "boom"}),
+        json.dumps({"jsonrpc": "2.0", "method": "boom"}),
+        json.dumps({"jsonrpc": "2.0", "id": 2, "method": "ping"}),
+    ]) + "\n"
+    out = io.StringIO()
+    srv.main(io.StringIO(lines), out)
+    replies = [json.loads(x) for x in out.getvalue().splitlines()]
+    assert [r["id"] for r in replies] == [1, 2]
+    assert replies[0]["error"]["code"] == -32603
+    assert replies[1] == {"jsonrpc": "2.0", "id": 2, "result": {}}

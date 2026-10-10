@@ -29,7 +29,7 @@ def _err(req_id: Any, code: int, message: str) -> dict[str, Any]:
 
 def handle_message(msg: dict[str, Any]) -> dict[str, Any] | None:
     """Handle one decoded JSON-RPC message. Returns the reply, or None for notifications."""
-    if not isinstance(msg, dict) or msg.get("jsonrpc") != "2.0" or "method" not in msg:
+    if not isinstance(msg, dict) or msg.get("jsonrpc") != "2.0" or not isinstance(msg.get("method"), str):
         return _err(msg.get("id") if isinstance(msg, dict) else None, -32600, "invalid request")
     method = msg["method"]
     req_id = msg.get("id")
@@ -50,6 +50,8 @@ def handle_message(msg: dict[str, Any]) -> dict[str, Any] | None:
     if method == "tools/list":
         return None if is_notification else _ok(req_id, {"tools": list_tools()})
     if method == "tools/call":
+        if not isinstance(params, dict):
+            return None if is_notification else _err(req_id, -32602, "invalid params: expected an object")
         name = params.get("name")
         result, is_error = call_tool(str(name), params.get("arguments"))
         body = {
@@ -71,7 +73,11 @@ def main(stdin: TextIO = sys.stdin, stdout: TextIO = sys.stdout) -> None:
         except json.JSONDecodeError as exc:
             reply: dict[str, Any] | None = _err(None, -32700, f"parse error: {exc.msg}")
         else:
-            reply = handle_message(msg)
+            try:
+                reply = handle_message(msg)
+            except Exception as exc:  # one bad message must not stop the server
+                is_request = isinstance(msg, dict) and "id" in msg
+                reply = _err(msg.get("id"), -32603, f"internal error: {type(exc).__name__}") if is_request else None
         if reply is not None:
             stdout.write(json.dumps(reply, separators=(",", ":")) + "\n")
             stdout.flush()
