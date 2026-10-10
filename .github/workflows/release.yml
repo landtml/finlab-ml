@@ -1,0 +1,78 @@
+name: Release
+
+# Publishes a release when a commit on main carries a version that has no tag
+# yet. Runs only after CI passes on that commit. See RELEASING.md.
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    env:
+      SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SHA }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Read the version and check for its tag
+        id: version
+        run: |
+          set -euo pipefail
+          version="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if git ls-remote --exit-code --tags origin "refs/tags/v$version" > /dev/null; then
+            echo "v$version is already tagged; nothing to release."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Write the release notes
+        if: steps.version.outputs.release == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          python .github/scripts/release_notes.py "$VERSION" > "$RUNNER_TEMP/notes.md"
+          if ! grep -q "@v$VERSION" README.md; then
+            echo "::warning::README.md does not mention @v$VERSION in its install command"
+          fi
+
+      - name: Build sdist and wheel
+        if: steps.version.outputs.release == 'true'
+        run: |
+          pip install build twine
+          python -m build
+          python -m twine check dist/*
+
+      - name: Tag and publish the release
+        if: steps.version.outputs.release == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh release create "v$VERSION" dist/* \
+            --target "$SHA" \
+            --title "finlab $VERSION" \
+            --notes-file "$RUNNER_TEMP/notes.md"
