@@ -315,3 +315,56 @@ def test_trend_scanning_labels_perfect_uptrend_as_plus_one():
     assert set(out["bin"].dropna()) == {1.0}
     # Floating-point residuals keep SSE tiny but nonzero, so t is huge and finite.
     assert out["t_value"].iloc[0] > 1e6
+
+
+def test_get_bins_side_without_meta_warns_and_is_unchanged():
+    import warnings
+
+    close = _random_walk(200, seed=11, vol=0.02)
+    rng = np.random.default_rng(11)
+    t_events = close.index[np.sort(rng.choice(180, size=30, replace=False))]
+    target = pd.Series(0.02, index=close.index)
+    side = pd.Series(rng.choice([-1.0, 1.0], size=len(t_events)), index=t_events)
+    ev = get_events(close, t_events, (1.0, 1.0), target, 0.0,
+                    vertical_barrier_times=add_vertical_barrier(t_events, close, 8),
+                    side=side)
+    with pytest.warns(UserWarning, match="raw return"):
+        warned = get_bins(ev, close)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        silent = get_bins(ev, close, meta=False)
+    pd.testing.assert_frame_equal(warned, silent)
+    # The bin really is the sign of the raw return, not of the side-adjusted P&L.
+    raw = close.loc[warned.index.map(lambda t: ev.loc[t, "t1"])].to_numpy() / close.loc[warned.index].to_numpy() - 1.0
+    np.testing.assert_array_equal(warned["bin"].to_numpy(), np.sign(raw).astype(int))
+
+
+def test_get_bins_meta_true_does_not_warn():
+    import warnings
+
+    close = _random_walk(200, seed=12, vol=0.02)
+    rng = np.random.default_rng(12)
+    t_events = close.index[np.sort(rng.choice(180, size=30, replace=False))]
+    target = pd.Series(0.02, index=close.index)
+    side = pd.Series(rng.choice([-1.0, 1.0], size=len(t_events)), index=t_events)
+    ev = get_events(close, t_events, (1.0, 1.0), target, 0.0,
+                    vertical_barrier_times=add_vertical_barrier(t_events, close, 8),
+                    side=side)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        get_bins(ev, close, meta=True)
+
+
+def test_get_bins_without_side_column_does_not_warn():
+    import warnings
+
+    close = _random_walk(200, seed=13, vol=0.02)
+    rng = np.random.default_rng(13)
+    t_events = close.index[np.sort(rng.choice(180, size=30, replace=False))]
+    target = pd.Series(0.02, index=close.index)
+    ev = get_events(close, t_events, (1.0, 1.0), target, 0.0,
+                    vertical_barrier_times=add_vertical_barrier(t_events, close, 8))
+    ev = ev.drop(columns=["side"])
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        get_bins(ev, close)

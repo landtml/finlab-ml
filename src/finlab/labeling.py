@@ -28,6 +28,7 @@ the chapter, and the sampling of events (Chapter 2) that produces
 
 from __future__ import annotations
 
+import warnings
 from typing import Sequence
 
 import numpy as np
@@ -393,6 +394,15 @@ def get_bins(events: pd.DataFrame, close: pd.Series, meta: bool = False) -> pd.D
         if "side" not in ev.columns:
             raise ValueError("meta=True requires a 'side' column in events.")
         ret = ret * ev["side"].to_numpy(dtype=float)
+    elif "side" in ev.columns:
+        # Warn only: the label is still sign(raw return), as before.
+        warnings.warn(
+            "get_bins(meta=False) with a 'side' column labels the sign of the raw "
+            "return, not the bet's P&L. Pass meta=True to label whether the side "
+            "was right (meta-labeling).",
+            UserWarning,
+            stacklevel=2,
+        )
     finite = np.isfinite(ret)
     ret = ret[finite]
     index = ev.index[finite]
