@@ -37,11 +37,26 @@ def test_limit_price_is_between_market_and_forecast():
     assert math.isnan(limit_price(10, 10, 105.0, w, 100))
 
 
-@pytest.mark.parametrize("target", [100, -100])
-def test_limit_price_at_cap_is_finite(target):
-    # A target at max_position gives m == 1, where 1 - m^2 == 0 in the inverse.
-    p = limit_price(target, 0, 105.0, 2.0, 100)
-    assert math.isfinite(p)
+@pytest.mark.parametrize(
+    ("current", "target"),
+    [(0, 100), (0, -100), (99, 100), (-99, -100)],
+)
+def test_limit_price_at_cap_is_nan(current, target):
+    # A target at max_position gives m == 1, where the cap term has no finite limit.
+    assert math.isnan(limit_price(target, current, 105.0, 2.0, 100))
+
+
+@pytest.mark.parametrize(
+    ("current", "target", "forecast", "w", "expected"),
+    [
+        (0, 97, 115.0, calibrate_sigmoid_width(10.0, 0.95), 112.36573855883363),
+        (0, 99, 105.0, 2.0, 103.71886638294875),
+        (0, -99, 105.0, 2.0, 103.71886638294875),
+        (-30, 50, 105.0, 2.0, 104.38670427147159),
+    ],
+)
+def test_limit_price_below_cap_unchanged(current, target, forecast, w, expected):
+    assert limit_price(target, current, forecast, w, 100) == pytest.approx(expected, rel=1e-14)
 
 
 def test_two_class_probability_mapping():
