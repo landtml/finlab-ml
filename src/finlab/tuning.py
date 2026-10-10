@@ -113,6 +113,20 @@ def cv_score(
     return float(arr.mean()), float(arr.std(ddof=0))
 
 
+def _improves(mean: float, incumbent: float) -> bool:
+    """Whether ``mean`` should replace the current best score.
+
+    A NaN score never replaces a finite one, since ``x > NaN`` is always False and a
+    leading NaN would otherwise stay best forever. A finite score replaces a NaN one.
+    Ties keep the earlier candidate.
+    """
+    if np.isnan(mean):
+        return False
+    if np.isnan(incumbent):
+        return True
+    return mean > incumbent
+
+
 def _search(
     model_factory: Callable[..., Any],
     candidates: Iterable[dict[str, Any]],
@@ -127,7 +141,7 @@ def _search(
     for params in candidates:
         mean, std = cv_score(model_factory, params, X, y, cv, sample_weight, scoring)
         rows.append({**params, "mean_score": mean, "std_score": std})
-        if best is None or mean > best[0]:
+        if best is None or _improves(mean, best[0]):
             best = (mean, params)
     if best is None:
         raise ValueError("the parameter space is empty.")
