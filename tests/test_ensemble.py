@@ -101,3 +101,22 @@ def test_sample_weight_length_must_match_rows(length):
     bag = SequentialBootstrapBagging(NearestCentroid, n_estimators=2)
     with pytest.raises(ValueError, match="sample_weight.*200"):
         bag.fit(X, y, t1=t1, sample_weight=np.ones(length))
+
+
+def test_failed_fit_leaves_no_partial_ensemble():
+    X, y, t1 = _data()
+    made = []
+
+    def factory():
+        made.append(1)
+        if len(made) == 2:
+            raise RuntimeError("bag 2 failed")
+        return NearestCentroid()
+
+    bag = SequentialBootstrapBagging(factory, n_estimators=4)
+    with pytest.raises(RuntimeError, match="bag 2 failed"):
+        bag.fit(X, y, t1=t1)
+    assert not hasattr(bag, "classes_")
+    assert not hasattr(bag, "estimators_")
+    with pytest.raises(RuntimeError, match="not fitted"):
+        bag.predict(X)

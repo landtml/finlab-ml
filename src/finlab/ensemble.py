@@ -127,18 +127,28 @@ class SequentialBootstrapBagging:
         self.classes_ = np.unique(ya)
         self.estimators_: list[Any] = []
         self.draws_: list[np.ndarray] = []
-        for _ in range(self.n_estimators):
-            seed_b = int(rng.integers(0, 2**31 - 1))
-            if self.sequential:
-                draws = sequential_bootstrap(ind, n_samples=size, seed=seed_b)
-            else:
-                draws = np.random.default_rng(seed_b).integers(0, n, size=size)
-            est = self.base_factory()
-            w_b = None if w is None else w[draws]
-            est.fit(Xa[draws], ya[draws], sample_weight=w_b)
-            self.estimators_.append(est)
-            self.draws_.append(draws)
+        try:
+            for _ in range(self.n_estimators):
+                seed_b = int(rng.integers(0, 2**31 - 1))
+                if self.sequential:
+                    draws = sequential_bootstrap(ind, n_samples=size, seed=seed_b)
+                else:
+                    draws = np.random.default_rng(seed_b).integers(0, n, size=size)
+                est = self.base_factory()
+                w_b = None if w is None else w[draws]
+                est.fit(Xa[draws], ya[draws], sample_weight=w_b)
+                self.estimators_.append(est)
+                self.draws_.append(draws)
+        except Exception:
+            # A half-built ensemble would let predict run silently on a subset of bags.
+            for name in ("classes_", "estimators_", "draws_"):
+                self.__dict__.pop(name, None)
+            raise
         return self
+
+    def _check_fitted(self) -> None:
+        if not getattr(self, "estimators_", None):
+            raise RuntimeError("SequentialBootstrapBagging is not fitted; call fit first.")
 
     def predict_proba(self, X: npt.ArrayLike | pd.DataFrame) -> np.ndarray:
         """Average the bags' class probabilities; columns follow ``classes_``.
@@ -147,6 +157,7 @@ class SequentialBootstrapBagging:
         whose ``predict_proba`` columns follow their own ``classes_`` attribute
         are re-aligned to ``self.classes_``.
         """
+        self._check_fitted()
         Xa = X.to_numpy() if isinstance(X, pd.DataFrame) else np.asarray(X)
         total = np.zeros((Xa.shape[0], self.classes_.shape[0]))
         for est in self.estimators_:
@@ -160,6 +171,7 @@ class SequentialBootstrapBagging:
 
     def predict(self, X: npt.ArrayLike | pd.DataFrame) -> np.ndarray:
         """Predict by averaged probability if available, else by majority vote."""
+        self._check_fitted()
         if all(hasattr(e, "predict_proba") for e in self.estimators_):
             return self.classes_[self.predict_proba(X).argmax(axis=1)]
         Xa = X.to_numpy() if isinstance(X, pd.DataFrame) else np.asarray(X)
