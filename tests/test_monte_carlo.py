@@ -185,6 +185,7 @@ def naive_sample_avg_uniqueness(m, draws):
         vals.append(np.mean(1.0 / c[rows]))
     return float(np.mean(vals))
 
+
 @pytest.mark.parametrize("seed", range(4))
 def test_random_t1_index_is_unique_sorted_and_within_grid(seed):
     n_bars, n_obs, max_h = 40, 15, 6
@@ -228,8 +229,11 @@ def test_random_t1_matches_snippet_4_7_loop_with_same_draws(seed):
 
 
 def test_random_t1_can_merge_repeated_starts():
-    # 40 draws on 5 bars must repeat some start, so fewer than 5 labels can remain.
-    assert len(random_t1(40, 5, 4, seed=0)) <= 5
+    # Redraw the starts exactly as random_t1 does for seed 0. The 40 draws on 5 bars
+    # repeat starts, and the label count must equal the number of distinct starts.
+    starts = np.random.default_rng(0).integers(0, 5, size=40)
+    assert len(set(starts.tolist())) < 40
+    assert len(random_t1(40, 5, 4, seed=0)) == len(set(starts.tolist()))
 
 
 def test_random_t1_same_seed_gives_same_series():
@@ -245,11 +249,18 @@ def test_random_t1_generator_and_int_seed_agree():
 
 
 @pytest.mark.parametrize(
-    "n_obs,n_bars,max_h",
-    [(0, 10, 3), (3, 0, 3), (3, 10, 1), (3, 10, 0), (2.5, 10, 3), (3, True, 3)],
+    "n_obs,n_bars,max_h,match",
+    [
+        (0, 10, 3, "at least 1"),
+        (3, 0, 3, "at least 1"),
+        (3, 10, 1, "max_h must be at least 2"),
+        (3, 10, 0, "max_h must be at least 2"),
+        (2.5, 10, 3, "must be integers"),
+        (3, True, 3, "must be integers"),
+    ],
 )
-def test_random_t1_rejects_bad_arguments(n_obs, n_bars, max_h):
-    with pytest.raises(ValueError):
+def test_random_t1_rejects_bad_arguments(n_obs, n_bars, max_h, match):
+    with pytest.raises(ValueError, match=match):
         random_t1(n_obs, n_bars, max_h, seed=0)
 
 

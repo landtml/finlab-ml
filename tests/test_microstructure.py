@@ -173,10 +173,13 @@ def test_roll_matches_naive(seed: int) -> None:
 
 def test_roll_recovers_spread_from_bid_ask_bounce() -> None:
     # p_t = m_t + b_t * c with m a random walk: Roll should estimate 2c.
+    # The bounce must dominate the walk's increments. With c = 0.05 and increment sd 0.5
+    # the relative error is about 11% per seed, so a 5% check passes by luck. With
+    # c = 0.5 and increment sd 0.05 it is about 0.2%, and the 5% check is meaningful.
     rng = np.random.default_rng(7)
     T = 200_000
-    c = 0.05
-    m = np.cumsum(rng.normal(scale=0.5, size=T))
+    c = 0.5
+    m = np.cumsum(rng.normal(scale=0.05, size=T))
     b = rng.choice([-1.0, 1.0], size=T)
     p = m + b * c
     assert roll_measure(p) == pytest.approx(2 * c, rel=0.05)
@@ -228,6 +231,9 @@ def test_corwin_schultz_series_roundtrip() -> None:
     h, lo = _random_hl(rng, 30)
     out = corwin_schultz_spread(pd.Series(h, index=idx), pd.Series(lo, index=idx))
     assert isinstance(out, pd.Series) and out.index.equals(idx)
+    ref = np.array(naive_corwin_schultz(h.tolist(), lo.tolist(), 1))
+    assert np.isnan(out.iloc[0])
+    np.testing.assert_allclose(out.to_numpy()[1:], ref[1:], rtol=1e-10, atol=1e-14)
 
 
 @pytest.mark.parametrize("seed", range(3))
@@ -242,15 +248,20 @@ def test_becker_parkinson_matches_naive(seed: int) -> None:
 
 def test_becker_parkinson_recovers_volatility_on_gbm() -> None:
     # Book formula, checked by simulation (see docs/proofs/microstructure.md).
+    # One GBM path is cut into consecutive bars, so each bar starts where the last one
+    # ended, which the two-bar term of the estimator assumes.
     rng = np.random.default_rng(0)
     sigma = 0.02
     nb, steps = 20_000, 400
-    inc = rng.normal(0.0, sigma / math.sqrt(steps), size=(nb, steps))
-    path = np.concatenate([np.zeros((nb, 1)), np.cumsum(inc, axis=1)], axis=1)
-    hi = np.exp(path.max(axis=1))
-    lo = np.exp(path.min(axis=1))
+    inc = rng.normal(0.0, sigma / math.sqrt(steps), size=nb * steps)
+    path = np.concatenate([[0.0], np.cumsum(inc)])
+    bars = np.stack([path[k * steps : (k + 1) * steps + 1] for k in range(nb)])
+    hi = np.exp(bars.max(axis=1))
+    lo = np.exp(bars.min(axis=1))
     est = becker_parkinson_volatility(hi, lo, sl=1)
-    # Discrete monitoring of 400 steps biases the range slightly low.
+    # At 400 monitoring steps per bar the mean is about 5% low (0.01893 at seed 0,
+    # measured). Finer monitoring shrinks the gap but does not remove it, so the 10%
+    # tolerance covers the bias.
     assert np.nanmean(est) == pytest.approx(sigma, rel=0.10)
 
 
@@ -283,10 +294,15 @@ def test_kyle_lambda_noisy_matches_lstsq(seed: int) -> None:
     assert lam == pytest.approx(lam_ref, rel=1e-10)
     assert abs(lam - 0.8) < 0.05
     assert abs(t) > 10  # the slope is well identified
+    # Independent t-value: OLS through the origin, standard error with n - 1 degrees of freedom.
+    xr, yr = signed[1:], np.diff(prices)
+    resid = yr - lam_ref * xr
+    se_ref = math.sqrt(float(resid @ resid) / (len(xr) - 1) / float(xr @ xr))
+    assert t == pytest.approx(lam_ref / se_ref, rel=1e-10)
 
 
 def test_kyle_lambda_rejects_zero_signed_volume() -> None:
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="identically zero"):
         kyle_lambda(np.arange(5.0), np.zeros(5))
 
 
@@ -302,7 +318,7 @@ def test_amihud_regression_and_ratio_match_naive() -> None:
 
 
 def test_amihud_rejects_bad_method() -> None:
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="unknown method"):
         amihud_illiquidity(np.ones(3), np.ones(3), method="nope")
 
 
@@ -315,6 +331,9 @@ def test_bvc_buy_fraction_is_half_at_zero_change_and_monotone() -> None:
     assert bf[1] == pytest.approx(0.5)
     assert bf[2] > 0.5 > bf[3]
     assert np.all((bf >= 0) & (bf <= 1))
+    # Exact values: buy_frac = Phi(dp / sigma) with dp = (0, 1, -2) and sigma = 1.
+    assert bf[2] == pytest.approx(0.5 * (1.0 + math.erf(1.0 / SQRT2)), rel=1e-12)
+    assert bf[3] == pytest.approx(0.5 * (1.0 + math.erf(-2.0 / SQRT2)), rel=1e-12)
 
 
 @pytest.mark.parametrize("seed", range(3))

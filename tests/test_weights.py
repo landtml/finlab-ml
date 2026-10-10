@@ -246,23 +246,24 @@ def test_sample_average_uniqueness_dataframe_and_array_agree():
 
 def test_sample_average_uniqueness_rejects_bad_input():
     m = np.array([[1, 0], [1, 1], [0, 1]], dtype=float)
-    with pytest.raises(ValueError):
+    # Each match pins the check that fires, so a ValueError from another cause fails.
+    with pytest.raises(ValueError, match="two-dimensional"):
         sample_average_uniqueness(np.ones(4), [0])  # not 2-D
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="two-dimensional"):
         sample_average_uniqueness(np.ones((2, 2, 2)), [0])
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="outside the columns"):
         sample_average_uniqueness(m, [2])  # out of range
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="outside the columns"):
         sample_average_uniqueness(m, [0, -1])  # negative positions are not wrapped
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="must not be empty"):
         sample_average_uniqueness(m, np.array([], dtype=np.int64))  # empty draws
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="must not be empty"):
         sample_average_uniqueness(m, [])
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="one-dimensional"):
         sample_average_uniqueness(m, np.array([[0, 1]]))  # draws not 1-D
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="integer column positions"):
         sample_average_uniqueness(m, np.array([0.0, 1.0]))  # not integer positions
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="covers no bar"):
         sample_average_uniqueness(np.zeros((3, 2)), [0])  # drawn label has no bar
 
 
@@ -347,6 +348,11 @@ def test_time_decay_properties():
     neg = time_decay(w, c_last=-0.5)
     assert neg.iloc[-1] == pytest.approx(1.0)
     assert neg.iloc[0] == 0.0  # oldest part is clipped to zero for c < 0
+    # Endpoints alone do not fix the slope, so check every point against the documented
+    # formula for c < 0: d_i = max(0, a + b C_i), with b = 1 / ((1 + c) T) and a = 1 - b T.
+    slope = 1.0 / ((1.0 - 0.5) * total)
+    expected_neg = np.maximum(0.0, 1.0 - slope * total + slope * cum)
+    np.testing.assert_allclose(neg.to_numpy(), expected_neg, rtol=1e-12, atol=1e-15)
 
 
 def test_time_decay_respects_original_order():
@@ -358,7 +364,7 @@ def test_time_decay_respects_original_order():
 
 
 def test_time_decay_rejects_bad_c():
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="c_last must lie in"):
         time_decay(np.ones(3), c_last=1.5)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="c_last must lie in"):
         time_decay(np.ones(3), c_last=-1.0)
