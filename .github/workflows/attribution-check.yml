@@ -26,8 +26,9 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
           base="$BASE_SHA"
-          # A push that creates a branch sends an all-zeros "before" SHA.
-          if [[ "$base" =~ ^0+$ ]]; then
+          # A push that creates a branch sends an all-zeros "before" SHA, and a
+          # force-push leaves the old "before" SHA unreachable from HEAD.
+          if [[ "$base" =~ ^0+$ ]] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
             base="$(git merge-base origin/main HEAD)"
           fi
           python tools/check_attribution.py --commits "$base..HEAD"
