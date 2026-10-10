@@ -27,6 +27,8 @@ claim as proved here, checked by test, measured, or claimed from the book only.
 ```bash
 pip install -e .            # core library
 pip install -e ".[dev]"     # + pytest and ruff, to run the test suite and lint
+pip install -e ".[plot]"    # + plotly, for the figures in finlab.plot
+pip install -e ".[notebooks]"  # + Jupyter tooling, to run the notebooks in examples/
 pytest                      # run the suite
 ```
 
@@ -97,7 +99,9 @@ tools with compact JSON output. See [`docs/AGENTS.md`](docs/AGENTS.md).
 | `finlab.tuning` | 9 | grid and randomized search scored by purged CV |
 | `finlab.bet_sizing` | 10 | probability and sigmoid bet sizing, target positions, limit prices, discretisation |
 | `finlab.pbo` | 11 | probability of backtest overfitting by CSCV |
+| `finlab.trials` | 11, 14 | trial registry (`TrialRegistry`) that feeds PBO and deflated Sharpe the number of trials and the performance matrix |
 | `finlab.stats` | 14 | Sharpe, probabilistic and deflated Sharpe, minimum track record length |
+| `finlab.plot` | optional | plotly figures for PBO, deflated Sharpe and the Monte Carlo experiment (needs the `plot` extra) |
 | `finlab.hrp` | 16 | hierarchical risk parity |
 | `finlab.structural_breaks` | 17 | CUSUM tests, Chu-Stinchcombe-White, SADF |
 | `finlab.entropy` | 18 | plug-in, Lempel-Ziv and Kontoyiannis entropy; encoders |
