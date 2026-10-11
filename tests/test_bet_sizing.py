@@ -186,6 +186,29 @@ def test_average_active_signals_nan_signal_only_poisons_its_active_span() -> Non
     assert got[4] == pytest.approx(1.0 / 3.0)  # events 2, 3 and 4 remain, with mean 1/3
 
 
+def test_average_active_signals_inf_signal_only_affects_its_active_span() -> None:
+    idx = pd.date_range("2024-01-01", periods=5, freq="D")
+    signals = pd.Series([np.inf, 1.0, 1.0, 1.0, 1.0], index=idx)
+    t1 = pd.Series(idx[[0, 2, 3, 4, 4]], index=idx)
+    assert average_active_signals(signals, t1).tolist() == [np.inf, 1.0, 1.0, 1.0, 1.0]
+
+
+def test_average_active_signals_negative_inf_signal_only_affects_its_active_span() -> None:
+    idx = pd.date_range("2024-01-01", periods=5, freq="D")
+    signals = pd.Series([-np.inf, 0.0, 1.0, 0.0, 0.0], index=idx)
+    t1 = pd.Series(idx[[0, 2, 4, 3, 4]], index=idx)
+    assert average_active_signals(signals, t1).tolist() == [-np.inf, 0.0, 0.5, 0.5, 0.5]
+
+
+def test_average_active_signals_opposite_infs_active_together_is_nan() -> None:
+    idx = pd.date_range("2024-01-01", periods=3, freq="D")
+    signals = pd.Series([np.inf, -np.inf, 1.0], index=idx)
+    t1 = pd.Series(idx[[2, 2, 2]], index=idx)
+    got = average_active_signals(signals, t1).to_numpy()
+    assert got[0] == np.inf  # only the +inf event is active at 0
+    assert np.isnan(got[1:]).all()  # both infinities are active at 1 and 2
+
+
 def test_average_active_signals_rejects_nat_end_times() -> None:
     idx = pd.date_range("2024-01-01", periods=5, freq="D")
     signals = pd.Series([1.0, 1.0, 1.0, -1.0, 1.0], index=idx)
