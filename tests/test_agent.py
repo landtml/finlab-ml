@@ -339,3 +339,9 @@ def test_tools_call_without_string_name_says_missing_tool_name(params):
 def test_cpcv_rejects_non_positive_n_samples():
     out, err = _call("cpcv_split_summary", {"n_samples": -5, "n_groups": 6, "n_test_groups": 2})
     assert err and "n_samples must be a positive integer, got -5" in out["error"]
+
+
+def test_cpcv_rejects_negative_horizon():
+    out, err = _call("cpcv_split_summary",
+                     {"n_samples": 120, "n_groups": 6, "n_test_groups": 2, "horizon": -1})
+    assert err and "'horizon'" in out["error"]
