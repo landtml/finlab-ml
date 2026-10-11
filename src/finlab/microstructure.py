@@ -31,6 +31,7 @@ rolling windows are re-derived here and checked against a naive formula).
 from __future__ import annotations
 
 import math
+import numbers
 from typing import Union
 
 import numpy as np
@@ -637,6 +638,8 @@ def vpin(
             raise ValueError(f"{name} must contain only finite values.")
     if bucket_volume <= 0.0:
         raise ValueError("bucket_volume must be positive")
+    if not isinstance(n_window, numbers.Integral):
+        raise ValueError("n_window must be an integer")
     if n_window < 1:
         raise ValueError("n_window must be >= 1")
     total = float(v.sum())
