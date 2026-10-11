@@ -324,16 +324,13 @@ def average_active_signals(
 def discretize_signal(signal: npt.ArrayLike, step: float) -> FloatArray:
     """Round bet sizes to multiples of ``step`` to limit overtrading [10.5].
 
-    ``m* = round(m / step) * step``. ``step`` must be in ``(0, 1]``.
+    ``m* = round(m / step) * step``. ``step`` must be in ``(0, 1]``, and every
+    signal must be finite and lie in ``[-1, 1]``; otherwise ``ValueError`` is raised.
     """
     if not 0.0 < step <= 1.0:
         raise ValueError(f"step must be in (0, 1], got {step!r}.")
     s = np.asarray(signal, dtype=np.float64)
-    if np.isinf(s).any():
-        # Infinite bet sizes survive rounding as infinite targets; flag them instead of passing them on.
-        warnings.warn(
-            "discretize_signal: non-finite (inf) signal element, output contains inf",
-            UserWarning,
-            stacklevel=2,
-        )
+    if not np.all(np.isfinite(s) & (np.abs(s) <= 1.0)):
+        # Bet sizes live in [-1, 1]; values outside it would pass through as oversized targets.
+        raise ValueError("discretize_signal: signal values must be finite and lie in [-1, 1].")
     return np.round(s / step) * step
