@@ -164,6 +164,13 @@ def test_min_track_record_length_rejects_non_finite_sr_hat(bad_sr_hat: float) ->
         min_track_record_length(bad_sr_hat, 0.0, 0.0, 3.0, 0.95)
 
 
+@pytest.mark.parametrize("bad_n_obs", [float("nan"), float("inf")])
+def test_probabilistic_sharpe_ratio_rejects_non_finite_n_obs(bad_n_obs: float) -> None:
+    # NaN passed the n_obs < 2 check and inf returned 1.0 with no warning.
+    with pytest.raises(ValueError, match="n_obs"):
+        probabilistic_sharpe_ratio(0.1, 0.0, bad_n_obs)
+
+
 @pytest.mark.parametrize("bad_sr_hat", [float("nan"), float("inf")])
 def test_probabilistic_sharpe_ratio_rejects_non_finite_sr_hat(bad_sr_hat: float) -> None:
     with pytest.raises(ValueError, match="sr_hat must be finite"):
