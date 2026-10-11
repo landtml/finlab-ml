@@ -203,7 +203,8 @@ def limit_price(
     to ``target``. ``L(f, w, m) = f - m sqrt(w / (1 - m^2))`` inverts the sigmoid in
     the market price. Returns ``nan`` when ``target == current`` (no order) and when
     ``abs(target) == max_position`` (the cap term has no finite limit). Raises
-    ``ValueError`` when ``abs(target)`` or ``abs(current)`` exceeds ``max_position``.
+    ``ValueError`` when ``abs(target)`` or ``abs(current)`` exceeds ``max_position``,
+    or when ``w`` is negative or not finite.
 
     Notes
     -----
@@ -216,6 +217,9 @@ def limit_price(
         raise ValueError(f"target {target!r} exceeds max_position {max_position!r}.")
     if abs(current) > max_position:
         raise ValueError(f"current {current!r} exceeds max_position {max_position!r}.")
+    if w < 0 or not math.isfinite(w):
+        # A negative width has no square root; an infinite one gives an infinite, non-price limit.
+        raise ValueError(f"w must be > 0 and finite, got {w!r}.")
     if target == current:
         return float("nan")
     if abs(target) == max_position:

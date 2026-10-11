@@ -41,6 +41,12 @@ def test_calibrate_sigmoid_width_rejects_negative_x():
     assert calibrate_sigmoid_width(10.0, 0.95) == pytest.approx(10.8033, abs=1e-4)
 
 
+@pytest.mark.parametrize("bad_w", [-1.0, np.inf, -np.inf, np.nan])
+def test_limit_price_rejects_invalid_width(bad_w):
+    with pytest.raises(ValueError, match="w must be"):
+        limit_price(3, 0, 10.0, bad_w, 10)
+
+
 def test_book_limit_price():
     # AFML 10.6: order of size 97 from flat with f=115, p=100 is priced below 112.3657.
     w = calibrate_sigmoid_width(10.0, 0.95)
