@@ -499,8 +499,8 @@ def bulk_volume_classification(
 
     Notes
     -----
-    This is the classifier of Easley, Lopez de Prado and O'Hara (2012), not
-    part of AFML's text. The book names the tick rule and Lee-Ready as
+    This is the classifier of Easley, Lopez de Prado and O'Hara (2012), and it
+    lies outside AFML's text. The book names the tick rule and Lee-Ready as
     alternatives. Under this classifier, E[buy_frac] = 1/2 when price
     changes are symmetric about zero.
 
