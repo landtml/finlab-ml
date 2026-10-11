@@ -52,11 +52,16 @@ def test_limit_price_at_cap_is_nan(current, target):
         (0, 97, 115.0, calibrate_sigmoid_width(10.0, 0.95), 112.36573855883363),
         (0, 99, 105.0, 2.0, 103.71886638294875),
         (0, -99, 105.0, 2.0, 106.28113361705125),  # mirror of (0, 99) about the forecast
-        (-30, 50, 105.0, 2.0, 104.38670427147159),
     ],
 )
 def test_limit_price_below_cap_unchanged(current, target, forecast, w, expected):
     assert limit_price(target, current, forecast, w, 100) == pytest.approx(expected, rel=1e-14)
+
+
+def test_limit_price_crossing_zero_averages_all_eighty_fills():
+    # Order from -30 to 50 fills positions -29..50; the average is over those 80 signed positions.
+    expected = sum(105.0 - (p / 100) * math.sqrt(2.0 / (1 - (p / 100) ** 2)) for p in range(-29, 51)) / 80
+    assert limit_price(50, -30, 105.0, 2.0, 100) == pytest.approx(expected, rel=1e-14)
 
 
 def test_limit_price_short_target_is_mirror_of_long():
@@ -76,6 +81,47 @@ def test_limit_price_reduction_prices_the_levels_crossed(reduce_args, fill_args)
     reduced = limit_price(*reduce_args, 10.0, 1.0, 10)
     assert math.isfinite(reduced)
     assert reduced == pytest.approx(limit_price(*fill_args, 10.0, 1.0, 10), rel=1e-14)
+
+
+@pytest.mark.parametrize(
+    ("target", "current", "expected"),
+    [(1, -10, 10.6055), (-1, 2, 10.0), (-2, 3, 10.0)],
+)
+def test_limit_price_averages_fills_across_zero(target, current, expected):
+    # Each unit fill is priced at the signed position after it, so a flip averages over
+    # |target - current| fills, not over the absolute levels between them.
+    assert limit_price(target, current, 10.0, 1.0, 10) == pytest.approx(expected, abs=1e-4)
+
+
+@pytest.mark.parametrize(
+    ("target", "current", "expected"),
+    [
+        (1, 0, 9.899496218474079),
+        (5, 0, 9.673420114512794),
+        (-5, 0, 10.326579885487206),
+        (9, 0, 9.248758841730664),
+        (3, 1, 9.740695201875747),
+        (7, 2, 9.388306488100442),
+        (-3, -1, 10.259304798124253),
+        (-7, -2, 10.611693511899558),
+        (2, 0, 9.847686036621074),
+        (0, 3, 9.898457357747382),
+        (0, -3, 10.101542642252618),
+        (0, 5, 9.788890168350719),
+        (4, 1, 9.681651541093169),
+        (1, 4, 9.793628874075191),
+        (-6, -2, 10.519567875169546),
+        (-2, -6, 10.383098911477529),
+        (9, 4, 8.858875746764475),
+    ],
+)
+def test_limit_price_same_sign_and_flat_values_unchanged(target, current, expected):
+    assert limit_price(target, current, 10.0, 1.0, 10) == pytest.approx(expected, rel=1e-14)
+
+
+@pytest.mark.parametrize(("target", "current"), [(0, 0), (8, 8), (-8, -8)])
+def test_limit_price_no_order_is_nan(target, current):
+    assert math.isnan(limit_price(target, current, 10.0, 1.0, 10))
 
 
 @pytest.mark.parametrize(("target", "current", "max_position"), [(101, 0, 100), (-101, 0, 100), (2, 5, 3)])

@@ -190,10 +190,9 @@ def limit_price(
     """Breakeven limit price for moving from ``current`` to ``target`` [10.6].
 
     Implements the book's formula
-    ``p_bar = (1/|target - current|) sum_j L(f, w, j / Q)`` over
-    ``j`` runs over the absolute fill levels between ``|current + sgn(target - current)|``
-    and ``|target|`` (in either order), and ``m = +/- j / Q`` carries the sign of the
-    traded position. ``L(f, w, m) = f - m sqrt(w / (1 - m^2))`` inverts the sigmoid in
+    ``p_bar = (1/|target - current|) sum_p L(f, w, p / Q)`` where ``p`` runs over
+    the signed position after each unit fill, from ``current + sgn(target - current)``
+    to ``target``. ``L(f, w, m) = f - m sqrt(w / (1 - m^2))`` inverts the sigmoid in
     the market price. Returns ``nan`` when ``target == current`` (no order) and when
     ``abs(target) == max_position`` (the cap term has no finite limit). Raises
     ``ValueError`` when ``abs(target)`` or ``abs(current)`` exceeds ``max_position``.
@@ -214,15 +213,16 @@ def limit_price(
     if abs(target) == max_position:
         return float("nan")  # the cap term m == 1 has no finite limit price
     step = 1 if target > current else -1
-    # Fill levels lie between |current + step| and |target|, in whichever direction the order runs.
-    lo, hi = sorted((abs(current + step), abs(target)))
-    # Levels carry the sign of the position being traded; a flat target takes the current side.
-    side = 1 if (target > 0 or (target == 0 and current > 0)) else -1
+    # Each unit fill is priced at the signed position it reaches, so an order that crosses zero
+    # averages over |target - current| fills on both sides of zero.
+    n_fills = abs(target - current)
     total = 0.0
-    for j in range(lo, hi + 1):
-        m = side * j / max_position
+    position = current
+    for _ in range(n_fills):
+        position += step
+        m = position / max_position
         total += forecast - m * math.sqrt(w / (1.0 - m * m))
-    return total / (hi - lo + 1)
+    return total / n_fills
 
 
 def average_active_signals(
