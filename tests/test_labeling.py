@@ -483,3 +483,11 @@ def test_get_daily_vol_interior_nan_after_listing_still_raises():
     c.iloc[150] = np.nan
     with pytest.raises(ValueError, match="finite"):
         get_daily_vol(c)
+
+
+def test_get_daily_vol_duplicate_timestamps_raise_clear_error():
+    idx = pd.bdate_range("2024-01-01", periods=30)
+    s = pd.Series(np.linspace(100.0, 110.0, 30), index=idx)
+    dup = pd.concat([s, s.iloc[-3:]]).sort_index(kind="stable")
+    with pytest.raises(ValueError, match="duplicate timestamps"):
+        get_daily_vol(dup)
