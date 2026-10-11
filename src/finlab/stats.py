@@ -86,7 +86,9 @@ def sharpe_ratio(
     -------
     float
         ``mean / std(ddof=1)``, multiplied by ``sqrt(periods_per_year)`` when
-        ``annualize`` is True. NaN if fewer than two observations remain.
+        ``annualize`` is True. NaN if fewer than two observations remain. An
+        all-zero series gives 0.0; any other constant series gives NaN with a
+        warning.
 
     Notes
     -----
@@ -433,6 +435,9 @@ def min_track_record_length(
 
 def _psr_denominator(sr_hat: float, skew: float, kurt: float) -> float:
     """Return sqrt(1 - skew*SR + (kurt-1)/4 * SR^2), raising if non-positive."""
+    # Checked first: an infinite SR would otherwise fail below with a message about skew and kurtosis.
+    if not math.isfinite(sr_hat):
+        raise ValueError(f"sr_hat must be finite, got {sr_hat!r}")
     inside = 1.0 - skew * sr_hat + (kurt - 1.0) / 4.0 * sr_hat * sr_hat
     if not inside > 0.0:
         raise ValueError(

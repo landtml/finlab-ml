@@ -190,10 +190,9 @@ def limit_price(
     """Breakeven limit price for moving from ``current`` to ``target`` [10.6].
 
     Implements the book's formula
-    ``p_bar = (1/|target - current|) sum_j L(f, w, j / Q)`` over
-    ``j`` runs over the absolute fill levels between ``|current + sgn(target - current)|``
-    and ``|target|`` (in either order), and ``m = +/- j / Q`` carries the sign of the
-    traded position. ``L(f, w, m) = f - m sqrt(w / (1 - m^2))`` inverts the sigmoid in
+    ``p_bar = (1/|target - current|) sum_p L(f, w, p / Q)`` where ``p`` runs over
+    the signed position after each unit fill, from ``current + sgn(target - current)``
+    to ``target``. ``L(f, w, m) = f - m sqrt(w / (1 - m^2))`` inverts the sigmoid in
     the market price. Returns ``nan`` when ``target == current`` (no order) and when
     ``abs(target) == max_position`` (the cap term has no finite limit). Raises
     ``ValueError`` when ``abs(target)`` or ``abs(current)`` exceeds ``max_position``.
@@ -214,15 +213,16 @@ def limit_price(
     if abs(target) == max_position:
         return float("nan")  # the cap term m == 1 has no finite limit price
     step = 1 if target > current else -1
-    # Fill levels lie between |current + step| and |target|, in whichever direction the order runs.
-    lo, hi = sorted((abs(current + step), abs(target)))
-    # Levels carry the sign of the position being traded; a flat target takes the current side.
-    side = 1 if (target > 0 or (target == 0 and current > 0)) else -1
+    # Each unit fill is priced at the signed position it reaches, so an order that crosses zero
+    # averages over |target - current| fills on both sides of zero.
+    n_fills = abs(target - current)
     total = 0.0
-    for j in range(lo, hi + 1):
-        m = side * j / max_position
+    position = current
+    for _ in range(n_fills):
+        position += step
+        m = position / max_position
         total += forecast - m * math.sqrt(w / (1.0 - m * m))
-    return total / (hi - lo + 1)
+    return total / n_fills
 
 
 def average_active_signals(
@@ -245,8 +245,13 @@ def average_active_signals(
     -------
     pd.Series
         Mean of the signals of active events at each timestamp; ``0`` where no
-        event is active. A timestamp where a NaN-signal event is active is NaN;
-        NaN signals are otherwise ignored in the mean.
+        event is active. A timestamp where a NaN signal is active is NaN; a ``+inf``
+        (``-inf``) signal makes it ``+inf`` (``-inf``), or NaN when both are active.
+
+    Raises
+    ------
+    ValueError
+        If ``t1`` contains NaT, or ``signals`` and ``t1`` have different indexes.
 
     Notes
     -----
@@ -271,26 +276,34 @@ def average_active_signals(
     n = len(grid)
     total = np.zeros(n + 1)
     count = np.zeros(n + 1)
-    nan_active = np.zeros(n + 1)
     vals = signals.to_numpy(dtype=np.float64)[valid]
     s = start[valid]
     e = end[valid]
-    # NaN signals are left out of the sums and tracked separately, so they do not spread past their span.
+    # Non-finite signals are left out of the sums and tracked separately, so they do not spread past their span.
     is_nan = np.isnan(vals)
-    clean = np.where(is_nan, 0.0, vals)
-    present = (~is_nan).astype(np.float64)
+    is_pinf = np.isposinf(vals)
+    is_ninf = np.isneginf(vals)
+    special = is_nan | is_pinf | is_ninf
+    clean = np.where(special, 0.0, vals)
+    present = (~special).astype(np.float64)
     np.add.at(total, s, clean)
     np.add.at(total, e + 1, -clean)
     np.add.at(count, s, present)
     np.add.at(count, e + 1, -present)
-    np.add.at(nan_active, s, is_nan.astype(np.float64))
-    np.add.at(nan_active, e + 1, -is_nan.astype(np.float64))
+    flags = {}
+    for name, mask in (("nan", is_nan), ("pinf", is_pinf), ("ninf", is_ninf)):
+        flag = np.zeros(n + 1)
+        np.add.at(flag, s, mask.astype(np.float64))
+        np.add.at(flag, e + 1, -mask.astype(np.float64))
+        flags[name] = np.cumsum(flag)[:n] > 0
     total = np.cumsum(total)[:n]
     count = np.cumsum(count)[:n]
-    nan_active = np.cumsum(nan_active)[:n]
     with np.errstate(divide="ignore", invalid="ignore"):
         avg = np.where(count > 0, total / np.maximum(count, 1), 0.0)
-    avg = np.where(nan_active > 0, np.nan, avg)
+    avg = np.where(flags["pinf"], np.inf, avg)
+    avg = np.where(flags["ninf"], -np.inf, avg)
+    avg = np.where(flags["pinf"] & flags["ninf"], np.nan, avg)
+    avg = np.where(flags["nan"], np.nan, avg)
     return pd.Series(avg, index=grid, name="signal")
 
 

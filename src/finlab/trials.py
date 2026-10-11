@@ -194,7 +194,8 @@ class TrialRegistry:
         registration wins. ``var_sr`` is the sample variance (ddof=1) of the
         non-annualised Sharpe ratios of all registered trials, including the
         selected one. Skewness and non-excess kurtosis are the scipy estimates
-        on the selected trial's returns. With one registered trial ``var_sr``
+        on the selected trial's returns, or 0 and 3 when that trial is identically
+        zero. With one registered trial ``var_sr``
         is 0; the expected maximum is then 0, so the result is the PSR against
         zero skill.
 
@@ -223,13 +224,18 @@ class TrialRegistry:
         x = np.asarray(self._records[best].returns)
         n = self.n_trials
         var_sr = float(np.var(srs, ddof=1)) if n > 1 else 0.0
+        # Skew and kurtosis of a constant series are undefined; a normal distribution's values stand in.
+        if np.all(x == 0):
+            g3, g4 = 0.0, 3.0
+        else:
+            g3, g4 = float(skew(x)), float(kurtosis(x, fisher=False))
         return deflated_sharpe_ratio(
             float(srs[best]),
             n,
             var_sr,
             x.size if n_obs is None else n_obs,
-            float(skew(x)),
-            float(kurtosis(x, fisher=False)),
+            g3,
+            g4,
         )
 
     def to_dict(self) -> dict[str, Any]:

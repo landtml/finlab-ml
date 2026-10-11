@@ -158,6 +158,18 @@ def test_min_track_record_length_rejects_non_finite_benchmark(bad_benchmark: flo
         min_track_record_length(0.5, bad_benchmark, 0.0, 3.0, 0.95)
 
 
+@pytest.mark.parametrize("bad_sr_hat", [float("nan"), float("inf")])
+def test_min_track_record_length_rejects_non_finite_sr_hat(bad_sr_hat: float) -> None:
+    with pytest.raises(ValueError, match="sr_hat must be finite"):
+        min_track_record_length(bad_sr_hat, 0.0, 0.0, 3.0, 0.95)
+
+
+@pytest.mark.parametrize("bad_sr_hat", [float("nan"), float("inf")])
+def test_probabilistic_sharpe_ratio_rejects_non_finite_sr_hat(bad_sr_hat: float) -> None:
+    with pytest.raises(ValueError, match="sr_hat must be finite"):
+        probabilistic_sharpe_ratio(bad_sr_hat, 0.0, 100)
+
+
 def test_min_track_record_length_round_trip_gives_target_psr() -> None:
     n_min = min_track_record_length(0.2, 0.05, -0.3, 4.5, 0.9)
     n_int = math.ceil(n_min)
@@ -392,7 +404,7 @@ def test_sharpe_ratio_warns_on_fewer_than_two_observations(returns: list[float])
         assert math.isnan(sharpe_ratio(returns, periods_per_year=252.0))
 
 
-def test_psr_warns_on_infinite_sharpe_and_still_returns_nan() -> None:
-    # skew/kurtosis chosen so the variance term is infinite rather than raising.
+def test_psr_warns_on_infinite_benchmark_and_returns_its_limit() -> None:
+    # An infinite sr_benchmark gives z = -inf, so PSR is 0 with a warning. An infinite sr_hat raises.
     with pytest.warns(UserWarning, match="probabilistic_sharpe_ratio.*non-finite"):
-        assert math.isnan(probabilistic_sharpe_ratio(np.inf, 0.0, 60, -0.2, 3.5))
+        assert probabilistic_sharpe_ratio(0.5, np.inf, 60, -0.2, 3.5) == 0.0
