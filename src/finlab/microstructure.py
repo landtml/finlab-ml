@@ -38,6 +38,7 @@ import numpy as np
 import pandas as pd
 from scipy.special import ndtr
 
+from ._checks import _same_index, tz_mismatch_message
 from ._jit import jit
 
 __all__ = [
@@ -59,11 +60,29 @@ _DEN = 3.0 - 2.0 * _SQRT2  # 3 - 2*sqrt(2), Corwin-Schultz denominator
 _K2 = math.sqrt(8.0 / math.pi)  # Parkinson first-moment constant
 
 
+def _label_index(x: ArrayLike) -> pd.Index | None:
+    return x.index if isinstance(x, (pd.Series, pd.DataFrame)) else None
+
+
 def _to_float(x: ArrayLike, name: str) -> np.ndarray:
+    idx = _label_index(x)
+    if idx is not None and not idx.is_monotonic_increasing:
+        # A descending index would be read as reversed time, so it is refused.
+        raise ValueError(f"{name} index must be sorted in ascending order (oldest first).")
     arr = np.asarray(x, dtype=np.float64)
     if arr.ndim != 1:
         raise ValueError(f"{name} must be one-dimensional, got shape {arr.shape}")
     return arr
+
+
+def _check_same_index(a: ArrayLike, b: ArrayLike, what: str) -> None:
+    # Two labelled inputs must not be paired by position when their labels differ.
+    ia, ib = _label_index(a), _label_index(b)
+    if ia is not None and ib is not None and not _same_index(ia, ib):
+        raise ValueError(
+            tz_mismatch_message(ia, ib, what.split(" and ")[0], what.split(" and ")[-1] + " index")
+            or f"{what} Series must share the same index."
+        )
 
 
 def _rewrap(out: np.ndarray, like: ArrayLike) -> ArrayLike:
@@ -170,6 +189,15 @@ def roll_measure(prices: ArrayLike) -> float:
     x = dp[1:]
     y = dp[:-1]
     cov = float(np.mean((x - x.mean()) * (y - y.mean())))
+    if not math.isfinite(cov):
+        # The products overflow for prices near 1e160. The spread scales linearly
+        # with the prices, so measure the changes in units of their largest magnitude and rescale.
+        s = float(np.max(np.abs(dp)))
+        if s > 0.0:
+            xs = x / s
+            ys = y / s
+            cov_s = float(np.mean((xs - xs.mean()) * (ys - ys.mean())))
+            return 2.0 * s * math.sqrt(max(0.0, -cov_s))
     return 2.0 * math.sqrt(max(0.0, -cov))
 
 
@@ -207,18 +235,30 @@ def _hl_window_kernel(
     return beta, gamma
 
 
-def _check_hl(high: ArrayLike, low: ArrayLike, sl: int) -> tuple[np.ndarray, np.ndarray]:
+def _check_hl(high: ArrayLike, low: ArrayLike, sl: int) -> tuple[np.ndarray, np.ndarray, int]:
     h = _to_float(high, "high")
     lo = _to_float(low, "low")
+    _check_same_index(high, low, "high and low")
     if h.shape != lo.shape:
         raise ValueError("high and low must have the same length")
+    # sl is a window length used as a loop bound and a divisor; a fraction would give numbers that
+    # match no window, so it must be integer-valued.
+    if not isinstance(sl, numbers.Real) or not math.isfinite(sl) or sl != int(sl):
+        raise ValueError("sl must be an integer")
+    sl = int(sl)
     if sl < 1:
         raise ValueError("sl must be >= 1")
+    if sl > np.iinfo(np.int64).max:
+        # A window beyond the int64 range would overflow inside the numba kernel.
+        raise ValueError("sl is too large; it must fit in a 64-bit integer.")
+    if not (np.all(np.isfinite(h)) and np.all(np.isfinite(lo))):
+        # An inf bar turned the next spread into NaN; tick_rule already requires finite prices.
+        raise ValueError("high and low must be finite")
     if np.any(~(h > 0)) or np.any(~(lo > 0)):
         raise ValueError("high and low must be strictly positive")
     if np.any(h < lo):
         raise ValueError("high must be >= low in every bar")
-    return h, lo
+    return h, lo, sl
 
 
 def becker_parkinson_volatility(high: ArrayLike, low: ArrayLike, sl: int = 1) -> ArrayLike:
@@ -256,7 +296,7 @@ def becker_parkinson_volatility(high: ArrayLike, low: ArrayLike, sl: int = 1) ->
     Scope: continuous-time volatility proxy from bar extremes. Discrete
     monitoring of the path biases the estimate downward.
     """
-    h, lo = _check_hl(high, low, sl)
+    h, lo, sl = _check_hl(high, low, sl)
     beta, gamma = _hl_window_kernel(h, lo, sl)
     k2 = _K2
     with np.errstate(invalid="ignore"):
@@ -299,7 +339,7 @@ def corwin_schultz_spread(high: ArrayLike, low: ArrayLike, sl: int = 1) -> Array
     quotes. The book's rolling windows follow Snippet 19.1, re-derived here
     for numpy input.
     """
-    h, lo = _check_hl(high, low, sl)
+    h, lo, sl = _check_hl(high, low, sl)
     beta, gamma = _hl_window_kernel(h, lo, sl)
     with np.errstate(invalid="ignore"):
         alpha = (_SQRT2 - 1.0) * np.sqrt(beta) / _DEN - np.sqrt(gamma / _DEN)
@@ -312,8 +352,8 @@ def corwin_schultz_spread(high: ArrayLike, low: ArrayLike, sl: int = 1) -> Array
 # 19.4 Strategic trade models
 # ---------------------------------------------------------------------------
 @jit
-def _ols_origin(x: np.ndarray, y: np.ndarray) -> tuple[float, float]:
-    """Slope and t-statistic of ``y = lambda * x + e`` with no intercept."""
+def _ols_sums(x: np.ndarray, y: np.ndarray) -> tuple[float, float, float, float]:
+    """Return ``(lambda, sxx, sxy, ssr)`` for the no-intercept regression of ``y`` on ``x``."""
     n = x.shape[0]
     sxx = 0.0
     sxy = 0.0
@@ -325,20 +365,47 @@ def _ols_origin(x: np.ndarray, y: np.ndarray) -> tuple[float, float]:
     for i in range(n):
         e = y[i] - lam * x[i]
         ssr += e * e
+    return lam, sxx, sxy, ssr
+
+
+@jit
+def _ols_t(lam: float, ssr: float, sxx: float, n: int) -> float:
+    """t-statistic of ``lam`` from its residual sum of squares and ``sxx``."""
     dof = n - 1
     if ssr == 0.0:
         # Exact fit: the standard error is zero, so t is +/- infinity.
         if lam > 0.0:
-            return lam, np.inf
+            return np.inf
         if lam < 0.0:
-            return lam, -np.inf
-        return lam, np.nan
+            return -np.inf
+        return np.nan
     se = math.sqrt(ssr / dof / sxx)
-    return lam, lam / se
+    return lam / se
+
+
+@jit
+def _ols_origin(x: np.ndarray, y: np.ndarray) -> tuple[float, float]:
+    """Slope and t-statistic of ``y = lambda * x + e`` with no intercept."""
+    n = x.shape[0]
+    lam, sxx, sxy, ssr = _ols_sums(x, y)
+    if math.isfinite(sxx) and math.isfinite(sxy) and math.isfinite(ssr):
+        return lam, _ols_t(lam, ssr, sxx, n)
+    # sum(x*x) overflows for volume near 1e160. Regress the scaled series instead.
+    # lambda scales with y / x and t is unchanged by scaling both, so rescale lambda at the end.
+    a = 0.0
+    b = 0.0
+    for i in range(n):
+        a = max(a, abs(x[i]))
+        b = max(b, abs(y[i]))
+    xs = x / a
+    ys = y / b if b > 0.0 else y
+    lam_s, sxx_s, _, ssr_s = _ols_sums(xs, ys)
+    return lam_s * (b / a if b > 0.0 else 0.0), _ols_t(lam_s, ssr_s, sxx_s, n)
 
 
 def _kyle_inputs(prices: ArrayLike, signed_volume: ArrayLike) -> tuple[np.ndarray, np.ndarray]:
     """Return ``(x, y)`` with regressor ``x = signed volume`` and response ``y = dp``."""
+    _check_same_index(prices, signed_volume, "prices and signed_volume")
     p = _require_finite(_to_float(prices, "prices"), "prices")
     v = _require_finite(_to_float(signed_volume, "signed_volume"), "signed_volume")
     if p.shape != v.shape:
@@ -381,7 +448,11 @@ def kyle_lambda(prices: ArrayLike, signed_volume: ArrayLike) -> float:
     sxx = float(np.dot(x, x))
     if sxx == 0.0:
         raise ValueError("signed_volume is identically zero")
-    return float(np.dot(x, y) / sxx)
+    sxy = float(np.dot(x, y))
+    if math.isfinite(sxx) and math.isfinite(sxy):
+        return sxy / sxx
+    # The sums overflow for volume near 1e160; the scaled regression in _ols_origin gives the slope.
+    return float(_ols_origin(x, y)[0])
 
 
 def kyle_lambda_tstat(prices: ArrayLike, signed_volume: ArrayLike) -> tuple[float, float]:
@@ -443,6 +514,7 @@ def amihud_illiquidity(
     ``"ratio"`` mode and are allowed but uninformative in ``"regression"``
     mode.
     """
+    _check_same_index(returns, dollar_volume, "returns and dollar_volume")
     raw_r = _require_finite(_to_float(returns, "returns"), "returns")
     dv = _require_finite(_to_float(dollar_volume, "dollar_volume"), "dollar_volume")
     r = np.abs(raw_r)
@@ -454,7 +526,15 @@ def amihud_illiquidity(
         den = float(np.dot(dv, dv))
         if den == 0.0:
             raise ValueError("dollar_volume is identically zero")
-        return float(np.dot(r, dv) / den)
+        num = float(np.dot(r, dv))
+        if math.isfinite(den) and math.isfinite(num):
+            return num / den
+        # The squared sums overflow for dollar volume near 1e160. The ratio is
+        # unchanged by dividing dv by its largest magnitude, so compute it on the scaled values.
+        m = float(np.max(np.abs(dv)))
+        dvs = dv / m
+        # Divide by m last: m * sum(dvs^2) overflows once m * n is large, and the ratio would be 0.
+        return float((np.dot(r, dvs) / np.dot(dvs, dvs)) / m)
     if method == "ratio":
         if np.any(dv <= 0.0):
             raise ValueError("ratio method needs strictly positive dollar_volume")
@@ -506,6 +586,7 @@ def bulk_volume_classification(
 
     Scope: one instrument.
     """
+    _check_same_index(prices, volume, "prices and volume")
     p = _require_finite(_to_float(prices, "prices"), "prices")
     v = _require_finite(_to_float(volume, "volume"), "volume")
     if p.shape != v.shape:
@@ -630,6 +711,7 @@ def vpin(
     fraction of the observation that straddles each boundary, which is an
     approximation.
     """
+    _check_same_index(prices, volume, "prices and volume")
     p = _to_float(prices, "prices")
     v = _to_float(volume, "volume")
     # Checked here so the bucket kernel never sees inf, which overflows its integer cast.

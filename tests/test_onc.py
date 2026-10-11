@@ -103,3 +103,25 @@ def test_max_k_out_of_range_rejected():
     corr, _ = _block_corr([3, 3, 3], seed=5)
     with pytest.raises(ValueError):
         onc(corr, max_k=9)
+
+
+def test_accepts_float32_correlation_built_from_covariance():
+    rng = np.random.default_rng(0)
+    x = rng.standard_normal((500, 6)).astype(np.float32)
+    cov = np.cov(x, rowvar=False).astype(np.float32)
+    sd = np.sqrt(np.diag(cov))
+    corr = (cov / np.outer(sd, sd)).astype(np.float32)
+    result = onc(corr, seed=0)
+    assert result.n_clusters >= 2
+
+
+def test_refuses_entry_above_one_by_more_than_float32_noise():
+    bad = np.array([[1, 1.01, 0], [1.01, 1, 0], [0, 0, 1]])
+    with pytest.raises(ValueError, match="in \\[-1, 1\\]"):
+        onc(bad)
+
+
+def test_refuses_asymmetry_beyond_float32_noise():
+    bad = np.array([[1, 0.2, 0], [0.2 + 1e-4, 1, 0], [0, 0, 1]])
+    with pytest.raises(ValueError, match="symmetric"):
+        onc(bad)

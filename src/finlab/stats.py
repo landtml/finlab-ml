@@ -46,6 +46,7 @@ import numpy as np
 import pandas as pd
 from scipy.stats import norm
 
+from finlab._checks import _require_real_values
 from finlab._display import html_table
 
 __all__ = [
@@ -75,7 +76,7 @@ def sharpe_ratio(
     ----------
     returns : array-like
         Period returns (excess of the risk-free rate). NaNs are dropped.
-        A DataFrame is reduced to its first column.
+        A one-column DataFrame is accepted; several columns are refused.
     periods_per_year : float, default 252.0
         Number of return observations per year (252 daily, 52 weekly, 12
         monthly). Used as the annualisation factor ``sqrt(periods_per_year)``.
@@ -95,9 +96,14 @@ def sharpe_ratio(
     Assumes IID returns (AFML 14.7.4). Serial correlation or non-stationarity
     makes the sqrt-time scaling invalid.
     """
-    if periods_per_year <= 0:
-        raise ValueError("periods_per_year must be positive")
+    if annualize and not (math.isfinite(periods_per_year) and periods_per_year > 0):
+        # NaN compares false with "<= 0", so it would pass and return NaN; inf would return inf.
+        # Checked only when the value is used: annualize=False ignores it.
+        raise ValueError("periods_per_year must be positive and finite")
     x = _as_1d(returns)
+    if np.isinf(x).any():
+        # Only NaN is a missing value. An infinite return is bad data, and dropping it would hide that.
+        raise ValueError("returns must not contain +/-inf; NaN is dropped as missing data")
     x = x[np.isfinite(x)]
     if x.size < 2:
         # Warn so a caller does not mistake the NaN for a missing-data marker.
@@ -113,7 +119,9 @@ def sharpe_ratio(
     mu = float(np.mean(x))
     # Constant input still gives a tiny nonzero np.std from float noise, so test the
     # range against a relative tolerance instead of testing the std for exact zero.
-    if float(np.ptp(x)) <= 1e-12 * max(1.0, abs(mu)):
+    # Relative to the magnitude of the data, so the test is scale-invariant: an absolute floor made
+    # returns of scale 1e-13 look constant.
+    if float(np.ptp(x)) <= 1e-12 * float(np.max(np.abs(x))):
         warnings.warn(
             "sharpe_ratio: returns are constant, so the Sharpe ratio is undefined; returning NaN",
             UserWarning,
@@ -144,6 +152,8 @@ def probabilistic_sharpe_ratio(
     ----------
     sr_hat : float
         Observed, non-annualised Sharpe ratio.
+        Per period: pass ``sharpe_ratio(r, annualize=False)``. The default annualised
+        value is about sqrt(252) times too large and saturates the result.
     sr_benchmark : float
         Benchmark SR* (non-annualised). 0 tests against no skill.
     n_obs : int
@@ -169,8 +179,15 @@ def probabilistic_sharpe_ratio(
     With ``sr_hat == sr_benchmark`` the argument of Z is zero, so PSR = 0.5
     exactly for any skew, kurtosis and T.
     """
+    if math.isnan(sr_benchmark):
+        # A NaN benchmark would give a NaN result. An infinite one is a defined limit and stays.
+        raise ValueError(f"sr_benchmark must not be NaN, got {sr_benchmark!r}")
+    # An infinite skew or kurtosis gave exactly 0.5 ("no skill") with no warning; reject it as
+    # deflated_sharpe does.
+    skew = _as_finite("skew", skew)
+    kurtosis = _as_finite("kurtosis", kurtosis)
     denom = _psr_denominator(sr_hat, skew, kurtosis)
-    if not math.isfinite(n_obs):
+    if not math.isfinite(n_obs) or n_obs != int(n_obs):
         # NaN slips past the comparison below, and an infinite sample gives a certain answer.
         raise ValueError(f"n_obs must be an integer, got {n_obs!r}")
     if n_obs < 2:
@@ -300,6 +317,8 @@ def deflated_sharpe(
     ----------
     sr_hat : float
         Best observed non-annualised Sharpe ratio among the trials. Finite.
+        Per period: pass ``sharpe_ratio(r, annualize=False)``. The default annualised
+        value is about sqrt(252) times too large and saturates the result.
     n_trials : int
         Number of trials N that were run to select ``sr_hat``. Integer >= 1.
     var_sr : float
@@ -361,6 +380,8 @@ def deflated_sharpe_ratio(
     ----------
     sr_hat : float
         Best observed non-annualised Sharpe ratio among the trials.
+        Per period: pass ``sharpe_ratio(r, annualize=False)``. The default annualised
+        value is about sqrt(252) times too large and saturates the result.
     n_trials : int
         Number of trials N that were run to select ``sr_hat``.
     var_sr : float
@@ -422,15 +443,24 @@ def min_track_record_length(
     Raises
     ------
     ValueError
-        If ``sr_hat <= sr_benchmark`` (no finite track record reaches
-        ``prob`` > 0.5), or ``prob`` is outside (0, 1).
+        If ``sr_hat <= sr_benchmark``, if ``prob`` < 0.5 (PSR stays above 0.5
+        for every track length when ``sr_hat > sr_benchmark``, so no length solves
+        it), or if ``prob`` is outside (0, 1).
     """
     if not 0.0 < prob < 1.0:
         raise ValueError("prob must lie in (0, 1)")
     if not math.isfinite(sr_benchmark):
         raise ValueError(f"sr_benchmark must be finite, got {sr_benchmark!r}")
+    # Check skew and kurt here, so a NaN is reported as such and not as an
+    # incompatible skew/kurtosis combination. This matches probabilistic_sharpe_ratio.
+    skew = _as_finite("skew", skew)
+    kurt = _as_finite("kurt", kurt)
     if sr_hat <= sr_benchmark:
         raise ValueError("minTRL requires sr_hat > sr_benchmark")
+    if prob < 0.5:
+        # With sr_hat > sr_benchmark, PSR(T) > 0.5 for every T, so no track record solves PSR = prob
+        # below 0.5. At prob = 0.5 the root is T = 1 (z = 0), which is returned.
+        raise ValueError("minTRL requires prob >= 0.5 when sr_hat > sr_benchmark; no track record reaches it")
     denom_sq = _psr_denominator(sr_hat, skew, kurt) ** 2
     z = norm.ppf(prob)
     return 1.0 + denom_sq * (z / (sr_hat - sr_benchmark)) ** 2
@@ -470,6 +500,9 @@ def _as_int(name: str, value: object, minimum: int) -> int:
 
 def _as_finite(name: str, value: object) -> float:
     """Return ``value`` as a finite float; reject bool, non-real and non-finite values."""
+    if isinstance(value, np.ndarray) and value.ndim == 0:
+        # A 0-d array holds one number; it is unwrapped so the real-number test sees it.
+        value = value.item()
     if isinstance(value, (bool, np.bool_)) or not isinstance(value, numbers.Real):
         raise ValueError(f"{name} must be a real number, got {type(value).__name__}")
     x = float(value)
@@ -488,7 +521,12 @@ def _check_var_sr(var_sr: object) -> float:
 
 def _as_1d(x: ArrayLike) -> np.ndarray:
     """Coerce a return container to a 1-D float64 array."""
-    if isinstance(x, pd.DataFrame):
-        x = x.iloc[:, 0]
-    arr = np.asarray(x, dtype=np.float64)
+    # A DataFrame goes through the same column rule as an ndarray: several columns are refused.
+    raw = np.asarray(x)
+    _require_real_values("returns", raw)
+    arr = np.asarray(raw, dtype=np.float64)
+    if arr.ndim >= 2 and int(np.prod(arr.shape[1:])) > 1:
+        # Raveling a multi-column array would pool every column into one series; refuse instead.
+        # A single row with several columns counts too, so only the column count is tested.
+        raise ValueError(f"returns must be one-dimensional or one column, got shape {arr.shape}.")
     return arr.ravel()

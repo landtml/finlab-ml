@@ -173,11 +173,11 @@ def onc(
     n = c.shape[0]
     if n < 3:
         raise ValueError("need at least three variables to choose k in [2, N-1].")
-    if not np.allclose(c, c.T, atol=1e-10):
+    if not np.allclose(c, c.T, atol=1e-6):
         raise ValueError("corr must be symmetric.")
-    if not np.allclose(np.diag(c), 1.0, atol=1e-10):
+    if not np.allclose(np.diag(c), 1.0, atol=1e-6):
         raise ValueError("corr must have a unit diagonal.")
-    if np.any(c < -1.0 - 1e-10) or np.any(c > 1.0 + 1e-10):
+    if np.any(c < -1.0 - 1e-6) or np.any(c > 1.0 + 1e-6):
         raise ValueError("corr entries must lie in [-1, 1].")
     top = n - 1 if max_k is None else int(max_k)
     if not 2 <= top <= n - 1:

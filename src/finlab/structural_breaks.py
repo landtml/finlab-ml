@@ -63,6 +63,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from ._checks import _same_index, tz_mismatch_message
 from ._jit import jit
 
 __all__ = [
@@ -85,8 +86,9 @@ _CSW_B_05 = 4.6  # b_0.05 from AFML 17.3.2 (Monte Carlo, Chu-Stinchcombe-White)
 
 
 def _require_integer(value: Any, message: str) -> None:
-    # Type and finiteness come first so that int() never sees NaN, inf or text.
-    if not isinstance(value, numbers.Real):
+    # Type and finiteness come first so that int() never sees NaN, inf or text. bool is an Integral,
+    # so it is refused by name.
+    if isinstance(value, (bool, np.bool_)) or not isinstance(value, numbers.Real):
         raise ValueError(message)
     if not isinstance(value, numbers.Integral) and not math.isfinite(value):
         raise ValueError(message)
@@ -96,6 +98,10 @@ def _require_integer(value: Any, message: str) -> None:
 
 def _as_float_vector(series: Any) -> tuple[np.ndarray, pd.Index | None]:
     index = series.index if isinstance(series, (pd.Series, pd.DataFrame)) else None
+    if index is not None and not index.is_monotonic_increasing:
+        # The tests read values in array order, so a descending index gave the reversed series' statistics
+        # under the original labels. Refused rather than sorted.
+        raise ValueError("series index must be sorted in ascending order (oldest first).")
     values = np.asarray(series, dtype=np.float64)
     if values.ndim == 2 and values.shape[1] == 1:
         values = values[:, 0]
@@ -104,6 +110,40 @@ def _as_float_vector(series: Any) -> tuple[np.ndarray, pd.Index | None]:
     if not np.all(np.isfinite(values)):
         raise ValueError("series contains NaN or infinite values.")
     return np.ascontiguousarray(values), index
+
+
+# Series whose largest magnitude lies outside [1/_SAFE_MAGNITUDE, _SAFE_MAGNITUDE] are rescaled
+# before the ADF regression, whose Gram matrix squares the values.
+_SAFE_MAGNITUDE = 1e100
+
+
+def _rescale_for_adf(y: np.ndarray) -> np.ndarray:
+    """Divide ``y`` by its largest magnitude when that is outside the safe range.
+
+    The ADF tau-statistic does not change when the series is scaled, but the Gram matrix
+    squares the values. Near 1e154 the squares overflow, and near 1e-154 they underflow, so
+    the regression fails. Series inside the safe range are returned unchanged.
+    """
+    m = float(np.max(np.abs(y))) if y.size else 0.0
+    if m > _SAFE_MAGNITUDE or 0.0 < m < 1.0 / _SAFE_MAGNITUDE:
+        return y / m
+    return y
+
+
+def _large_scale(values: np.ndarray) -> float:
+    """Largest magnitude of ``values`` when it is outside the safe range, else 1.0.
+
+    Both sides are handled, as in ``_rescale_for_adf``: above 1e100 the squares overflow, and below
+    1e-100 they underflow. The statistics are ratios to sigma, so the scale cancels.
+    """
+    m = float(np.max(np.abs(values))) if values.size else 0.0
+    return m if (m > _SAFE_MAGNITUDE or 0.0 < m < 1.0 / _SAFE_MAGNITUDE) else 1.0
+
+
+def _center_for_adf(y: np.ndarray, const: int) -> np.ndarray:
+    # With an intercept in the model tau does not change under a level shift. At levels near 1e6 the
+    # y[t-1] column makes the Gram matrix ill-conditioned, so centre it. 'nc' has no intercept.
+    return y - y.mean() if const >= 1 and y.size else y
 
 
 def _wrap(values: np.ndarray, index: pd.Index | None) -> Any:
@@ -267,6 +307,18 @@ def cusum_test(series: Any, exog: Any = None) -> CusumResult:
     if exog is None:
         x = np.ones((n_obs, 1))
     else:
+        # exog's labels are read too. A descending index and labels that differ from the series
+        # are refused, as the series index already is.
+        exog_index = exog.index if isinstance(exog, (pd.Series, pd.DataFrame)) else None
+        if exog_index is not None:
+            if not exog_index.is_monotonic_increasing:
+                raise ValueError("exog index must be sorted in ascending order (oldest first).")
+            # Same-instant labels in another zone or unit are aligned (shared with microstructure).
+            if index is not None and not _same_index(exog_index, index):
+                raise ValueError(
+                    tz_mismatch_message(exog_index, index, "exog", "series")
+                    or "exog and series must share the same index."
+                )
         x = np.asarray(exog, dtype=np.float64)
         if x.ndim == 1:
             x = x.reshape(-1, 1)
@@ -279,21 +331,36 @@ def cusum_test(series: Any, exog: Any = None) -> CusumResult:
     if n_obs - p < 2:
         raise ValueError("need at least two recursive residuals (T - p >= 2).")
 
-    w, ok = _recursive_residuals(y, x)
+    # Both statistics are ratios of residual sums to sigma, so scaling y (or a column of exog) by a
+    # constant leaves them unchanged. The recursion runs on the scaled values so its squares stay finite
+    # the residuals and sigma are reported back in the series' own units.
+    y_scale = _large_scale(y)
+    y_s = y / y_scale
+    if exog is not None:
+        col_scale = np.array([_large_scale(x[:, j]) for j in range(p)])
+        x = x / col_scale
+    w_s, ok = _recursive_residuals(y_s, x)
     if not ok:
         raise ValueError("initial design X_p'X_p is singular; use more leading rows.")
-    resid = w[p:]
-    sigma = float(math.sqrt(np.mean(resid * resid)))
+    resid_s = w_s[p:]
+    sigma_s = float(math.sqrt(np.mean(resid_s * resid_s)))
+    sigma = sigma_s * y_scale
+    w = w_s * y_scale
+    if not np.all(np.isfinite(w[p:])):
+        # The residuals are reported in the series' units, and a residual past the float64 maximum
+        # cannot be stored, so it is refused as main refused it instead of returning inf.
+        raise ValueError(_MAGNITUDE_MESSAGE)
+    resid = resid_s
     # The default constant regressor is ignored here; only user inputs can carry scale.
     scale_arrays = (y,) if exog is None else (y, x)
-    if not math.isfinite(sigma):
+    if not math.isfinite(sigma_s):
         if _extreme_magnitude(*scale_arrays):
             raise ValueError(_MAGNITUDE_MESSAGE)
         raise ValueError(
             "recursive residuals are not finite; this is usually caused by near-collinear "
             "regressors. Remove one of the regressors."
         )
-    if not sigma > 0.0:
+    if not sigma_s > 0.0:
         if np.all(y == y[0]):
             raise ValueError("recursive residuals are all zero; no variation in series.")
         if _extreme_magnitude(*scale_arrays):
@@ -307,8 +374,8 @@ def cusum_test(series: Any, exog: Any = None) -> CusumResult:
     z = np.full(n_obs, np.nan)
     cum = np.cumsum(resid)
     counts = np.arange(1, resid.shape[0] + 1, dtype=np.float64)
-    stat[p:] = cum / sigma
-    z[p:] = cum / (sigma * np.sqrt(counts))
+    stat[p:] = cum / sigma_s
+    z[p:] = cum / (sigma_s * np.sqrt(counts))
     return CusumResult(
         statistic=stat,
         z=z,
@@ -386,9 +453,17 @@ def csw_critical_value(lag: int | np.ndarray, b: float = _CSW_B_05) -> np.ndarra
         Critical values with the same shape as ``lag``.
     """
     lag_arr = np.asarray(lag, dtype=np.float64)
-    if np.any(lag_arr < 1):
-        raise ValueError("t - n must be >= 1.")
-    return np.sqrt(b + np.log(lag_arr))
+    if not np.all(np.isfinite(lag_arr)) or np.any(lag_arr < 1):
+        # NaN fails "< 1" to False, so it must be caught here, not left to the b check.
+        raise ValueError("t - n must be finite and >= 1.")
+    if math.isinf(b) and b > 0:
+        # +inf gives infinite critical values, so the test would never reject. It is refused by name.
+        raise ValueError("b must be finite; an infinite b gives infinite critical values.")
+    arg = b + np.log(lag_arr)
+    if not np.all(arg >= 0):
+        # The square root of a negative value is NaN, and NaN critical values never reject.
+        raise ValueError("b must satisfy b + log(t - n) >= 0 for every lag (b is too negative or NaN).")
+    return np.sqrt(arg)
 
 
 @dataclass(frozen=True)
@@ -448,6 +523,8 @@ def chu_stinchcombe_white(
     n_obs = y.shape[0]
     if n_obs < 2:
         raise ValueError("need at least two observations.")
+    # The statistic is a ratio to sigma, so a large-magnitude series is scaled first.
+    y = y / _large_scale(y)
     sigma = _prefix_sigma(y)
     # The full-sample sigma is zero only if every difference is zero (constant series,
     # reported as NaN below) or the squares underflowed; it is inf if they overflowed.
@@ -621,11 +698,16 @@ def adf_stat(series: Any, lag: int, constant: str = "c") -> float:
         behaviour gives large positive values.
     """
     y, _ = _as_float_vector(series)
+    if y.size > 0 and np.all(y == y[0]):
+        # A constant series makes the regressors singular. Without this, the failure reported
+        # "too few observations", and constant='nc' silently returned 0.0.
+        raise ValueError("series has no variation (it is constant), so the ADF regression is singular.")
     _require_integer(lag, "lag must be an integer.")
     if lag < 0:
         raise ValueError("lag must be >= 0.")
     code = _constant_code(constant)
-    tau = _adf_tau(y, 0, y.shape[0] - 1, int(lag), code)
+    # The tau-statistic is scale-invariant, so rescale instead of failing at 1e160.
+    tau = _adf_tau(_center_for_adf(_rescale_for_adf(y), code), 0, y.shape[0] - 1, int(lag), code)
     if np.isnan(tau):
         raise ValueError("too few observations for the requested lag and constant.")
     return float(tau)
@@ -668,6 +750,9 @@ def sadf(
     numba. ``lags`` and ``constant`` follow the arguments of Snippet 17.1.
     """
     y, index = _as_float_vector(series)
+    if y.size > 0 and np.all(y == y[0]):
+        # A constant series is refused here, as adf_stat refuses it.
+        raise ValueError("series has no variation (it is constant), so the ADF regression is singular.")
     _require_integer(lags, "lags must be an integer.")
     _require_integer(min_length, "min_length must be an integer.")
     if lags < 0:
@@ -682,5 +767,6 @@ def sadf(
         )
     if min_length > y.shape[0]:
         raise ValueError("min_length exceeds the series length.")
-    out, _ = _sadf_kernel(y, int(min_length), int(lags), code)
+    # Rescale as adf_stat does, so windows of values near 1e200 do not silently give NaN.
+    out, _ = _sadf_kernel(_center_for_adf(_rescale_for_adf(y), code), int(min_length), int(lags), code)
     return _wrap(out, index)

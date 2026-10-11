@@ -491,3 +491,172 @@ def test_vpin_rejects_nonfinite_or_nonpositive_bucket_volume(bucket_volume: floa
     v = rng.uniform(1, 2, 50)
     with pytest.raises(ValueError, match="bucket_volume"):
         vpin(p, v, bucket_volume=bucket_volume, n_window=2)
+
+
+@pytest.mark.parametrize("bad_sl", [1.5, float("nan"), float("inf")])
+def test_hl_estimators_reject_non_integer_sl(bad_sl: float) -> None:
+    # sl=1.5 must be refused: it would give numbers that match neither sl=1 nor sl=2.
+    high = np.array([1.0, 1.2, 1.1, 1.5, 1.4, 1.9, 1.7])
+    low = np.array([1.0, 1.0, 1.1, 1.2, 1.2, 1.3, 1.4])
+    with pytest.raises(ValueError, match="sl must be an integer"):
+        corwin_schultz_spread(high, low, sl=bad_sl)
+    with pytest.raises(ValueError, match="sl must be an integer"):
+        becker_parkinson_volatility(high, low, sl=bad_sl)
+
+
+def test_hl_estimators_integer_valued_sl_unchanged() -> None:
+    high = np.array([1.0, 1.2, 1.1, 1.5, 1.4, 1.9, 1.7])
+    low = np.array([1.0, 1.0, 1.1, 1.2, 1.2, 1.3, 1.4])
+    np.testing.assert_array_equal(
+        corwin_schultz_spread(high, low, sl=2.0), corwin_schultz_spread(high, low, sl=2)
+    )
+
+
+def test_hl_estimators_reject_infinite_prices() -> None:
+    # An inf bar must be refused: it turned the next spread into NaN. tick_rule already rejects inf.
+    high = np.array([np.inf, 2.0, 2.0])
+    low = np.array([1.0, 1.0, 1.0])
+    with pytest.raises(ValueError, match="finite"):
+        corwin_schultz_spread(high, low)
+    with pytest.raises(ValueError, match="finite"):
+        becker_parkinson_volatility(high, low)
+
+
+def test_roll_measure_large_prices_stay_finite() -> None:
+    # The product of price changes must not overflow for prices near 1e160.
+    from finlab.microstructure import roll_measure
+
+    s = roll_measure(np.array([1e160, 3e160] * 5))
+    assert np.isfinite(s)
+    assert s == pytest.approx(4e160, rel=1e-9)
+
+
+def test_amihud_regression_large_dollar_volume_stays_finite() -> None:
+    # dot(dv, dv) must not overflow for dollar volume near 1e160, which would give NaN.
+    from finlab.microstructure import amihud_illiquidity
+
+    dv = 1e160 * np.array([1.0, 2.0, 3.0])
+    assert amihud_illiquidity(dv, dv) == pytest.approx(1.0, rel=1e-12)
+    # A value that would silently overflow to 0.0: 5e157 / 5e320 = 1e-163.
+    got = amihud_illiquidity(np.array([0.01, 0.02]), np.array([1e160, 2e160]))
+    assert got == pytest.approx(1e-163, rel=1e-9)
+
+
+def test_kyle_lambda_tstat_large_volume_is_finite() -> None:
+    # sum(x*x) must not overflow for volume near 1e160, which would make lambda and t NaN.
+    from finlab.microstructure import kyle_lambda, kyle_lambda_tstat
+
+    v = 1e160 * np.array([1.0, 2.0, 3.0, 4.0])
+    p = np.r_[0.0, np.cumsum(2 * v)]
+    sv = np.r_[0.0, v]
+    lam, t = kyle_lambda_tstat(p, sv)
+    assert lam == pytest.approx(2.0, rel=1e-9)
+    assert not np.isnan(t)
+    assert kyle_lambda(p, sv) == pytest.approx(2.0, rel=1e-9)
+
+
+def test_becker_parkinson_huge_sl_raises_value_error() -> None:
+    # sl = 10**20 must raise ValueError, not reach the numba kernel and leak a raw OverflowError.
+    from finlab.microstructure import becker_parkinson_volatility
+
+    h = np.ones(50) * 1.01
+    lo = np.ones(50)
+    with pytest.raises(ValueError, match="sl"):
+        becker_parkinson_volatility(h, lo, sl=10**20)
+
+
+def test_amihud_regression_fallback_keeps_a_representable_tiny_value() -> None:
+    # The rescaled denominator m * sum(dv^2) must not overflow once m * n is above
+    # about 1.8e308, so the result was 0.0 where the true value 1.5e-310 is representable.
+    from finlab.microstructure import amihud_illiquidity
+
+    # abs=0 is needed: pytest.approx adds an absolute tolerance of 1e-12 by default, which would
+    # accept the 0.0 this bug returned.
+    assert amihud_illiquidity([0.01, 0.02], [1e308, 1e308], method="regression") == pytest.approx(
+        1.5e-310, rel=1e-6, abs=0.0
+    )
+    assert amihud_illiquidity([0.01, 0.02], [1e300, 1e300], method="regression") == pytest.approx(
+        1.5e-302, rel=1e-12, abs=0.0
+    )
+
+
+def _labelled_paths(n: int = 40):
+    rng = np.random.default_rng(3)
+    idx = pd.date_range("2024-01-01", periods=n, freq="D")
+    p = 100 * np.exp(np.cumsum(rng.normal(scale=0.01, size=n)))
+    v = rng.integers(1, 50, size=n).astype(float)
+    return idx, p, v
+
+
+def _two_input_calls(v_mean: float):
+    return {
+        "kyle_lambda": kyle_lambda,
+        "bulk_volume_classification": bulk_volume_classification,
+        "amihud_illiquidity": lambda r, dv: amihud_illiquidity(r, dv),
+        "vpin": lambda p, v: vpin(p, v, 4.0 * v_mean, 2),
+    }
+
+
+@pytest.mark.parametrize("name", ["kyle_lambda", "bulk_volume_classification", "vpin"])
+def test_descending_labelled_series_is_refused_not_read_reversed(name):
+    # A descending index must be refused, not read as reversed time, since the statistic would
+    # change with the labels. The structural functions refuse this order; so do these.
+    idx, p, v = _labelled_paths()
+    fn = _two_input_calls(float(np.mean(v)))[name]
+    s_p = pd.Series(p, index=idx)
+    s_v = pd.Series(v, index=idx)
+    with pytest.raises(ValueError, match="sorted"):
+        fn(s_p.iloc[::-1], s_v.iloc[::-1])
+
+
+def test_descending_labelled_returns_are_refused_in_amihud():
+    idx, p, v = _labelled_paths()
+    r = pd.Series(np.r_[0.0, np.diff(np.log(p))], index=idx)
+    dv = pd.Series(v * p, index=idx)
+    with pytest.raises(ValueError, match="sorted"):
+        amihud_illiquidity(r.iloc[::-1], dv.iloc[::-1])
+
+
+@pytest.mark.parametrize("name", ["kyle_lambda", "bulk_volume_classification", "vpin"])
+def test_labelled_series_with_different_labels_is_refused(name):
+    # Two Series with different labels must be refused, not paired by position.
+    idx, p, v = _labelled_paths()
+    fn = _two_input_calls(float(np.mean(v)))[name]
+    s_p = pd.Series(p, index=idx)
+    shifted = pd.Series(v, index=idx + pd.Timedelta(hours=12))
+    with pytest.raises(ValueError, match="same index"):
+        fn(s_p, shifted)
+
+
+def test_corwin_schultz_refuses_high_and_low_with_different_labels():
+    idx, p, v = _labelled_paths()
+    s_hi = pd.Series(p * 1.01, index=idx)
+    s_lo = pd.Series(p * 0.99, index=idx[::-1])
+    with pytest.raises(ValueError):
+        corwin_schultz_spread(s_hi, s_lo)
+
+
+def test_labelled_series_with_matching_index_is_unchanged():
+    # Valid input keeps its value: labelled and matching gives the same result as numpy.
+    idx, p, v = _labelled_paths()
+    assert kyle_lambda(pd.Series(p, index=idx), pd.Series(v, index=idx)) == kyle_lambda(p, v)
+    got = bulk_volume_classification(pd.Series(p, index=idx), pd.Series(v, index=idx))
+    assert np.array_equal(np.asarray(got), bulk_volume_classification(p, v))
+
+
+def test_kyle_lambda_pairs_the_same_instants_across_timezones() -> None:
+    rng = np.random.default_rng(4)
+    idx = pd.date_range("2021-03-01 09:00", periods=60, freq="h", tz="UTC")
+    prices = pd.Series(100 + np.cumsum(rng.standard_normal(60)), index=idx)
+    signed = pd.Series(rng.standard_normal(60), index=idx)
+    berlin = pd.Series(signed.to_numpy(), index=idx.tz_convert("Europe/Berlin"))
+    assert kyle_lambda(prices, berlin) == pytest.approx(kyle_lambda(prices, signed), abs=1e-12)
+
+
+def test_kyle_lambda_refuses_different_instants_across_timezones() -> None:
+    rng = np.random.default_rng(4)
+    idx = pd.date_range("2021-03-01 09:00", periods=60, freq="h", tz="UTC")
+    prices = pd.Series(100 + np.cumsum(rng.standard_normal(60)), index=idx)
+    signed = pd.Series(rng.standard_normal(60), index=idx.tz_convert("Europe/Berlin") + pd.Timedelta(minutes=30))
+    with pytest.raises(ValueError, match="same index"):
+        kyle_lambda(prices, signed)

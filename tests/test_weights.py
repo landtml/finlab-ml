@@ -400,3 +400,108 @@ def test_sample_weight_by_return_rejects_non_pandas_input(bad) -> None:
         sample_weight_by_return(idx, bad, close)
     with pytest.raises(TypeError, match="close"):
         sample_weight_by_return(idx, t1, bad)
+
+
+def test_sample_weight_by_return_names_a_timezone_mismatch() -> None:
+    grid = pd.date_range("2024-01-01", periods=10, freq="D")
+    t1 = pd.Series(grid[3:8], index=grid[:5])
+    close = pd.Series(np.linspace(100.0, 110.0, 10), index=grid.tz_localize("UTC"))
+    with pytest.raises(ValueError, match="timezone"):
+        sample_weight_by_return(grid, t1, close)
+
+
+def test_time_decay_refuses_two_dimensional_weights() -> None:
+    w2 = np.column_stack([np.arange(1.0, 6.0), np.arange(1.0, 6.0)])
+    with pytest.raises(ValueError, match="1-D"):
+        time_decay(w2)
+    with pytest.raises(ValueError, match="1-D"):
+        time_decay(pd.DataFrame(w2))
+    one = pd.DataFrame({"w": np.arange(1.0, 6.0)})
+    pd.testing.assert_series_equal(time_decay(one), time_decay(one["w"]))
+
+
+def test_t1_ending_before_its_start_is_refused_by_name():
+    bars = pd.date_range("2020-01-01", periods=10, freq="D")
+    starts = bars[[1, 3, 5]]
+    swapped = pd.Series([bars[0], bars[4], bars[2]], index=starts)
+    with pytest.raises(ValueError, match="before its start"):
+        num_co_events(bars, swapped)
+    with pytest.raises(ValueError, match="before its start"):
+        average_uniqueness(bars, swapped, np.ones(len(bars)))
+    valid = pd.Series([bars[2], bars[4], pd.NaT], index=starts)
+    c = num_co_events(bars, valid)
+    assert c.sum() > 0
+    assert not average_uniqueness(bars, valid, c).isna().any()
+
+
+def _w20_matrix() -> np.ndarray:
+    grid = pd.date_range("2022-01-01", periods=6, freq="D")
+    t1 = pd.Series(grid[[1, 3, 4]], index=grid[[0, 2, 3]])
+    return np.array(indicator_matrix(grid, t1), dtype=np.float64)
+
+
+@pytest.mark.parametrize("call", [
+    lambda m: sample_average_uniqueness(m),
+    lambda m: sequential_bootstrap(m, seed=1),
+])
+def test_nan_entry_is_refused_not_counted_as_active(call) -> None:
+    # NaN != 0 is True, so a NaN cell would count as an active bar.
+    m = _w20_matrix()
+    m[0, 1] = np.nan
+    with pytest.raises(ValueError, match="NaN") as exc:
+        call(m)
+    assert "indicator matrix" in str(exc.value)
+
+
+def test_nan_in_dataframe_is_refused() -> None:
+    m = pd.DataFrame(_w20_matrix())
+    m.iloc[2, 0] = np.nan
+    with pytest.raises(ValueError, match="NaN"):
+        sample_average_uniqueness(m)
+
+
+def _ten_bar_labels():
+    """Ten daily bars; label 0 spans bars 0-3, label 1 spans bars 2-6, bars 7-9 are in no span."""
+    index = pd.bdate_range("2021-01-01", periods=10)
+    t1 = pd.Series([index[3], index[6]], index=[index[0], index[2]])
+    return index, t1
+
+
+def test_nan_concurrency_inside_a_span_is_refused():
+    index, t1 = _ten_bar_labels()
+    c = num_co_events(index, t1).astype(float)
+    c.iloc[1] = np.nan  # bar 1 sits inside label 0's span (bars 0-3)
+    with pytest.raises(ValueError) as exc:
+        average_uniqueness(index, t1, c)
+    msg = str(exc.value)
+    assert "concurrency" in msg
+    assert str(index[0]) in msg and str(index[1]) in msg
+
+
+def test_zero_concurrency_inside_a_span_is_refused():
+    index, t1 = _ten_bar_labels()
+    c = num_co_events(index, t1).astype(float)
+    c.iloc[2] = 0.0  # bar 2 sits inside both spans
+    with pytest.raises(ValueError, match="concurrency"):
+        average_uniqueness(index, t1, c.to_numpy())
+
+
+def test_nan_concurrency_outside_every_span_is_not_refused():
+    index, t1 = _ten_bar_labels()
+    c = num_co_events(index, t1).astype(float)
+    c.iloc[8] = np.nan  # bar 8 is in no label's span, so no average reads it
+    avg = average_uniqueness(index, t1, c)
+    np.testing.assert_allclose(avg.to_numpy(), [0.75, 0.8], rtol=0, atol=1e-15)
+
+
+def test_valid_concurrency_unchanged():
+    # Hand values: label 0 has c = 1, 1, 2, 2 (mean of 1/c is 0.75); label 1 has
+    # c = 2, 2, 1, 1, 1 (mean of 1/c is 0.8). Bars 7-9 have c = 0 but lie in no span.
+    index, t1 = _ten_bar_labels()
+    c = num_co_events(index, t1)
+    assert list(c.to_numpy()) == [1, 1, 2, 2, 1, 1, 1, 0, 0, 0]
+    avg = average_uniqueness(index, t1, c)
+    np.testing.assert_allclose(avg.to_numpy(), [0.75, 0.8], rtol=0, atol=1e-15)
+    np.testing.assert_allclose(
+        average_uniqueness(index, t1, c.to_numpy()).to_numpy(), [0.75, 0.8], rtol=0, atol=1e-15
+    )
