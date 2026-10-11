@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+import finlab.weights as weights
 from finlab.weights import (
     average_uniqueness,
     indicator_matrix,
@@ -147,6 +148,26 @@ def test_num_co_events_open_labels_run_to_last_bar():
     t1 = pd.Series([pd.NaT, index[3]], index=index[[0, 2]])
     got = num_co_events(index, t1).to_numpy()
     np.testing.assert_array_equal(got, [1, 1, 2, 2, 1, 1, 1, 1, 1, 1])
+
+
+def test_num_co_events_rejects_span_end_past_last_bar_before_kernel(monkeypatch):
+    # Replace the span helper so that an end at the bar count reaches the caller.
+    # Replace the kernel too: the real one writes past its array before any error,
+    # and the assertion checks that it is never reached.
+    kernel_calls = []
+
+    def span_end_past_grid(grid, t1):
+        return np.array([1], dtype=np.int64), np.array([len(grid)], dtype=np.int64)
+
+    def recording_kernel(n_bars, starts, ends):
+        kernel_calls.append(n_bars)
+        return np.zeros(n_bars, dtype=np.int64)
+
+    monkeypatch.setattr(weights, "_spans", span_end_past_grid)
+    monkeypatch.setattr(weights, "_concurrency_sweep", recording_kernel)
+    with pytest.raises(ValueError, match="t1"):
+        num_co_events(pd.RangeIndex(5), pd.Series([4], index=[1]))
+    assert kernel_calls == []
 
 
 def test_average_uniqueness_is_one_without_overlap():
