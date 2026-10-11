@@ -33,8 +33,15 @@ def _err(req_id: Any, code: int, message: str) -> dict[str, Any]:
     return {"jsonrpc": "2.0", "id": req_id, "error": {"code": code, "message": message}}
 
 
-def handle_message(msg: dict[str, Any]) -> dict[str, Any] | None:
+def handle_message(msg: Any) -> dict[str, Any] | None:
     """Handle one decoded JSON-RPC message. Returns the reply, or None for notifications."""
+    # The server does not dispatch batches. One error keeps the client from waiting
+    # for replies to elements that were never run.
+    if isinstance(msg, list):
+        return _err(None, -32600, "batch requests are not supported")
+    # This server sends no requests, so a client response has nothing to answer.
+    if isinstance(msg, dict) and "id" in msg and "method" not in msg and ("result" in msg or "error" in msg):
+        return None
     if not isinstance(msg, dict) or msg.get("jsonrpc") != "2.0" or not isinstance(msg.get("method"), str):
         return _err(msg.get("id") if isinstance(msg, dict) else None, -32600, "invalid request")
     method = msg["method"]
