@@ -67,6 +67,21 @@ def test_callable_path_agrees_with_default_sharpe() -> None:
     assert generic.pbo == fast.pbo
 
 
+def test_callable_returning_nan_for_a_column_raises_named_error() -> None:
+    rng = np.random.default_rng(12)
+    M = rng.normal(0.0, 1.0, size=(64, 6))
+
+    def broken(sub: np.ndarray) -> np.ndarray:
+        out = sub.mean(axis=0) / sub.std(axis=0, ddof=1)
+        out[2] = np.nan
+        return out
+
+    # Checked before ranking: a NaN score would otherwise give rank 0 and a math domain error.
+    with pytest.raises(ValueError, match="non-finite") as info:
+        probability_of_backtest_overfitting(M, n_partitions=8, performance=broken)
+    assert "split" in str(info.value) and "trial" in str(info.value)
+
+
 def test_dataframe_input_equals_ndarray() -> None:
     rng = np.random.default_rng(12)
     M = rng.normal(size=(32, 4))

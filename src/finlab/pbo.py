@@ -291,6 +291,13 @@ def _cscv_callable_logits(
         test_sr = np.asarray(performance(test), dtype=np.float64).ravel()
         if train_sr.shape != (N,) or test_sr.shape != (N,):
             raise ValueError("performance must return one score per column")
+        for label, scores in (("training", train_sr), ("test", test_sr)):
+            bad = np.flatnonzero(~np.isfinite(scores))
+            if bad.size:
+                raise ValueError(
+                    f"performance callable returned non-finite scores for trial column(s) "
+                    f"{bad.tolist()} on the {label} data of split {c}; every trial needs a finite score"
+                )
         best = int(np.argmax(train_sr))
         rank = int(np.sum(test_sr <= test_sr[best]))
         omega = rank / (N + 1.0)
