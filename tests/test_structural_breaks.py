@@ -380,3 +380,31 @@ def test_sadf_rejects_non_integer_lags():
     y = np.random.default_rng(4).standard_normal(60).cumsum()
     with pytest.raises(ValueError):
         sadf(y, min_length=20, lags=1.5)
+
+
+# --------------------------------------------------------------------------- #
+# CSW at extreme magnitudes
+# --------------------------------------------------------------------------- #
+
+
+def _csw_walk() -> np.ndarray:
+    return np.cumsum(np.random.default_rng(1).normal(size=300))
+
+
+@pytest.mark.parametrize("scale", [1e-170, 1e170])
+def test_csw_extreme_magnitude_raises(scale):
+    with pytest.raises(ValueError, match="magnitude"):
+        chu_stinchcombe_white(_csw_walk() * scale)
+
+
+def test_csw_ordinary_scale_output_is_finite_and_unchanged():
+    res = chu_stinchcombe_white(_csw_walk())
+    assert np.all(np.isfinite(res.statistic[1:]))
+    assert np.nanmax(np.abs(res.statistic)) == pytest.approx(3.2997035863686834, rel=1e-9)
+    assert int(res.reject.sum()) == 8
+
+
+def test_csw_constant_series_still_all_nan_without_error():
+    res = chu_stinchcombe_white(np.full(50, 2.0))
+    assert np.all(np.isnan(res.statistic))
+    assert int(res.reject.sum()) == 0

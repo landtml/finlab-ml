@@ -449,6 +449,14 @@ def chu_stinchcombe_white(
     if n_obs < 2:
         raise ValueError("need at least two observations.")
     sigma = _prefix_sigma(y)
+    # The full-sample sigma is zero only if every difference is zero (constant series,
+    # reported as NaN below) or the squares underflowed; it is inf if they overflowed.
+    if not np.all(y == y[0]) and (not math.isfinite(sigma[-1]) or sigma[-1] == 0.0):
+        raise ValueError(
+            "sigma is zero or not finite because the squared differences underflow or "
+            "overflow; the series magnitude is likely outside the usable range, so rescale "
+            "the series"
+        )
     if reference is None:
         stat, ref = _csw_sup(y, sigma)
         ref_out = ref
