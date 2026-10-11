@@ -317,6 +317,25 @@ def test_cusum_near_collinear_regressors_raise_not_finite():
         cusum_test(y, np.column_stack([x, x * (1 + 1e-6)]))
 
 
+def _magnitude_message(exc_info):
+    text = str(exc_info.value)
+    assert "magnitude" in text
+    assert "collinear" not in text and "reproduce" not in text
+
+
+def test_cusum_large_magnitude_series_names_magnitude_not_collinearity():
+    with pytest.raises(ValueError) as exc_info:
+        cusum_test(np.linspace(1, 2, 50) * 1e160)
+    _magnitude_message(exc_info)
+
+
+def test_cusum_underflowing_series_names_magnitude_not_exact_fit():
+    rng = np.random.default_rng(7)
+    with pytest.raises(ValueError) as exc_info:
+        cusum_test(rng.normal(size=60) * 1e-200)
+    _magnitude_message(exc_info)
+
+
 def test_cusum_constant_series_keeps_no_variation_message():
     with pytest.raises(ValueError, match="no variation in series"):
         cusum_test(np.ones(50))

@@ -222,6 +222,19 @@ class CusumResult:
     initial_size: int
 
 
+_MAGNITUDE_MESSAGE = (
+    "recursive residuals are not finite or underflow; the series magnitude may be outside "
+    "the usable range, so rescale the series"
+)
+
+
+def _extreme_magnitude(*arrays: np.ndarray) -> bool:
+    # Squared residuals overflow above about 1e154 and underflow below about 1e-154,
+    # so a largest absolute value far outside [1e-100, 1e100] points at scale.
+    hi = float(np.max(np.abs(np.concatenate([a.ravel() for a in arrays]))))
+    return hi > 1e100 or 0.0 < hi < 1e-100
+
+
 def cusum_test(series: Any, exog: Any = None) -> CusumResult:
     """Brown-Durbin-Evans CUSUM test on recursive residuals (AFML 17.3.1).
 
@@ -271,7 +284,11 @@ def cusum_test(series: Any, exog: Any = None) -> CusumResult:
         raise ValueError("initial design X_p'X_p is singular; use more leading rows.")
     resid = w[p:]
     sigma = float(math.sqrt(np.mean(resid * resid)))
+    # The default constant regressor is ignored here; only user inputs can carry scale.
+    scale_arrays = (y,) if exog is None else (y, x)
     if not math.isfinite(sigma):
+        if _extreme_magnitude(*scale_arrays):
+            raise ValueError(_MAGNITUDE_MESSAGE)
         raise ValueError(
             "recursive residuals are not finite; this is usually caused by near-collinear "
             "regressors. Remove one of the regressors."
@@ -279,6 +296,8 @@ def cusum_test(series: Any, exog: Any = None) -> CusumResult:
     if not sigma > 0.0:
         if np.all(y == y[0]):
             raise ValueError("recursive residuals are all zero; no variation in series.")
+        if _extreme_magnitude(*scale_arrays):
+            raise ValueError(_MAGNITUDE_MESSAGE)
         raise ValueError(
             "recursive residuals are all zero because the regressors reproduce the series "
             "exactly; the CUSUM test has nothing to measure."
