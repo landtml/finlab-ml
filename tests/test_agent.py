@@ -318,6 +318,25 @@ def test_non_numeric_element_names_argument_index_and_type():
     assert err and "element 0" in out["error"] and "str" in out["error"]
 
 
+def test_int_argument_keeps_large_integers_exact():
+    assert tl._int({"seed": 9007199254740993}, "seed") == 9007199254740993
+    assert type(tl._int({"seed": 9007199254740993}, "seed")) is int
+    assert tl._int({"seed": 3.0}, "seed") == 3
+    corr = [[1.0, 0.9, 0.1], [0.9, 1.0, 0.2], [0.1, 0.2, 1.0]]
+    out, err = _call("onc_clusters", {"corr": corr, "seed": 9007199254740993})
+    assert not err
+
+
+def test_oversized_integers_are_tool_errors_naming_the_argument():
+    huge = int("1" + "0" * 399)
+    out, err = _call("sharpe_ratio", {"returns": [0.1, 0.2, -0.1, 0.3], "periods_per_year": huge})
+    assert err and "'periods_per_year'" in out["error"]
+    out, err = _call("onc_clusters", {"corr": [[1.0, 0.9], [0.9, 1.0]], "seed": huge})
+    assert err and "'seed'" in out["error"]
+    out, err = _call("onc_clusters", {"corr": [[1.0, 0.9], [0.9, 1.0]], "max_k": huge})
+    assert err and "'max_k'" in out["error"]
+
+
 def test_fracdiff_thres_out_of_range_is_rejected():
     out, err = _call("frac_diff_ffd", {"series": [1, 2, 3], "d": 0.4, "thres": 2})
     assert err and "'thres'" in out["error"]

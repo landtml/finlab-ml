@@ -103,16 +103,32 @@ def _num(args: dict[str, Any], key: str, default: float | None = None) -> float:
             raise ToolError(f"'{key}' is required")
         return float(default)
     v = args[key]
-    if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
         raise ToolError(f"'{key}' must be a finite number")
-    return float(v)
+    try:
+        f = float(v)
+    except OverflowError:
+        raise ToolError(f"'{key}' must be a finite number") from None
+    if not math.isfinite(f):
+        raise ToolError(f"'{key}' must be a finite number")
+    return f
+
+
+_INT_MIN, _INT_MAX = -(2**63), 2**63 - 1
 
 
 def _int(args: dict[str, Any], key: str, default: int | None = None) -> int:
-    v = _num(args, key, default)
-    if v != int(v):
-        raise ToolError(f"'{key}' must be an integer")
-    return int(v)
+    # Exact integers are kept as Python ints; only JSON floats go through _num.
+    if key in args and isinstance(args[key], int) and not isinstance(args[key], bool):
+        v = args[key]
+    else:
+        f = _num(args, key, default)
+        if f != int(f):
+            raise ToolError(f"'{key}' must be an integer")
+        v = int(f)
+    if not _INT_MIN <= v <= _INT_MAX:
+        raise ToolError(f"'{key}' is outside the supported integer range")
+    return v
 
 
 def _bool(args: dict[str, Any], key: str, default: bool) -> bool:
