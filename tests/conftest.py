@@ -1,7 +1,7 @@
-"""Test-session setup shared by every test module.
+"""Test setup shared by every test module.
 
 Numba caches compiled kernels on disk, and a cached caller can keep a callee it
-embedded from an earlier source version. A stale entry then fails in ways that
+embedded from an outdated source file. A stale entry then fails in ways that
 depend on test order. So by default the suite gets a new, empty cache directory
 on every run. Set ``FINLAB_TEST_NUMBA_CACHE`` to a directory to reuse one, for
 example to check that a warm cache gives the same results.
