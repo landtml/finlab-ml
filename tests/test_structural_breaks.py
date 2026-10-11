@@ -315,3 +315,15 @@ def test_cusum_near_collinear_regressors_raise_not_finite():
     x = rng.normal(size=300)
     with pytest.raises(ValueError, match="not finite"):
         cusum_test(y, np.column_stack([x, x * (1 + 1e-6)]))
+
+
+def test_cusum_constant_series_keeps_no_variation_message():
+    with pytest.raises(ValueError, match="no variation in series"):
+        cusum_test(np.ones(50))
+
+
+def test_cusum_exact_fit_regressor_raises_reproduce_message():
+    rng = np.random.default_rng(2)
+    y = np.cumsum(rng.normal(size=300))[:3]
+    with pytest.raises(ValueError, match="reproduce"):
+        cusum_test(y, y.reshape(-1, 1))

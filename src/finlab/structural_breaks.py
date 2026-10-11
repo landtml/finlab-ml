@@ -266,7 +266,12 @@ def cusum_test(series: Any, exog: Any = None) -> CusumResult:
             "regressors. Remove one of the regressors."
         )
     if not sigma > 0.0:
-        raise ValueError("recursive residuals are all zero; no variation in series.")
+        if np.all(y == y[0]):
+            raise ValueError("recursive residuals are all zero; no variation in series.")
+        raise ValueError(
+            "recursive residuals are all zero because the regressors reproduce the series "
+            "exactly; the CUSUM test has nothing to measure."
+        )
 
     stat = np.full(n_obs, np.nan)
     z = np.full(n_obs, np.nan)
