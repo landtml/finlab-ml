@@ -66,7 +66,14 @@ def _vec(args: dict[str, Any], key: str) -> np.ndarray:
         raise ToolError(f"'{key}' must be a non-empty array of numbers")
     if len(v) > MAX_ELEMENTS:
         raise ToolError(f"'{key}' has {len(v)} elements; the limit is {MAX_ELEMENTS}")
+    for i, x in enumerate(v):
+        if isinstance(x, list):
+            raise ToolError(f"'{key}' must be a flat array of numbers")
+        if isinstance(x, bool) or not isinstance(x, (int, float)):
+            raise ToolError(f"'{key}' element {i} must be a number, got {type(x).__name__}")
     arr = np.asarray(v, dtype=np.float64)
+    if arr.ndim != 1:
+        raise ToolError(f"'{key}' must be a flat array of numbers")
     if not np.all(np.isfinite(arr)):
         raise ToolError(f"'{key}' must contain only finite numbers")
     return arr
@@ -102,6 +109,27 @@ def _int(args: dict[str, Any], key: str, default: int | None = None) -> int:
     return int(v)
 
 
+def _bool(args: dict[str, Any], key: str, default: bool) -> bool:
+    if key not in args:
+        return default
+    v = args[key]
+    if not isinstance(v, bool):
+        raise ToolError(f"'{key}' must be a boolean")
+    return v
+
+
+def _symbols(args: dict[str, Any]) -> list[Any]:
+    msg = args.get("message")
+    if not isinstance(msg, list) or not msg:
+        raise ToolError("'message' must be a non-empty array of symbols")
+    if len(msg) > MAX_ELEMENTS:
+        raise ToolError(f"'message' is longer than {MAX_ELEMENTS}")
+    for i, x in enumerate(msg):
+        if isinstance(x, bool):
+            raise ToolError(f"'message' element {i} must be a string or integer, got bool")
+    return msg
+
+
 def _clean(x: float) -> float | None:
     return None if x is None or not math.isfinite(x) else float(x)
 
@@ -121,7 +149,7 @@ def _clean(x: float) -> float | None:
 )
 def _sharpe(args):
     r = _vec(args, "returns")
-    sr = sharpe_ratio(r, _num(args, "periods_per_year", 252), annualize=bool(args.get("annualize", True)))
+    sr = sharpe_ratio(r, _num(args, "periods_per_year", 252), annualize=_bool(args, "annualize", True))
     return {"sharpe": _clean(float(sr))}
 
 
@@ -219,7 +247,10 @@ def _fracdiff(args):
     d = _num(args, "d")
     if not 0.0 <= d <= 1.0:
         raise ToolError("'d' must be in [0, 1]")
-    out = frac_diff_ffd(s, d, thres=_num(args, "thres", 1e-5))
+    thres = _num(args, "thres", 1e-5)
+    if not 0.0 < thres <= 1.0:
+        raise ToolError("'thres' must be in (0, 1]")
+    out = frac_diff_ffd(s, d, thres=thres)
     return {"values": [_clean(float(x)) for x in np.asarray(out)]}
 
 
@@ -235,7 +266,7 @@ def _fracdiff(args):
 )
 def _cusum(args):
     s = _vec(args, "series")
-    idx = cusum_filter(s, _num(args, "threshold"), is_returns=bool(args.get("is_returns", False)))
+    idx = cusum_filter(s, _num(args, "threshold"), is_returns=_bool(args, "is_returns", False))
     return {"event_positions": [int(i) for i in np.asarray(idx)]}
 
 
@@ -263,11 +294,7 @@ def _sadf(args):
     ["message"],
 )
 def _kont(args):
-    msg = args.get("message")
-    if not isinstance(msg, list) or not msg:
-        raise ToolError("'message' must be a non-empty array of symbols")
-    if len(msg) > MAX_ELEMENTS:
-        raise ToolError(f"'message' is longer than {MAX_ELEMENTS}")
+    msg = _symbols(args)
     return {"entropy": _clean(float(kontoyiannis_entropy(msg)))}
 
 
@@ -281,11 +308,7 @@ def _kont(args):
     ["message"],
 )
 def _plugin(args):
-    msg = args.get("message")
-    if not isinstance(msg, list) or not msg:
-        raise ToolError("'message' must be a non-empty array of symbols")
-    if len(msg) > MAX_ELEMENTS:
-        raise ToolError(f"'message' is longer than {MAX_ELEMENTS}")
+    msg = _symbols(args)
     return {"entropy": _clean(float(plug_in_entropy(msg, word_length=_int(args, "word_length", 1))))}
 
 
@@ -321,8 +344,8 @@ def _hrp(args):
 )
 def _onc(args):
     c = _mat(args, "corr")
-    max_k = args.get("max_k")
-    res = onc(c, max_k=None if max_k is None else int(max_k), seed=_int(args, "seed", 0))
+    max_k = None if args.get("max_k") is None else _int(args, "max_k")
+    res = onc(c, max_k=max_k, seed=_int(args, "seed", 0))
     return {
         "labels": [int(x) for x in res.labels],
         "n_clusters": int(res.n_clusters),
@@ -361,9 +384,13 @@ def _bet(args):
 )
 def _cpcv(args):
     n = _int(args, "n_samples")
+    if n < 1:
+        raise ToolError(f"n_samples must be a positive integer, got {n}")
     if n > MAX_ELEMENTS:
         raise ToolError(f"n_samples above {MAX_ELEMENTS}")
     horizon = _int(args, "horizon", 1)
+    if horizon < 0:
+        raise ToolError(f"'horizon' must be >= 0, got {horizon}")
     import pandas as pd
 
     index = pd.RangeIndex(n)
