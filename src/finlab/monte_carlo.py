@@ -27,7 +27,7 @@ Monte Carlo comparison of standard and sequential bootstrap uniqueness. It
 follows the printed listings of Snippets 4.7 and 4.8 (label generation and the
 two bootstraps), with one change: random numbers come from a seeded
 :class:`numpy.random.Generator`, not numpy's legacy global generator. So a single
-trial is not the book's trial, but the design is the same. The book's Snippet 4.9
+trial differs from the book's trial, and the design is the same. The book's Snippet 4.9
 runs 1E6 trials through its own job engine; :func:`bootstrap_uniqueness_mc` runs
 ``n_iter`` trials (10,000 by default) through :func:`run_trials`.
 
