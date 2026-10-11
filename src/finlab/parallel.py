@@ -13,7 +13,9 @@ Scope
 -----
 Uses :mod:`concurrent.futures` from the standard library, so there is no joblib
 dependency. The function passed in must be picklable (defined at module level)
-when ``num_threads > 1``.
+when ``num_threads > 1``. Worker processes start with forkserver (spawn on Windows), and each worker
+imports the main script. A script that runs a parallel call must therefore guard
+that call with ``if __name__ == "__main__":``.
 
 Not covered
 -----------
@@ -23,6 +25,7 @@ loops" examples, which are a matter of how the user writes ``func``.
 
 from __future__ import annotations
 
+import multiprocessing
 import os
 from concurrent.futures import ProcessPoolExecutor
 from typing import Any, Callable
@@ -32,6 +35,12 @@ import numpy.typing as npt
 import pandas as pd
 
 __all__ = ["lin_parts", "nested_parts", "mp_pandas_obj"]
+
+# The pool must not fork() this process: on Python 3.12 and later CPython warns
+# about fork() while other threads are alive. forkserver starts the workers from a
+# helper process instead. Windows has no forkserver and already defaults to spawn.
+_START_METHOD = "forkserver" if "forkserver" in multiprocessing.get_all_start_methods() else "spawn"
+_MP_CONTEXT = multiprocessing.get_context(_START_METHOD)
 
 
 def lin_parts(num_atoms: int, num_threads: int) -> npt.NDArray[np.int64]:
@@ -123,7 +132,7 @@ def mp_pandas_obj(
     if num_threads == 1 or len(molecules) == 1:
         pieces = [_run_molecule(func, m, kwargs) for m in molecules]
     else:
-        with ProcessPoolExecutor(max_workers=num_threads) as pool:
+        with ProcessPoolExecutor(max_workers=num_threads, mp_context=_MP_CONTEXT) as pool:
             futures = [pool.submit(_run_molecule, func, m, kwargs) for m in molecules]
             pieces = [f.result() for f in futures]
     return pd.concat(pieces)
