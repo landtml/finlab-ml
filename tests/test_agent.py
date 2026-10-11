@@ -298,6 +298,18 @@ def test_boolean_elements_are_rejected_as_numbers_and_symbols():
     assert err and "'message' element 0" in out["error"]
 
 
+def test_matrix_bool_and_string_elements_are_rejected():
+    rows = [[True, False], [False, True], [True, True], [False, False]]
+    out, err = _call("probability_of_backtest_overfitting", {"performance_matrix": rows, "n_partitions": 2})
+    assert err and "'performance_matrix' element (0, 0) must be a number, got bool" in out["error"]
+    rows = [["0.1", "0.2"], ["0.3", "-0.1"], ["0.2", "0.5"], ["0.0", "0.4"]]
+    out, err = _call("probability_of_backtest_overfitting", {"performance_matrix": rows, "n_partitions": 2})
+    assert err and "'performance_matrix' element (0, 0) must be a number, got str" in out["error"]
+    rows = [[0.1, 0.2], [0.3, -0.1], [0.2, 0.5], [0.0, 0.4]]
+    out, err = _call("probability_of_backtest_overfitting", {"performance_matrix": rows, "n_partitions": 2})
+    assert not err and "pbo" in out
+
+
 def test_non_numeric_element_names_argument_index_and_type():
     out, err = _call("sharpe_ratio", {"returns": [0.1, "x"]})
     assert err and "element 1" in out["error"] and "str" in out["error"]

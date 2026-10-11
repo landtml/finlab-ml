@@ -83,6 +83,12 @@ def _mat(args: dict[str, Any], key: str) -> np.ndarray:
     v = args.get(key)
     if not isinstance(v, list) or not v or not all(isinstance(r, list) for r in v):
         raise ToolError(f"'{key}' must be a non-empty array of rows")
+    if sum(len(r) for r in v) > MAX_ELEMENTS:
+        raise ToolError(f"'{key}' must be a rectangular matrix with at most {MAX_ELEMENTS} entries")
+    for i, row in enumerate(v):
+        for j, x in enumerate(row):
+            if isinstance(x, bool) or not isinstance(x, (int, float)):
+                raise ToolError(f"'{key}' element ({i}, {j}) must be a number, got {type(x).__name__}")
     arr = np.asarray(v, dtype=np.float64)
     if arr.ndim != 2 or arr.size > MAX_ELEMENTS:
         raise ToolError(f"'{key}' must be a rectangular matrix with at most {MAX_ELEMENTS} entries")
