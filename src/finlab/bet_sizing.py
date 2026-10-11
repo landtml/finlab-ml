@@ -134,7 +134,8 @@ def sigmoid_bet_size(w: float, x: npt.ArrayLike) -> FloatArray:
     if w <= 0:
         raise ValueError(f"w must be > 0, got {w!r}.")
     x = np.asarray(x, dtype=np.float64)
-    return x / np.sqrt(w + x * x)
+    # hypot avoids the overflow of x * x for very large |x|, where the bet is at its limit.
+    return x / np.hypot(math.sqrt(w), x)
 
 
 def calibrate_sigmoid_width(x: float, m_star: float) -> float:

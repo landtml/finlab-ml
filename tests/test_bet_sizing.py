@@ -1,5 +1,6 @@
 """Tests for finlab.bet_sizing (AFML ch. 10). Book worked examples are included."""
 import math
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -22,6 +23,15 @@ def test_book_sigmoid_calibration_and_targets():
     assert sigmoid_bet_size(w, 10.0) == pytest.approx(0.95)
     assert target_position(w, 110, 100, 100) == 95
     assert target_position(w, 115, 100, 100) == 97
+
+
+def test_sigmoid_large_divergence_reaches_its_limit_without_overflow():
+    # x * x overflows for |x| above about 1.3e154; the limit must still be reached.
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        assert float(sigmoid_bet_size(1.0, 1e200)) == pytest.approx(1.0)
+        assert float(sigmoid_bet_size(1.0, -1e200)) == pytest.approx(-1.0)
+    assert target_position(1.0, 1e200, 0.0, 10) == 10
 
 
 def test_book_limit_price():
