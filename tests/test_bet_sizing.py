@@ -140,6 +140,15 @@ def test_average_active_signals_nan_signal_only_poisons_its_active_span() -> Non
     assert got[4] == pytest.approx(1.0 / 3.0)  # events 2, 3 and 4 remain, with mean 1/3
 
 
+def test_average_active_signals_rejects_nat_end_times() -> None:
+    idx = pd.date_range("2024-01-01", periods=5, freq="D")
+    signals = pd.Series([1.0, 1.0, 1.0, -1.0, 1.0], index=idx)
+    t1 = pd.Series([idx[2], idx[3], idx[4], idx[4], pd.NaT], index=idx)
+    with pytest.raises(ValueError, match="NaT") as info:
+        average_active_signals(signals, t1)
+    assert str(idx[4].date()) in str(info.value)  # the offending row is named
+
+
 def test_calibrate_sigmoid_width_warns_on_infinite_x_and_still_returns_inf() -> None:
     with pytest.warns(UserWarning, match="calibrate_sigmoid_width.*non-finite"):
         assert calibrate_sigmoid_width(np.inf, 0.5) == math.inf

@@ -253,6 +253,10 @@ def average_active_signals(
     _require_type(t1, "t1", pd.Series)
     if not signals.index.equals(t1.index):
         raise ValueError("signals and t1 must share an index.")
+    nat_rows = t1.index[t1.isna().to_numpy()]
+    if len(nat_rows) > 0:
+        # searchsorted sends NaT past the grid, which would keep the event active forever.
+        raise ValueError(f"t1 contains NaT at rows {list(nat_rows)}; every event needs an end time.")
     if index is None:
         index = signals.index
     grid = pd.Index(index).sort_values()
