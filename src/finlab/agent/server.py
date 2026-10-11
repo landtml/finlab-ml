@@ -75,6 +75,9 @@ def main(stdin: TextIO = sys.stdin, stdout: TextIO = sys.stdout) -> None:
         except RecursionError:
             # Nesting deeper than the decoder allows; the line is not valid JSON for us.
             reply = _err(None, -32700, "parse error: nesting too deep")
+        except ValueError as exc:
+            # e.g. an integer literal over the decoder's digit limit.
+            reply = _err(None, -32700, f"parse error: {exc}")
         else:
             try:
                 reply = handle_message(msg)

@@ -243,3 +243,16 @@ def test_tool_overflow_is_reported_as_tool_error(monkeypatch):
     result, is_error = tl.call_tool("boom", {})
     assert is_error is True
     assert result["error"].startswith("OverflowError")
+
+
+def test_oversized_integer_id_is_parse_error_and_server_survives():
+    big = "1" * 5000
+    lines = "\n".join([
+        '{"jsonrpc":"2.0","id":' + big + ',"method":"ping"}',
+        json.dumps({"jsonrpc": "2.0", "id": 5, "method": "ping"}),
+    ]) + "\n"
+    out = io.StringIO()
+    srv.main(io.StringIO(lines), out)
+    replies = [json.loads(x) for x in out.getvalue().splitlines()]
+    assert replies[0]["error"]["code"] == -32700
+    assert replies[1] == {"jsonrpc": "2.0", "id": 5, "result": {}}
