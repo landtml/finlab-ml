@@ -260,8 +260,18 @@ def cusum_test(series: Any, exog: Any = None) -> CusumResult:
         raise ValueError("initial design X_p'X_p is singular; use more leading rows.")
     resid = w[p:]
     sigma = float(math.sqrt(np.mean(resid * resid)))
-    if sigma == 0.0:
-        raise ValueError("recursive residuals are all zero; no variation in series.")
+    if not math.isfinite(sigma):
+        raise ValueError(
+            "recursive residuals are not finite; this is usually caused by near-collinear "
+            "regressors. Remove one of the regressors."
+        )
+    if not sigma > 0.0:
+        if np.all(y == y[0]):
+            raise ValueError("recursive residuals are all zero; no variation in series.")
+        raise ValueError(
+            "recursive residuals are all zero because the regressors reproduce the series "
+            "exactly; the CUSUM test has nothing to measure."
+        )
 
     stat = np.full(n_obs, np.nan)
     z = np.full(n_obs, np.nan)
@@ -571,6 +581,8 @@ def adf_stat(series: Any, lag: int, constant: str = "c") -> float:
         behaviour gives large positive values.
     """
     y, _ = _as_float_vector(series)
+    if lag != int(lag):
+        raise ValueError("lag must be an integer.")
     if lag < 0:
         raise ValueError("lag must be >= 0.")
     code = _constant_code(constant)
@@ -617,6 +629,8 @@ def sadf(
     numba. ``lags`` and ``constant`` follow the arguments of Snippet 17.1.
     """
     y, index = _as_float_vector(series)
+    if lags != int(lags):
+        raise ValueError("lags must be an integer.")
     if lags < 0:
         raise ValueError("lags must be >= 0.")
     code = _constant_code(constant)

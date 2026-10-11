@@ -18,7 +18,8 @@ log_price = np.cumsum(rng.normal(0, 0.01, 500))
 
 print(get_weights(0.5, 4).round(4))     # first weights for d = 0.5
 x = frac_diff(log_price, d=0.4)
-print(np.corrcoef(log_price[-300:], x[-300:])[0, 1].round(3))
+first_finite = np.flatnonzero(np.isfinite(x))[0]  # skip the warm-up NaNs
+print(np.corrcoef(log_price[first_finite:], x[first_finite:])[0, 1].round(3))
 ```
 
 ## Notes

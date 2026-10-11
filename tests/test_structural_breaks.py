@@ -307,3 +307,37 @@ def test_sadf_pandas_index_and_nan_prefix():
 def test_sadf_rejects_short_min_length():
     with pytest.raises(ValueError):
         sadf(np.arange(50.0).cumsum(), min_length=3, lags=2)
+
+
+def test_cusum_near_collinear_regressors_raise_not_finite():
+    rng = np.random.default_rng(1)
+    y = np.cumsum(rng.normal(size=300))
+    x = rng.normal(size=300)
+    with pytest.raises(ValueError, match="not finite"):
+        cusum_test(y, np.column_stack([x, x * (1 + 1e-6)]))
+
+
+def test_cusum_constant_series_keeps_no_variation_message():
+    with pytest.raises(ValueError, match="no variation in series"):
+        cusum_test(np.ones(50))
+
+
+def test_cusum_exact_fit_regressor_raises_reproduce_message():
+    rng = np.random.default_rng(2)
+    y = np.cumsum(rng.normal(size=300))[:3]
+    with pytest.raises(ValueError, match="reproduce"):
+        cusum_test(y, y.reshape(-1, 1))
+
+
+def test_adf_rejects_non_integer_lag():
+    y = np.random.default_rng(3).standard_normal(120).cumsum()
+    with pytest.raises(ValueError):
+        adf_stat(y, 1.9)
+    assert np.isfinite(adf_stat(y, 1))
+    assert np.isfinite(adf_stat(y, np.int64(1)))
+
+
+def test_sadf_rejects_non_integer_lags():
+    y = np.random.default_rng(4).standard_normal(60).cumsum()
+    with pytest.raises(ValueError):
+        sadf(y, min_length=20, lags=1.5)
