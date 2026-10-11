@@ -667,6 +667,7 @@ def sadf(
     """
     y, index = _as_float_vector(series)
     _require_integer(lags, "lags must be an integer.")
+    _require_integer(min_length, "min_length must be an integer.")
     if lags < 0:
         raise ValueError("lags must be >= 0.")
     code = _constant_code(constant)

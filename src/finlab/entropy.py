@@ -62,6 +62,7 @@ implied volatility. Fractionally differentiated encodings are the user's job.
 from __future__ import annotations
 
 import math
+import numbers
 from typing import Any
 
 import numpy as np
@@ -397,6 +398,10 @@ def encode_quantile(returns: Any, n_bins: int, reference: Any = None) -> Any:
     -------
     np.ndarray of int64 or pd.Series
     """
+    # Type and finiteness first, so that int() never sees NaN or inf.
+    if not isinstance(n_bins, numbers.Real) or not math.isfinite(n_bins) or n_bins != int(n_bins):
+        raise ValueError("n_bins must be an integer.")
+    n_bins = int(n_bins)
     if n_bins < 2:
         raise ValueError("n_bins must be >= 2.")
     arr, index = _returns_array(returns)

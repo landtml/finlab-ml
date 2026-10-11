@@ -408,3 +408,17 @@ def test_csw_constant_series_still_all_nan_without_error():
     res = chu_stinchcombe_white(np.full(50, 2.0))
     assert np.all(np.isnan(res.statistic))
     assert int(res.reject.sum()) == 0
+
+
+@pytest.mark.parametrize("min_length", [30.5, float("nan")])
+def test_sadf_rejects_non_integer_min_length(min_length):
+    y = np.cumsum(np.random.default_rng(2).normal(size=100))
+    with pytest.raises(ValueError, match="min_length"):
+        sadf(y, min_length=min_length)
+
+
+def test_sadf_accepts_integer_valued_min_length():
+    y = np.cumsum(np.random.default_rng(2).normal(size=100))
+    np.testing.assert_allclose(
+        sadf(y, min_length=30.0)[-3:], sadf(y, min_length=30)[-3:], rtol=0, atol=0
+    )
