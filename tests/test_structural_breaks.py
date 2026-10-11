@@ -327,3 +327,17 @@ def test_cusum_exact_fit_regressor_raises_reproduce_message():
     y = np.cumsum(rng.normal(size=300))[:3]
     with pytest.raises(ValueError, match="reproduce"):
         cusum_test(y, y.reshape(-1, 1))
+
+
+def test_adf_rejects_non_integer_lag():
+    y = np.random.default_rng(3).standard_normal(120).cumsum()
+    with pytest.raises(ValueError):
+        adf_stat(y, 1.9)
+    assert np.isfinite(adf_stat(y, 1))
+    assert np.isfinite(adf_stat(y, np.int64(1)))
+
+
+def test_sadf_rejects_non_integer_lags():
+    y = np.random.default_rng(4).standard_normal(60).cumsum()
+    with pytest.raises(ValueError):
+        sadf(y, min_length=20, lags=1.5)
