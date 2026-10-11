@@ -56,7 +56,7 @@ def correlation_distance(corr: MatrixLike) -> MatrixLike:
     -----
     The distance is zero exactly when the correlation is 1, which includes any
     positively scaled or shifted copy of a series. So it is a metric on
-    standardized series, not on raw series. The book states the metric property
+    standardized series only. The book states the metric property
     in AFML section 16.4.1 (Appendix 16.A.1); that statement was not checked in
     this repository. The correlations are clipped to ``[-1, 1]`` first, so
     floating-point noise in an estimated matrix does not produce NaN.
@@ -93,7 +93,7 @@ def quasi_diagonalize(link: np.ndarray) -> list[int]:
     This is the procedure of Snippet 16.2 without its pandas index tricks.
     Replacing each merged cluster by its two constituents, left first,
     preserves the order of the clustering, so the result is the same
-    sequence. Scope: the output is an ordering only. It is not a change of
+    sequence. Scope: the output is an ordering only. It reorders assets with no change of
     basis, and the covariance is re-indexed by it with no other change.
     """
     z = np.asarray(link)
@@ -208,7 +208,7 @@ def hrp_weights(
     method : {"single", "complete", "average", "weighted"}, default "single"
         Linkage passed to :func:`scipy.cluster.hierarchy.linkage`. The book
         uses ``"single"``. ``"ward"`` is excluded because it requires
-        Euclidean observations, not a distance matrix.
+        Euclidean observations, which a distance matrix lacks.
 
     Returns
     -------

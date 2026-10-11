@@ -134,7 +134,7 @@ def _end_positions(index: pd.Index, t1: pd.Series | None) -> npt.NDArray[np.int_
         If ``index`` is not strictly increasing/unique, if ``t1`` covers only
         part of ``index``, or if ``t1`` was built for a *larger* index than the
         one being split (silent misalignment is a leakage hazard, so it is
-        rejected, not patched).
+        rejected outright).
     """
     n = len(index)
     if t1 is None:
@@ -459,8 +459,8 @@ class CombinatorialPurgedCV(_Base):
         # a mis-specified t1 raises when split() is called instead of lying
         # dormant until the caller happens to consume the first fold.
         end_pos = _end_positions(index, t1)
-        # Build every fold now so a too-small training set raises here, not lazily
-        # while the caller iterates. The fold count is small, so materializing is cheap.
+        # Build every fold now so a too-small training set raises here, before the caller starts
+        # iterating. The fold count is small, so materializing is cheap.
         return iter(list(self._iter_splits(n, index, end_pos)))
 
     def _iter_splits(
@@ -496,7 +496,7 @@ class CombinatorialPurgedCV(_Base):
         """Construct the combinatorial path map (``is_test`` / ``paths`` / ``path_folds``).
 
         ``t1`` is accepted for API symmetry; the path map depends only on the
-        group geometry, not on the event lifespans.
+        group geometry and ignores the event lifespans.
         """
         index = _sample_index(X)
         n = len(index)

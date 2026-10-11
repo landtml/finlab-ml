@@ -385,3 +385,45 @@ def test_cpcv_rejects_negative_horizon():
     out, err = _call("cpcv_split_summary",
                      {"n_samples": 120, "n_groups": 6, "n_test_groups": 2, "horizon": -1})
     assert err and "'horizon'" in out["error"]
+
+
+BATCH_ERROR = {"jsonrpc": "2.0", "id": None,
+               "error": {"code": -32600, "message": "batch requests are not supported"}}
+
+
+def test_batch_array_gets_one_error_and_no_element_is_processed():
+    batch = [{"jsonrpc": "2.0", "id": 1, "method": "ping"},
+             {"jsonrpc": "2.0", "id": 2, "method": "tools/list"}]
+    out = io.StringIO()
+    srv.main(io.StringIO(json.dumps(batch) + "\n"), out)
+    replies = out.getvalue().splitlines()
+    assert [json.loads(x) for x in replies] == [BATCH_ERROR]
+
+
+def test_empty_batch_array_gets_the_batch_error():
+    assert srv.handle_message([]) == BATCH_ERROR
+
+
+@pytest.mark.parametrize("response", [
+    {"jsonrpc": "2.0", "id": 5, "result": {"tools": []}},
+    {"jsonrpc": "2.0", "id": 6, "error": {"code": -32601, "message": "method not found"}},
+])
+def test_client_response_gets_no_reply(response):
+    assert srv.handle_message(response) is None
+
+
+def test_stdio_serves_ping_and_tools_list_around_batches_and_responses():
+    lines = "\n".join([
+        json.dumps({"jsonrpc": "2.0", "id": 1, "method": "ping"}),
+        json.dumps([{"jsonrpc": "2.0", "id": 2, "method": "ping"}]),
+        json.dumps({"jsonrpc": "2.0", "id": 3, "result": {}}),
+        json.dumps({"jsonrpc": "2.0", "id": 4, "error": {"code": -32000, "message": "x"}}),
+        json.dumps({"jsonrpc": "2.0", "id": 5, "method": "tools/list"}),
+    ]) + "\n"
+    out = io.StringIO()
+    srv.main(io.StringIO(lines), out)
+    replies = [json.loads(x) for x in out.getvalue().splitlines()]
+    assert [r.get("id") for r in replies] == [1, None, 5]
+    assert replies[0] == {"jsonrpc": "2.0", "id": 1, "result": {}}
+    assert replies[1] == BATCH_ERROR
+    assert {t["name"] for t in replies[2]["result"]["tools"]} >= {"sharpe_ratio"}

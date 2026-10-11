@@ -74,7 +74,7 @@ def get_daily_vol(close: pd.Series, span: int = 100) -> pd.Series:
     pd.Series
         Volatility aligned to ``close.index``. The return of bar ``t`` is taken
         against the last bar strictly before ``t - 1 day``. On daily data that
-        bar is usually two trading days back, not one. Bars with no such bar
+        bar is usually two trading days back, which is more than one. Bars with no such bar
         (the first day of the sample) are NaN.
 
     Notes
@@ -431,7 +431,7 @@ def get_bins(events: pd.DataFrame, close: pd.Series, meta: bool = False) -> pd.D
     (the first bar at or after the timestamp), as in Snippet 3.5. An event
     whose ``t1`` lies after the last bar has no end price and is dropped.
 
-    Scope: one price series. Returns are simple, not log.
+    Scope: one price series. Returns are simple (arithmetic) returns.
     """
     _require_type(events, "events", pd.DataFrame)
     _require_type(close, "close", pd.Series)
@@ -628,7 +628,7 @@ def trend_scanning_labels(
         Forward window lengths in bars (each ``>= 3``).
     t_threshold : float, default 1.96
         A label is non-zero only when the chosen ``|t|`` exceeds this value.
-        This is a design choice, not a value taken from the literature.
+        This is a design choice; the literature does not supply the value.
 
     Returns
     -------

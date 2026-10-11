@@ -214,7 +214,7 @@ def get_weights(d: float, size: int) -> NDArray[np.float64]:
     Parameters
     ----------
     d : float
-        Differencing order. Any real value is allowed, not only ``[0, 1]``.
+        Differencing order. Any real value is allowed, including values outside ``[0, 1]``.
     size : int
         Number of weights (``>= 1``), normally the series length.
 
@@ -442,7 +442,7 @@ def find_min_d(
 
     Notes
     -----
-    The search is a linear scan of the grid, not a bisection. Passing is not
+    The search is a linear scan of the grid; it does not bisect. Passing is not
     assumed monotone in ``d``, which is the book's own procedure. The test is
     applied to the FFD values with the NaN warm-up removed. A grid value of
     ``d = 0`` is the original series.

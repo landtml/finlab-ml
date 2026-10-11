@@ -155,6 +155,12 @@ def num_co_events(index: pd.Index | Sequence, t1: pd.Series) -> pd.Series:
     """
     grid = _grid(index)
     starts, ends = _spans(grid, t1)
+    # The kernel indexes a difference array of length len(grid) + 1 by end + 1, so an
+    # end at or past the bar count would write out of bounds without an error.
+    if ends.size and int(ends.max()) >= len(grid):
+        raise ValueError(
+            f"t1 has a span end at bar {int(ends.max())}, but index has only {len(grid)} bars."
+        )
     c = _concurrency_sweep(len(grid), starts, ends)
     return pd.Series(c, index=grid, name="c_t")
 
@@ -515,10 +521,10 @@ def time_decay(
     * for ``c_last in [0, 1]``: ``b = (1 - c_last) / T``, so ``a = c_last``;
     * for ``c_last in (-1, 0)``: ``b = 1 / ((1 + c_last) T)``, and the factor is
       clipped to 0 for the oldest part of the sample.
-    Decay runs on cumulative uniqueness, not on calendar time, so redundant
+    Decay runs on cumulative uniqueness; calendar time plays no role, so redundant
     observations do not shrink the weights too fast.
 
-    Scope: the oldest observation has ``C = w_1``, not 0, so its factor is
+    Scope: the oldest observation has ``C = w_1`` (nonzero), so its factor is
     ``c_last + (1 - c_last) w_1 / T``. It equals ``c_last`` only in the limit of
     small ``w_1 / T`` (see docs/proofs/weights.md).
     """

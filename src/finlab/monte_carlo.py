@@ -303,6 +303,12 @@ def _trial_uniqueness(
     :func:`finlab.weights._seq_bootstrap_kernel` with one entry of ``uniforms``
     per draw. Returns ``(std_u, seq_u)``.
     """
+    # An empty sample has no average uniqueness. The division in _sample_uniqueness
+    # would raise ZeroDivisionError from compiled code, so the check goes first.
+    if std_draws.shape[0] == 0:
+        raise ValueError("std_draws must not be empty.")
+    if uniforms.shape[0] == 0:
+        raise ValueError("uniforms must not be empty.")
     ptr, rows, colsum = _spans_to_csc(starts, ends)
     seq_draws = _seq_bootstrap_kernel(n_bars, ptr, rows, colsum, uniforms)
     std_u = _sample_uniqueness(n_bars, starts[std_draws], ends[std_draws])
