@@ -459,7 +459,9 @@ class CombinatorialPurgedCV(_Base):
         # a mis-specified t1 raises when split() is called instead of lying
         # dormant until the caller happens to consume the first fold.
         end_pos = _end_positions(index, t1)
-        return self._iter_splits(n, index, end_pos)
+        # Build every fold now so a too-small training set raises here, not lazily
+        # while the caller iterates. The fold count is small, so materializing is cheap.
+        return iter(list(self._iter_splits(n, index, end_pos)))
 
     def _iter_splits(
         self, n: int, index: pd.Index, end_pos: npt.NDArray[np.int_]

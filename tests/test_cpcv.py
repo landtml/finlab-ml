@@ -650,3 +650,11 @@ def test_t1_given_does_not_warn():
 def test_make_t1_rejects_non_pandas_index(bad) -> None:
     with pytest.raises(TypeError, match="index"):
         make_t1(bad, 2)
+
+
+def test_min_train_size_raises_eagerly_from_split():
+    # split() must raise on the call itself, not when the generator is first consumed.
+    X = _frame(126)
+    cv = CombinatorialPurgedCV(6, 2, embargo_pct=0.01)
+    with pytest.raises(ValueError, match="training observation"):
+        cv.split(X, t1=make_t1(X.index, 21))
