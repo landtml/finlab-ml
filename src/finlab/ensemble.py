@@ -37,6 +37,13 @@ from .weights import indicator_matrix, sequential_bootstrap
 __all__ = ["SequentialBootstrapBagging"]
 
 
+def _same_index(a: pd.Index, b: pd.Index) -> bool:
+    # Two tz-aware indexes match when they name the same instants, whatever zone each uses.
+    if getattr(a, "tz", None) is not None and getattr(b, "tz", None) is not None:
+        return a.tz_convert("UTC").equals(b.tz_convert("UTC"))
+    return a.equals(b)
+
+
 class SequentialBootstrapBagging:
     """Bagged ensemble whose bags are drawn by sequential bootstrap.
 
@@ -114,7 +121,7 @@ class SequentialBootstrapBagging:
             )
         # Labels must line up too: a pandas y or weight is otherwise used by position.
         if isinstance(X, pd.DataFrame):
-            if isinstance(y, (pd.DataFrame, pd.Series)) and not y.index.equals(X.index):
+            if isinstance(y, (pd.DataFrame, pd.Series)) and not _same_index(y.index, X.index):
                 raise ValueError("y index does not match X.index; align y to X before calling.")
             if isinstance(sample_weight, (pd.DataFrame, pd.Series)) and not sample_weight.index.equals(
                 X.index
