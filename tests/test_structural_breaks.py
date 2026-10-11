@@ -422,3 +422,15 @@ def test_sadf_accepts_integer_valued_min_length():
     np.testing.assert_allclose(
         sadf(y, min_length=30.0)[-3:], sadf(y, min_length=30)[-3:], rtol=0, atol=0
     )
+
+
+def test_csw_non_integer_reference_names_reference():
+    y = np.cumsum(np.random.default_rng(1).normal(size=50))
+    with pytest.raises(ValueError, match="reference must be an integer"):
+        chu_stinchcombe_white(y, reference=1.5)
+
+
+def test_sadf_nan_min_length_names_min_length():
+    y = np.cumsum(np.random.default_rng(2).normal(size=100))
+    with pytest.raises(ValueError, match="min_length"):
+        sadf(y, min_length=float("nan"))

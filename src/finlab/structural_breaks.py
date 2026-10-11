@@ -466,9 +466,11 @@ def chu_stinchcombe_white(
         crit[ok] = csw_critical_value(lag[ok], b)
         stat = np.where(ok, stat, np.nan)
     else:
+        _require_integer(reference, "reference must be an integer.")
         if not 0 <= reference < n_obs - 1:
             raise ValueError(f"reference must be in [0, {n_obs - 2}], got {reference}.")
-        stat = _csw_fixed(y, sigma, int(reference))
+        reference = int(reference)
+        stat = _csw_fixed(y, sigma, reference)
         crit = np.full(n_obs, np.nan)
         t_idx = np.arange(reference + 1, n_obs)
         crit[reference + 1 :] = csw_critical_value(t_idx - reference, b)

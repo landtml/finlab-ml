@@ -297,3 +297,9 @@ def test_frac_diff_ffd_no_warning_when_window_fits():
         warnings.simplefilter("error")
         out = frac_diff_ffd(lp, 0.5)
     assert np.isfinite(out).any()
+
+
+@pytest.mark.parametrize("size", [float("nan"), float("inf"), 0.5, 0, -3])
+def test_get_weights_rejects_bad_size(size):
+    with pytest.raises(ValueError, match="size must be a positive integer"):
+        get_weights(0.5, size)
