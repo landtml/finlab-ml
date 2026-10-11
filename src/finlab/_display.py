@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import html
 import numbers
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 
 import numpy as np
 
@@ -77,6 +77,11 @@ def html_table(title: str, rows: Iterable[tuple[object, object]]) -> str:
     The fragment contains no ``<script>``, ``<style>`` or ``<link>`` element, so
     a notebook can display it without running or fetching anything.
     """
+    if isinstance(rows, Mapping):
+        raise TypeError(
+            "html_table expects (label, value) pairs; got a mapping, which would "
+            "yield its keys. Pass mapping.items() instead."
+        )
     body = "".join(
         f'<tr><th style="{_LABEL_STYLE}">{html.escape(str(label))}</th>'
         f'<td style="{_VALUE_STYLE}">{html.escape(format_value(value))}</td></tr>'

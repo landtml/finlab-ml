@@ -411,3 +411,242 @@ def test_check_xy_rejects_shifted_instants_across_timezones():
     y = pd.Series(np.arange(10), index=(utc + pd.Timedelta(days=1)).tz_convert("Asia/Taipei"))
     with pytest.raises(ValueError, match="index"):
         _check_xy(X, y)
+
+
+def test_mdi_from_matrix_rejects_negative_impurity_decreases() -> None:
+    # A negative decrease was averaged in and credited to a feature.
+    from finlab.importance import mdi_from_matrix
+
+    with pytest.raises(ValueError, match="negative"):
+        mdi_from_matrix(np.array([[0.5, -0.1], [0.4, 0.2]]))
+
+
+def test_orthogonal_features_transform_rejects_reordered_columns() -> None:
+    # transform used positional columns, so a reordered frame gave silently wrong features.
+    X = pd.DataFrame(np.random.default_rng(0).normal(size=(40, 2)), columns=["a", "b"])
+    model = OrthogonalFeatures(0.95).fit(X)
+    with pytest.raises(ValueError, match="column"):
+        model.transform(X[["b", "a"]])
+    # Same names in the same order still work.
+    assert model.transform(X).shape[0] == 40
+
+
+def test_mda_one_column_dataframe_label_matches_series() -> None:
+    # A (n, 1) label stayed 2-D, so the accuracy compared every row with every prediction by
+    # broadcasting and the importances came out 0. A one-column label is a 1-D label.
+    from finlab.importance import mda
+
+    rng = np.random.default_rng(3)
+    X = pd.DataFrame(rng.normal(size=(60, 3)), columns=["a", "b", "c"])
+    y = pd.Series((X["a"] > 0).astype(int).to_numpy())
+    cv = PurgedKFold(n_splits=3)
+
+    def mk():
+        return NearestCentroid()
+
+    want = mda(mk, X, y, cv)[1]["mean"].to_numpy()
+    got = mda(mk, X, pd.DataFrame({"y": y}), cv)[1]["mean"].to_numpy()
+    np.testing.assert_allclose(got, want)
+    assert got[0] > 0
+
+
+def test_mdi_from_matrix_normalizes_when_the_sum_overflows() -> None:
+    # Two finite decreases whose sum overflows to inf made every normalized mean 0.0 with no error.
+    # The means are scaled by their peak before they are summed.
+    from finlab.importance import mdi_from_matrix
+
+    got = mdi_from_matrix(np.array([[1e308, 1e308]]))["mean"].tolist()
+    assert got == pytest.approx([0.5, 0.5])
+
+
+def test_mdi_from_matrix_accepts_rounding_level_negative() -> None:
+    # A -1e-17 (rounding of a zero decrease) was refused by the strict sign rule. A rounding-level
+    # negative is now taken as the zero it is, and the feature still counts as drawn, so the mean is
+    # [1/3, 2/3].
+    from finlab.importance import mdi_from_matrix
+
+    out = mdi_from_matrix(np.array([[-1e-17, 1.0], [1.0, 1.0]]))
+    assert out["mean"].to_numpy() == pytest.approx([1 / 3, 2 / 3], rel=1e-12)
+
+
+def test_mdi_from_matrix_does_not_overflow_large_impurities() -> None:
+    # Only the across-column sum was scaled; the within-column sum overflowed.
+    # All the inputs are finite and positive, so each result must be finite.
+    from finlab.importance import mdi_from_matrix
+
+    out = mdi_from_matrix(np.array([[1e308, 1e308], [1e308, 1e308]]))
+    assert out["mean"].tolist() == pytest.approx([0.5, 0.5])
+    out = mdi_from_matrix(np.array([[1.7e308, 1.0], [1.7e308, 1.0]]))
+    assert out["mean"].iloc[0] == pytest.approx(1.0)
+    assert np.isfinite(out["std"]).all()
+    out = mdi_from_matrix(np.array([[1e200], [0.5e200]]))
+    assert np.isfinite(out["std"]).all() and out["mean"].iloc[0] == pytest.approx(1.0)
+
+
+@pytest.mark.parametrize("scale", [1e14, 1e16, 1e300])
+def test_mdi_rounding_negative_keeps_draw_at_large_scale(scale: float) -> None:
+    # The rounding-level negative was set to tiny before scaling by the largest impurity, so at scale
+    # 1e16 it underflowed to 0 and the feature lost a draw. The means are ratios and must not depend on
+    # the scale.
+    from finlab.importance import mdi_from_matrix
+
+    M = np.array([[scale, -1e-16 * scale], [scale, scale]])
+    mean = mdi_from_matrix(M)["mean"].to_numpy()
+    assert mean == pytest.approx([2 / 3, 1 / 3], rel=1e-9)
+
+
+def test_mdi_refuses_a_real_negative_of_1e_minus_12_relative() -> None:
+    # The rounding tolerance was 1e-12 of the largest impurity, about 4500 times float64 rounding, so
+    # -1e-12 was read as a zero decrease. Only rounding-level negatives are set to zero now (1e-14); a
+    # larger one is refused as a negative decrease.
+    from finlab.importance import mdi_from_matrix
+
+    with pytest.raises(ValueError, match="negative"):
+        mdi_from_matrix(np.array([[1.0, -1e-12], [1.0, 1.0]]))
+    with pytest.raises(ValueError, match="negative"):
+        mdi_from_matrix(np.array([[1.0, -1e-11], [1.0, 1.0]]))
+    # A rounding-level negative, -1e-17, is still a zero decrease and gives the means [2/3, 1/3].
+    mean = mdi_from_matrix(np.array([[1.0, -1e-17], [1.0, 1.0]]))["mean"].to_numpy()
+    assert mean == pytest.approx([2 / 3, 1 / 3], rel=1e-9)
+
+
+def test_mda_accepts_unlabelled_y_against_date_x_as_tuning_does() -> None:
+    # Tuning matches an unlabelled 0..n-1 y to a date-indexed X by position, but mda used to refuse
+    # it. The importance check now agrees. A reversed, labelled y is still refused.
+    from finlab.cv import PurgedKFold
+
+    X, y = make_data(n=300, p=3, seed=0)
+    X = pd.DataFrame(np.asarray(X), index=pd.date_range("2021-01-01", periods=len(X)))
+    y_unlabelled = pd.Series(np.asarray(y))
+    baseline, imp = mda(NearestCentroid, X, y_unlabelled, PurgedKFold(n_splits=5), n_repeats=1, seed=0)
+    assert imp.shape == (3, 2)
+    with pytest.raises(ValueError, match="y index does not match"):
+        mda(NearestCentroid, X, pd.Series(np.asarray(y), index=X.index[::-1]), PurgedKFold(n_splits=5))
+
+
+def test_mdi_positive_impurity_below_peak_stays_drawn() -> None:
+    # Dividing by the peak made a positive impurity of 1e-320 against a peak of 1e300 divide to 0.0,
+    # which was read as "not drawn", so the feature's mean was NaN. It is drawn in every tree, so its
+    # share is about 1e-620 (0.0 after rounding) and must not be NaN.
+    from finlab.importance import mdi_from_matrix
+
+    m = np.array([[1e-320, 1e300], [1e-320, 1e300], [1e-320, 1e300]])
+    out = mdi_from_matrix(m)
+    assert not np.isnan(out["mean"].to_numpy()).any()
+    assert out["mean"].tolist() == pytest.approx([0.0, 1.0], abs=1e-12)
+    assert out["std"].tolist() == pytest.approx([0.0, 0.0], abs=1e-12)
+    # A column at 1e308 next to a 1e308 peak stays finite and sums to one.
+    big = mdi_from_matrix(np.array([[1e308, 1e308], [1e308, 0.5e308]]))
+    assert np.isfinite(big["mean"].to_numpy()).all()
+    assert big["mean"].sum() == pytest.approx(1.0)
+
+
+class _ColumnPredict(NearestCentroid):
+    def predict(self, X):
+        return super().predict(X).reshape(-1, 1)
+
+
+class _WidePredict(NearestCentroid):
+    def predict(self, X):
+        return np.stack([super().predict(X)] * 2, axis=1)
+
+
+def test_mda_squeezes_a_column_vector_prediction() -> None:
+    X, y = make_data(n=300, p=3, seed=2)
+    cv = PurgedKFold(n_splits=3)
+    flat, _ = mda(NearestCentroid, X, y, cv, n_repeats=1, seed=0)
+    column, _ = mda(_ColumnPredict, X, y, cv, n_repeats=1, seed=0)
+    np.testing.assert_allclose(column, flat)
+    with pytest.raises(ValueError, match=r"prediction.*shape \(\d+, 2\)"):
+        mda(_WidePredict, X, y, cv, n_repeats=1, seed=0)
+
+
+def test_mda_and_sfi_refuse_nan_sample_weight() -> None:
+    X, y = make_data(n=300, p=3, seed=2)
+    w = np.ones(300)
+    w[7] = np.nan
+    cv = PurgedKFold(n_splits=3)
+    with pytest.raises(ValueError, match="NaN"):
+        mda(NearestCentroid, X, y, cv, sample_weight=w)
+    with pytest.raises(ValueError, match="NaN"):
+        sfi(NearestCentroid, X, y, cv, sample_weight=w)
+
+
+class _FixedSplit:
+    def __init__(self, folds, mask=False):
+        self.folds = folds
+        self.mask = mask
+
+    def split(self, X):
+        for tr, te in self.folds:
+            yield (np.isin(np.arange(len(X)), tr) if self.mask else tr), te
+
+
+def test_mda_boolean_mask_splitter_matches_index_splitter() -> None:
+    X, y = make_data(n=240, p=3, seed=4)
+    folds = list(PurgedKFold(n_splits=3).split(X))
+    base_i, imp_i = mda(NearestCentroid, X, y, _FixedSplit(folds), n_repeats=2, seed=1)
+    base_m, imp_m = mda(NearestCentroid, X, y, _FixedSplit(folds, mask=True), n_repeats=2, seed=1)
+    np.testing.assert_allclose(base_m, base_i)
+    np.testing.assert_allclose(imp_m.to_numpy(), imp_i.to_numpy())
+
+
+def test_mda_accepts_sample_weight_over_the_same_instants_in_another_zone():
+    X, y = make_data(n=120, p=3, seed=2)
+    utc = pd.date_range("2020-01-01", periods=120, freq="D", tz="UTC")
+    Xdf = pd.DataFrame(X, index=utc)
+    cv = PurgedKFold(n_splits=3)
+    w = np.ones(120)
+    base_utc, _ = mda(NearestCentroid, Xdf, y, cv, sample_weight=pd.Series(w, index=utc))
+    base_tpe, _ = mda(NearestCentroid, Xdf, y, cv, sample_weight=pd.Series(w, index=utc.tz_convert("Asia/Taipei")))
+    np.testing.assert_allclose(base_tpe, base_utc)
+    shifted = pd.Series(w, index=(utc + pd.Timedelta(days=1)).tz_convert("Asia/Taipei"))
+    with pytest.raises(ValueError, match="sample_weight index"):
+        mda(NearestCentroid, Xdf, y, cv, sample_weight=shifted)
+
+
+class _NoWeightCentroid(NearestCentroid):
+    """A model whose fit takes no sample_weight keyword, as KNeighborsClassifier does."""
+
+    def fit(self, X, y):
+        return super().fit(X, y)
+
+
+def test_mda_fits_without_sample_weight() -> None:
+    X, y = make_data(n=300, p=3, seed=2)
+    baseline, imp = mda(_NoWeightCentroid, X, y, PurgedKFold(n_splits=3))
+    assert baseline.shape == (3,)
+    assert imp.shape[0] == 3
+
+
+def test_sfi_fits_without_sample_weight() -> None:
+    X, y = make_data(n=300, p=3, seed=2)
+    baseline, imp = sfi(_NoWeightCentroid, X, y, PurgedKFold(n_splits=3))
+    assert baseline.shape == (3,)
+    assert imp.shape[0] == 3
+
+
+def test_orthogonal_features_treats_pd_na_as_nan() -> None:
+    cols = {
+        "a": pd.array([1.0, 2.0, None, 4.0, 5.0, 3.0], dtype="Float64"),
+        "b": pd.array([2.0, 1.0, 3.0, 0.5, 4.0, 6.0], dtype="Float64"),
+    }
+    X = pd.DataFrame(cols)
+    X_nan = X.astype(float)
+    with pytest.raises(ValueError, match="non-finite"):
+        OrthogonalFeatures().fit(X_nan)
+    with pytest.raises(ValueError, match="non-finite"):
+        OrthogonalFeatures().fit(X)
+    with pytest.raises(ValueError, match="non-finite"):
+        orthogonal_features(X)
+
+
+def test_orthogonal_transform_maps_pd_na_to_a_nan_row() -> None:
+    rng = np.random.default_rng(3)
+    clean = pd.DataFrame(rng.normal(size=(50, 2)), columns=["a", "b"]).astype("Float64")
+    model = OrthogonalFeatures().fit(clean)
+    new = clean.iloc[:3].copy()
+    new.iloc[1, 0] = pd.NA
+    out = np.asarray(model.transform(new), dtype=float)
+    assert np.isnan(out[1]).all()
+    assert np.isfinite(out[0]).all() and np.isfinite(out[2]).all()

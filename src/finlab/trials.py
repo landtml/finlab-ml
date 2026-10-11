@@ -368,6 +368,11 @@ def _check_param_value(key: str, value: Any) -> ParamValue:
 
 
 def _check_returns(returns: Any, name: str) -> np.ndarray:
+    # The shape is checked before the items: a DataFrame or 2-D array iterates by column label, so its
+    # labels would be refused as string returns. An ndarray or DataFrame has ndim; a sequence does not.
+    ndim = getattr(returns, "ndim", None)
+    if ndim is not None and ndim != 1:
+        raise ValueError(f"returns must be 1-D, got shape {tuple(returns.shape)}")
     try:
         items = list(returns)
     except TypeError as exc:

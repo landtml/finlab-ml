@@ -202,7 +202,7 @@ def test_integral_partition_count_equals_int(ok) -> None:
 # logit = log(1/2) = -log 2 for rank 1 and log 2 for rank 2. Splits are listed
 # in itertools.combinations order; the test set of split {s, t} is the complement.
 # ---------------------------------------------------------------------------
-def test_hand_computed_T8_N2_S4_logits_and_pbo() -> None:
+def test_hand_computed_logits_and_pbo() -> None:
     # Hand-computed, constructed input, not a book value.
     A = np.repeat([1.0, 2.0, 3.0, 4.0], 2)
     B = np.repeat([1.0, 4.0, 2.0, 3.0], 2)
@@ -441,3 +441,19 @@ def test_numpy_input_emits_no_row_order_warning() -> None:
         warnings.simplefilter("always")
         probability_of_backtest_overfitting(M, n_partitions=4)
     assert _row_order_warnings(record) == []
+
+
+def test_equity_curves_warn_by_name() -> None:
+    rng = np.random.default_rng(21)
+    R = rng.normal(0.0, 0.01, size=(256, 10))
+    with pytest.warns(UserWarning, match="cumulative|equity"):
+        probability_of_backtest_overfitting(np.cumsum(R, axis=0), n_partitions=8)
+
+
+def test_per_period_returns_do_not_warn() -> None:
+    rng = np.random.default_rng(21)
+    R = rng.normal(0.0, 0.01, size=(256, 10))
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
+        probability_of_backtest_overfitting(R, n_partitions=8)
+    assert record == []

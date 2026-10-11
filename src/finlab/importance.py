@@ -48,6 +48,7 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 
+from finlab._checks import _same_index, tz_mismatch_message
 from finlab._jit import jit
 
 __all__ = [
@@ -112,6 +113,19 @@ def _permute_column(X_test: Any, j: int, perm: npt.NDArray[np.int_]) -> Any:
     return out
 
 
+def _prediction_vector(y_pred: Any, n: int) -> npt.NDArray[Any]:
+    """A (n, 1) prediction as (n,); any other shape is refused.
+
+    Left as (n, 1), it broadcast against y into an n by n comparison and scored near 0.5.
+    """
+    pred = np.asarray(y_pred)
+    if pred.ndim == 2 and pred.shape[1] == 1:
+        pred = pred[:, 0]
+    if pred.shape != (n,):
+        raise ValueError(f"model.predict returned a prediction of shape {pred.shape}; expected ({n},).")
+    return pred
+
+
 def _score(
     scoring: str | Scorer,
     y_true: npt.NDArray[Any],
@@ -124,7 +138,7 @@ def _score(
                 f"Unknown scoring {scoring!r}; use 'accuracy' or a callable "
                 "scoring(y_true, y_pred, sample_weight) -> float."
             )
-        hit = (np.asarray(y_true) == np.asarray(y_pred)).astype(np.float64)
+        hit = (np.asarray(y_true) == _prediction_vector(y_pred, len(y_true))).astype(np.float64)
         if sample_weight is None:
             return float(hit.mean())
         return float(np.sum(sample_weight * hit) / np.sum(sample_weight))
@@ -138,13 +152,25 @@ def _fit(
     sample_weight: npt.NDArray[np.float64] | None,
 ) -> Estimator:
     model = model_factory()
-    model.fit(X, y, sample_weight=sample_weight)
+    if sample_weight is None:
+        # Some models (KNeighborsClassifier) take no sample_weight keyword at all.
+        model.fit(X, y)
+    else:
+        model.fit(X, y, sample_weight=sample_weight)
     return model
+
+
+def _positions(idx: Any) -> npt.NDArray[np.intp]:
+    arr = np.asarray(idx)
+    if arr.dtype == np.bool_:
+        return np.flatnonzero(arr).astype(np.intp)
+    return arr.astype(np.intp)
 
 
 def _folds(cv: Any, X: Any) -> Iterator[tuple[npt.NDArray[np.int_], npt.NDArray[np.int_]]]:
     for train, test in cv.split(X):
-        yield np.asarray(train, dtype=np.intp), np.asarray(test, dtype=np.intp)
+        # A boolean mask cast to intp became the positions 0 and 1; take the True positions instead.
+        yield _positions(train), _positions(test)
 
 
 def _warn_if_zero_weight(w_te: npt.NDArray[np.float64] | None, fold: int) -> None:
@@ -168,16 +194,23 @@ def _summarize(per_fold: npt.NDArray[np.float64], names: list[Any]) -> pd.DataFr
     return pd.DataFrame({"mean": mean, "std": se}, index=names)
 
 
-def _same_index(a: pd.Index, b: pd.Index) -> bool:
-    # Two tz-aware indexes match when they name the same instants, whatever zone each uses.
-    if getattr(a, "tz", None) is not None and getattr(b, "tz", None) is not None:
-        return a.tz_convert("UTC").equals(b.tz_convert("UTC"))
-    return a.equals(b)
+def _matches_unlabelled(index: pd.Index, x_index: pd.Index, n: int) -> bool:
+    """True for a default 0..n-1 RangeIndex that is matched to a non-integer X index by position."""
+    # Value and integer dtype, not the RangeIndex class, decide it.
+    return (
+        pd.api.types.is_integer_dtype(index)
+        and index.equals(pd.RangeIndex(n))
+        and not pd.api.types.is_integer_dtype(x_index)
+    )
 
 
 def _check_xy(X: Any, y: Any, sample_weight: Any = None) -> tuple[int, npt.NDArray[Any]]:
     p = _n_features(X)
     y_arr = np.asarray(y)
+    if y_arr.ndim == 2 and y_arr.shape[1] == 1:
+        # A one-column label is a 1-D label. Kept 2-D, the accuracy broadcast against
+        # every prediction and the importances came out zero.
+        y_arr = y_arr[:, 0]
     n = np.shape(X)[0]
     if y_arr.shape[0] != n:
         raise ValueError(
@@ -189,15 +222,25 @@ def _check_xy(X: Any, y: Any, sample_weight: Any = None) -> tuple[int, npt.NDArr
             f"sample_weight has shape {np.shape(sample_weight)} but X has {n} rows; "
             f"expected length {n}."
         )
+    if sample_weight is not None and np.isnan(np.asarray(sample_weight, dtype=np.float64)).any():
+        # A NaN weight on a test row made the weighted score NaN with no message.
+        raise ValueError("sample_weight contains NaN; drop or fill those rows before calling.")
     # Labels must line up too: a pandas y or weight is otherwise used by position.
     if isinstance(X, (pd.DataFrame, pd.Series)):
-        if isinstance(y, (pd.DataFrame, pd.Series)) and not _same_index(y.index, X.index):
-            raise ValueError("y index does not match X.index; align y to X before calling.")
-        if isinstance(sample_weight, (pd.DataFrame, pd.Series)) and not sample_weight.index.equals(
-            X.index
-        ):
+        # A default 0..n-1 y or weight is matched by position against a non-integer X index,
+        # as tuning does; an integer X index must match it exactly.
+        unlabelled_y = isinstance(y, (pd.DataFrame, pd.Series)) and _matches_unlabelled(y.index, X.index, n)
+        if isinstance(y, (pd.DataFrame, pd.Series)) and not _same_index(y.index, X.index) and not unlabelled_y:
             raise ValueError(
-                "sample_weight index does not match X.index; align sample_weight to X before calling."
+                tz_mismatch_message(y.index, X.index, "y", "X.index")
+                or "y index does not match X.index; align y to X before calling."
+            )
+        if isinstance(sample_weight, (pd.DataFrame, pd.Series)) and not _same_index(
+            sample_weight.index, X.index
+        ) and not _matches_unlabelled(sample_weight.index, X.index, n):
+            raise ValueError(
+                tz_mismatch_message(sample_weight.index, X.index, "sample_weight", "X.index")
+                or "sample_weight index does not match X.index; align sample_weight to X before calling."
             )
     return p, y_arr
 
@@ -286,12 +329,37 @@ def mdi_from_matrix(imp: Any, names: Sequence[Any] | None = None) -> pd.DataFram
     # Infinity would turn its column into NaN and zero out the others after normalizing.
     if np.isinf(arr).any():
         raise ValueError("imp contains infinite values; impurity decreases must be finite.")
+    finite_vals = arr[~np.isnan(arr)]
+    absmax = float(np.max(np.abs(finite_vals))) if finite_vals.size else 0.0
+    # A negative within float rounding of the largest value (1e-14 relative, about 45 ulp) is a zero
+    # decrease from rounding, not a real negative. It is set to the
+    # smallest positive normal, so the feature still counts as drawn, as before, and the means match
+    # main to rounding.
+    rounding = (arr < 0) & (arr >= -1e-14 * absmax)
+    if ((arr < 0) & ~rounding).any():
+        # A tree's impurity decrease cannot be negative; averaging one in credits the feature wrongly.
+        raise ValueError("imp contains negative impurity decreases; they must be >= 0.")
 
-    mean, se = _mdi_column_stats(np.ascontiguousarray(arr))
-    total = float(np.nansum(mean))
-    if not total > 0.0:
+    # Work in units of the largest impurity. The column sums of raw values overflowed for
+    # impurities near 1e308, and the ratios that give the result are unchanged by the scaling.
+    # The rounding-level zero is set after the scaling: set before it, a tiny value divided by
+    # a large scale underflowed to 0, which dropped the feature's draw and shifted the means.
+    scale = absmax if absmax > 0.0 else 1.0
+    scaled = np.where(rounding, np.finfo(np.float64).tiny, arr / scale)
+    # A positive impurity far below the peak can divide to 0.0, which _mdi_column_stats reads as
+    # "not drawn". It was drawn, so it keeps the smallest positive normal, as a rounding-level zero does.
+    drawn = (arr != 0.0) & ~np.isnan(arr)
+    scaled = np.where(drawn & (scaled == 0.0), np.finfo(np.float64).tiny, scaled)
+    mean, se = _mdi_column_stats(np.ascontiguousarray(scaled))
+    # Scale by the peak before summing: a sum of finite means can overflow to inf, which made
+    # every normalized mean 0.0. The ratios are unchanged by the scaling.
+    finite_mean = mean[np.isfinite(mean)]
+    peak = float(finite_mean.max()) if finite_mean.size else 0.0
+    if not peak > 0.0:
         raise ValueError("No positive MDI importance found; cannot normalize.")
-    return pd.DataFrame({"mean": mean / total, "std": se / total}, index=names)
+    unit = mean / peak
+    total = float(np.nansum(unit))
+    return pd.DataFrame({"mean": unit / total, "std": (se / peak) / total}, index=names)
 
 
 # ---------------------------------------------------------------------------
@@ -460,6 +528,13 @@ def sfi(
 # ---------------------------------------------------------------------------
 
 
+def _float_values(X: Any) -> npt.NDArray[np.float64]:
+    """Float values of X, with pd.NA read as NaN so the NaN refusal applies."""
+    if isinstance(X, (pd.DataFrame, pd.Series)):
+        return X.to_numpy(dtype=np.float64, na_value=np.nan)
+    return np.asarray(X, dtype=np.float64)
+
+
 class OrthogonalFeatures:
     """PCA orthogonalization that can be fit on one sample and applied to another.
 
@@ -497,7 +572,7 @@ class OrthogonalFeatures:
         self.variance_threshold = variance_threshold
 
     def fit(self, X: Any, y: Any = None) -> OrthogonalFeatures:
-        arr = np.asarray(X, dtype=np.float64)
+        arr = _float_values(X)
         if arr.ndim != 2:
             raise ValueError(f"X must be 2-dimensional, got shape {arr.shape}.")
         n, p = arr.shape
@@ -526,6 +601,7 @@ class OrthogonalFeatures:
         self.explained_variance_ratio_ = clipped[:k] / total
         self.n_components_ = k
         self.feature_names_in_ = _feature_names(X, p)
+        self._names_from_frame = isinstance(X, pd.DataFrame)
         return self
 
     def transform(self, X: Any) -> Any:
@@ -536,9 +612,14 @@ class OrthogonalFeatures:
         """
         if not hasattr(self, "eigenvectors_"):
             raise RuntimeError("OrthogonalFeatures is not fitted; call fit first.")
-        arr = np.asarray(X, dtype=np.float64)
+        arr = _float_values(X)
         if arr.ndim != 2 or arr.shape[1] != self.mean_.shape[0]:
             raise ValueError(f"Expected {self.mean_.shape[0]} features, got shape {arr.shape}.")
+        # Columns are matched by position, so a reordered frame would give silently
+        # wrong features. When the fit saw named columns, the names must match in the same order.
+        if isinstance(X, pd.DataFrame) and getattr(self, "_names_from_frame", False):
+            if list(X.columns) != list(self.feature_names_in_):
+                raise ValueError("X columns must match the fitted feature names, in the same order.")
         P = ((arr - self.mean_) / self.std_) @ self.eigenvectors_
         if isinstance(X, pd.DataFrame):
             cols = [f"PC_{k + 1}" for k in range(P.shape[1])]
