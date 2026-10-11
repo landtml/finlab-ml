@@ -8,7 +8,7 @@ CI workflow passes on a push to `main`.
 A release pull request to `main` contains:
 
 1. The new version in `pyproject.toml`.
-2. A `## [X.Y.Z] - YYYY-MM-DD` section in `CHANGELOG.md` with the former `[Unreleased]` entries, and the
+2. A `## [X.Y.Z] - YYYY-MM-DD` section in `CHANGELOG.md` with the `[Unreleased]` entries moved into it, and the
    updated link references at the end of the file.
 3. The new version in the README install command (`@vX.Y.Z`).
 4. Optional release notes in `.github/releases/vX.Y.Z.md`, in the format of `v0.1.1.md`.
