@@ -56,6 +56,7 @@ implementation of ch. 20.
 from __future__ import annotations
 
 import math
+import numbers
 from dataclasses import dataclass
 from typing import Any
 
@@ -81,6 +82,16 @@ _CSW_B_05 = 4.6  # b_0.05 from AFML 17.3.2 (Monte Carlo, Chu-Stinchcombe-White)
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
+
+
+def _require_integer(value: Any, message: str) -> None:
+    # Type and finiteness come first so that int() never sees NaN, inf or text.
+    if not isinstance(value, numbers.Real):
+        raise ValueError(message)
+    if not isinstance(value, numbers.Integral) and not math.isfinite(value):
+        raise ValueError(message)
+    if value != int(value):
+        raise ValueError(message)
 
 
 def _as_float_vector(series: Any) -> tuple[np.ndarray, pd.Index | None]:
@@ -581,8 +592,7 @@ def adf_stat(series: Any, lag: int, constant: str = "c") -> float:
         behaviour gives large positive values.
     """
     y, _ = _as_float_vector(series)
-    if lag != int(lag):
-        raise ValueError("lag must be an integer.")
+    _require_integer(lag, "lag must be an integer.")
     if lag < 0:
         raise ValueError("lag must be >= 0.")
     code = _constant_code(constant)
@@ -629,8 +639,7 @@ def sadf(
     numba. ``lags`` and ``constant`` follow the arguments of Snippet 17.1.
     """
     y, index = _as_float_vector(series)
-    if lags != int(lags):
-        raise ValueError("lags must be an integer.")
+    _require_integer(lags, "lags must be an integer.")
     if lags < 0:
         raise ValueError("lags must be >= 0.")
     code = _constant_code(constant)

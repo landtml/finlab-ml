@@ -337,6 +337,26 @@ def test_adf_rejects_non_integer_lag():
     assert np.isfinite(adf_stat(y, np.int64(1)))
 
 
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf"), "x", "2"])
+def test_adf_non_finite_or_non_numeric_lag_is_value_error(bad):
+    y = np.random.default_rng(4).standard_normal(120).cumsum()
+    with pytest.raises(ValueError, match="lag must be an integer"):
+        adf_stat(y, bad)
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), "x"])
+def test_sadf_non_finite_or_non_numeric_lags_is_value_error(bad):
+    y = np.random.default_rng(4).standard_normal(120).cumsum()
+    with pytest.raises(ValueError, match="lags must be an integer"):
+        sadf(y, min_length=30, lags=bad)
+
+
+def test_adf_integer_valued_float_and_numpy_integer_lags_work():
+    y = np.random.default_rng(6).standard_normal(120).cumsum()
+    assert adf_stat(y, 2.0) == pytest.approx(adf_stat(y, 2))
+    assert adf_stat(y, np.int64(2)) == pytest.approx(adf_stat(y, 2))
+
+
 def test_sadf_rejects_non_integer_lags():
     y = np.random.default_rng(4).standard_normal(60).cumsum()
     with pytest.raises(ValueError):
