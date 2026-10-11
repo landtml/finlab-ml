@@ -35,7 +35,7 @@ Not covered: the weighted Kendall's tau between importances and PCA ranks
 (AFML snippet 8.6), the parallelized-vs-stacked importance design of section
 8.5, the cvScore helper from chapter 7, and any tree-model fitting. MDI needs the
 caller to extract ``feature_importances_`` from their own forest. Substitution
-effects are not corrected for, only diluted through orthogonalization.
+effects are only diluted through orthogonalization, never corrected.
 """
 
 from __future__ import annotations
