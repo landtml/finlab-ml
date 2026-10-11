@@ -193,3 +193,22 @@ def test_y_length_must_match_rows():
         grid_search(Threshold, {"threshold": [0.0]}, X, y_long, PurgedKFold(3))
     with pytest.raises(ValueError, match="y.*300"):
         cv_score(Threshold, {"threshold": 0.0}, X, y_long, PurgedKFold(3))
+
+
+@pytest.mark.parametrize("bad", ["ab", b"ab"])
+def test_string_grid_value_rejected(bad):
+    X, y = _data()
+    with pytest.raises(TypeError, match="threshold"):
+        grid_search(Threshold, {"threshold": bad}, X, y, PurgedKFold(3))
+    with pytest.raises(TypeError, match="threshold"):
+        randomized_search(Threshold, {"threshold": bad}, 2, X, y, PurgedKFold(3))
+
+
+def test_non_string_iterable_grid_values_still_accepted():
+    X, y = _data()
+    res = grid_search(Threshold, {"threshold": (0.0, 0.5)}, X, y, PurgedKFold(3))
+    assert len(res.results) == 2
+    res = grid_search(Threshold, {"threshold": range(2)}, X, y, PurgedKFold(3))
+    assert len(res.results) == 2
+    res = randomized_search(Threshold, {"threshold": np.array([0.0, 0.5])}, 3, X, y, PurgedKFold(3))
+    assert len(res.results) == 3

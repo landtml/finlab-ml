@@ -181,6 +181,16 @@ def _search(
     return SearchResult(best_params=dict(best[1]), best_score=best[0], results=frame)
 
 
+def _check_value_lists(mapping: Mapping[str, Any]) -> None:
+    """Reject a str or bytes value, which would otherwise be iterated character by character."""
+    for key, values in mapping.items():
+        if isinstance(values, (str, bytes)):
+            raise TypeError(
+                f"values for {key!r} must be a list, tuple or other non-string sequence, "
+                f"not {type(values).__name__}; wrap a single string as [{values!r}]."
+            )
+
+
 def grid_search(
     model_factory: Callable[..., Any],
     param_grid: Mapping[str, Sequence[Any]],
@@ -196,6 +206,7 @@ def grid_search(
     """
     if not param_grid:
         raise ValueError("param_grid must not be empty.")
+    _check_value_lists(param_grid)
     keys = list(param_grid)
     combos = (dict(zip(keys, vals)) for vals in itertools.product(*(param_grid[k] for k in keys)))
     return _search(model_factory, combos, X, y, cv, sample_weight, scoring)
@@ -218,6 +229,7 @@ def randomized_search(
     """
     if n_iter < 1:
         raise ValueError(f"n_iter must be >= 1, got {n_iter!r}.")
+    _check_value_lists(param_distributions)
     rng = np.random.default_rng(seed)
     keys = list(param_distributions)
 
