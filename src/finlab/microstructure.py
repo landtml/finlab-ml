@@ -71,6 +71,13 @@ def _rewrap(out: np.ndarray, like: ArrayLike) -> ArrayLike:
     return out
 
 
+def _require_finite(arr: np.ndarray, name: str) -> np.ndarray:
+    # NaN passes comparisons such as max(0, x) silently, so it is rejected up front.
+    if not np.all(np.isfinite(arr)):
+        raise ValueError(f"{name} must contain only finite values.")
+    return arr
+
+
 # ---------------------------------------------------------------------------
 # 19.3.1 Tick rule
 # ---------------------------------------------------------------------------
@@ -115,7 +122,7 @@ def tick_rule(prices: ArrayLike) -> ArrayLike:
 
     Scope: one instrument, trade prices only. No quote data is used.
     """
-    p = _to_float(prices, "prices")
+    p = _require_finite(_to_float(prices, "prices"), "prices")
     out = _tick_rule_kernel(p) if p.shape[0] else np.empty(0, dtype=np.int64)
     return _rewrap(out, prices)
 
@@ -155,7 +162,7 @@ def roll_measure(prices: ArrayLike) -> float:
     Scope: a single price series. Price impact and non-zero drift violate
     the model's assumptions, so the estimate is biased in those cases.
     """
-    p = _to_float(prices, "prices")
+    p = _require_finite(_to_float(prices, "prices"), "prices")
     if p.shape[0] < 3:
         raise ValueError("roll_measure needs at least 3 prices")
     dp = np.diff(p)
@@ -331,8 +338,8 @@ def _ols_origin(x: np.ndarray, y: np.ndarray) -> tuple[float, float]:
 
 def _kyle_inputs(prices: ArrayLike, signed_volume: ArrayLike) -> tuple[np.ndarray, np.ndarray]:
     """Return ``(x, y)`` with regressor ``x = signed volume`` and response ``y = dp``."""
-    p = _to_float(prices, "prices")
-    v = _to_float(signed_volume, "signed_volume")
+    p = _require_finite(_to_float(prices, "prices"), "prices")
+    v = _require_finite(_to_float(signed_volume, "signed_volume"), "signed_volume")
     if p.shape != v.shape:
         raise ValueError("prices and signed_volume must have the same length")
     if p.shape[0] < 3:
@@ -435,8 +442,9 @@ def amihud_illiquidity(
     ``"ratio"`` mode and are allowed but uninformative in ``"regression"``
     mode.
     """
-    r = np.abs(_to_float(returns, "returns"))
-    dv = _to_float(dollar_volume, "dollar_volume")
+    raw_r = _require_finite(_to_float(returns, "returns"), "returns")
+    dv = _require_finite(_to_float(dollar_volume, "dollar_volume"), "dollar_volume")
+    r = np.abs(raw_r)
     if r.shape != dv.shape:
         raise ValueError("returns and dollar_volume must have the same length")
     if r.shape[0] == 0:
@@ -497,8 +505,8 @@ def bulk_volume_classification(
 
     Scope: one instrument.
     """
-    p = _to_float(prices, "prices")
-    v = _to_float(volume, "volume")
+    p = _require_finite(_to_float(prices, "prices"), "prices")
+    v = _require_finite(_to_float(volume, "volume"), "volume")
     if p.shape != v.shape:
         raise ValueError("prices and volume must have the same length")
     if np.any(v < 0.0):

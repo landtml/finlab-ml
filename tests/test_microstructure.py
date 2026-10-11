@@ -400,3 +400,49 @@ def test_vpin_rejects_non_finite_volume(bad_volume) -> None:
     volume = np.array([100.0, 100.0, bad_volume, 100.0, 100.0, 100.0])
     with pytest.raises(ValueError, match="volume"):
         vpin(prices, volume, bucket_volume=200.0, n_window=2)
+
+
+# ---------------------------------------------------------------------------
+# Non-finite input is rejected, not silently absorbed
+# ---------------------------------------------------------------------------
+@pytest.mark.parametrize("bad", [np.nan, np.inf, -np.inf])
+def test_price_estimators_reject_non_finite_prices(bad) -> None:
+    prices = np.array([10.0, 10.1, bad, 10.3, 10.2, 10.4])
+    volume = np.full(6, 100.0)
+    with pytest.raises(ValueError, match="prices"):
+        tick_rule(prices)
+    with pytest.raises(ValueError, match="prices"):
+        roll_measure(prices)
+    with pytest.raises(ValueError, match="prices"):
+        bulk_volume_classification(prices, volume)
+    with pytest.raises(ValueError, match="prices"):
+        kyle_lambda(prices, volume)
+    with pytest.raises(ValueError, match="prices"):
+        kyle_lambda_tstat(prices, volume)
+
+
+@pytest.mark.parametrize("bad", [np.nan, np.inf, -np.inf])
+def test_volume_based_estimators_reject_non_finite_volume(bad) -> None:
+    prices = np.array([10.0, 10.1, 10.2, 10.3, 10.2, 10.4])
+    volume = np.array([100.0, 100.0, bad, 100.0, 100.0, 100.0])
+    with pytest.raises(ValueError, match="signed_volume"):
+        kyle_lambda(prices, volume)
+    with pytest.raises(ValueError, match="signed_volume"):
+        kyle_lambda_tstat(prices, volume)
+    with pytest.raises(ValueError, match="volume"):
+        bulk_volume_classification(prices, volume)
+
+
+@pytest.mark.parametrize("method", ["regression", "ratio"])
+@pytest.mark.parametrize("bad", [np.nan, np.inf])
+def test_amihud_rejects_non_finite_inputs(method, bad) -> None:
+    returns = np.array([0.01, -0.02, 0.03, 0.01])
+    dollar = np.array([1e6, 2e6, 1.5e6, 1e6])
+    bad_returns = returns.copy()
+    bad_returns[1] = bad
+    bad_dollar = dollar.copy()
+    bad_dollar[2] = bad
+    with pytest.raises(ValueError, match="returns"):
+        amihud_illiquidity(bad_returns, dollar, method=method)
+    with pytest.raises(ValueError, match="dollar_volume"):
+        amihud_illiquidity(returns, bad_dollar, method=method)

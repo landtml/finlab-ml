@@ -72,9 +72,10 @@ def get_daily_vol(close: pd.Series, span: int = 100) -> pd.Series:
     Returns
     -------
     pd.Series
-        Volatility aligned to ``close.index``. Each bar ``t`` is compared with
-        the last bar strictly before ``t - 1 day``. Bars with no such bar (the
-        first day of the sample) are NaN.
+        Volatility aligned to ``close.index``. The return of bar ``t`` is taken
+        against the last bar strictly before ``t - 1 day``. On daily data that
+        bar is usually two trading days back, not one. Bars with no such bar
+        (the first day of the sample) are NaN.
 
     Notes
     -----
@@ -82,8 +83,8 @@ def get_daily_vol(close: pd.Series, span: int = 100) -> pd.Series:
     built as above. This function does the same, with the lookup written as
     a vectorised ``searchsorted``.
 
-    Scope: one-day look-back on a time index. Irregular sampling is handled
-    by the calendar lookback, not by a fixed bar count.
+    Scope: the look-back is calendar based, not a fixed bar count, so
+    irregular sampling follows the calendar.
     """
     _require_type(close, "close", pd.Series)
     if not isinstance(close.index, pd.DatetimeIndex):
@@ -92,6 +93,9 @@ def get_daily_vol(close: pd.Series, span: int = 100) -> pd.Series:
     orig_index = close.index
     close = close.sort_index()
     px = close.to_numpy(dtype=float)
+    # The EWM skips NaN returns without an error, so a NaN price must be rejected here.
+    if not np.all(np.isfinite(px)):
+        raise ValueError("close must contain only finite prices.")
     idx = close.index
     prev = idx.searchsorted(idx - pd.Timedelta(days=1), side="left") - 1
     valid = prev >= 0

@@ -427,10 +427,10 @@ def time_bars(
     """
     if not isinstance(prices, pd.Series) or not isinstance(prices.index, pd.DatetimeIndex):
         raise TypeError("time_bars needs a pd.Series indexed by a DatetimeIndex.")
-    _, p, v = _as_arrays(prices, volumes, need_volume=False)
+    index, p, v = _as_arrays(prices, volumes, need_volume=False)
     df = pd.DataFrame(
         {"price": p, "volume": v, "dollar": p * v},
-        index=prices.index,
+        index=index,
     )
     rs = df.resample(freq, closed="right", label="right")
     out = pd.DataFrame(

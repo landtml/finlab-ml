@@ -302,6 +302,34 @@ def test_unsorted_series_gives_the_same_bars_as_sorted() -> None:
     pd.testing.assert_frame_equal(shuffled, sorted_bars)
 
 
+def test_time_bars_pair_each_tick_with_its_own_timestamp() -> None:
+    idx = pd.to_datetime(["2020-01-02 10:00:50", "2020-01-02 10:00:10", "2020-01-02 10:00:30"])
+    s = pd.Series([4.0, 1.0, 2.0], index=idx)
+    expected_index = pd.DatetimeIndex(["2020-01-02 10:01:00"])
+    with pytest.warns(UserWarning, match="not closed"):
+        bars = time_bars(s, None, "1min")
+    assert list(bars.index) == list(expected_index)
+    assert bars["open"].iloc[0] == 1.0
+    assert bars["high"].iloc[0] == 4.0
+    assert bars["low"].iloc[0] == 1.0
+    assert bars["close"].iloc[0] == 4.0
+    assert bars["ticks"].iloc[0] == 3
+
+
+def test_time_bars_volume_follows_unsorted_ticks() -> None:
+    idx = pd.to_datetime(["2020-01-02 10:00:50", "2020-01-02 10:00:10", "2020-01-02 10:00:30"])
+    s = pd.Series([4.0, 1.0, 2.0], index=idx)
+    vol_array = np.array([40.0, 10.0, 20.0])
+    vol_series = pd.Series(vol_array, index=idx)
+    with pytest.warns(UserWarning, match="not closed"):
+        from_array = time_bars(s, vol_array, "1min")
+        from_series = time_bars(s, vol_series, "1min")
+    for bars in (from_array, from_series):
+        assert bars["volume"].iloc[0] == 70.0
+        assert bars["dollar_value"].iloc[0] == 1.0 * 10.0 + 2.0 * 20.0 + 4.0 * 40.0
+        assert bars.index.is_monotonic_increasing
+
+
 # --------------------------------------------------------------------------- #
 # Tick rule
 # --------------------------------------------------------------------------- #
