@@ -1,4 +1,8 @@
 """Tests for finlab.parallel (AFML ch. 20)."""
+import sys
+import threading
+import warnings
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -34,3 +38,22 @@ def test_serial_and_parallel_agree():
     # Equality alone would also pass if both paths returned the same wrong values.
     assert serial.index.equals(idx)
     np.testing.assert_array_equal(serial.to_numpy(), np.arange(1000.0) ** 2 + 1)
+
+
+@pytest.mark.skipif(sys.version_info < (3, 12), reason="fork DeprecationWarning starts in 3.12")
+def test_parallel_call_emits_no_deprecation_warning():
+    # CPython warns on fork() while another thread is alive, so keep one running
+    # while the pool starts. Without it the old start method passes this test.
+    stop = threading.Event()
+    helper = threading.Thread(target=stop.wait)
+    helper.start()
+    try:
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            parallel = mp_pandas_obj(_square, pd.RangeIndex(200), num_threads=2, offset=1)
+    finally:
+        stop.set()
+        helper.join()
+    deprecations = [str(w.message) for w in caught if issubclass(w.category, DeprecationWarning)]
+    assert not deprecations, deprecations
+    np.testing.assert_array_equal(parallel.to_numpy(), np.arange(200.0) ** 2 + 1)
