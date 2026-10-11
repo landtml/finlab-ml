@@ -67,8 +67,10 @@ def _vec(args: dict[str, Any], key: str) -> np.ndarray:
     if len(v) > MAX_ELEMENTS:
         raise ToolError(f"'{key}' has {len(v)} elements; the limit is {MAX_ELEMENTS}")
     for i, x in enumerate(v):
-        if isinstance(x, bool):
-            raise ToolError(f"'{key}' element {i} must be a number, got bool")
+        if isinstance(x, list):
+            raise ToolError(f"'{key}' must be a flat array of numbers")
+        if isinstance(x, bool) or not isinstance(x, (int, float)):
+            raise ToolError(f"'{key}' element {i} must be a number, got {type(x).__name__}")
     arr = np.asarray(v, dtype=np.float64)
     if arr.ndim != 1:
         raise ToolError(f"'{key}' must be a flat array of numbers")

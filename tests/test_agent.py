@@ -296,3 +296,11 @@ def test_boolean_elements_are_rejected_as_numbers_and_symbols():
     assert err and "'message' element 1" in out["error"]
     out, err = _call("plug_in_entropy", {"message": [False, 1]})
     assert err and "'message' element 0" in out["error"]
+
+
+def test_non_numeric_element_names_argument_index_and_type():
+    out, err = _call("sharpe_ratio", {"returns": [0.1, "x"]})
+    assert err and "element 1" in out["error"] and "str" in out["error"]
+    assert "'returns'" in out["error"]
+    out, err = _call("sharpe_ratio", {"returns": ["0.1", "x"]})
+    assert err and "element 0" in out["error"] and "str" in out["error"]
