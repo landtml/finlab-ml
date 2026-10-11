@@ -72,20 +72,24 @@ All notable changes to this project are documented in this file. The format foll
 
 ### Known limitations
 
-- The supported input forms are a monotonic `DatetimeIndex` with one timezone or none, at any
-  single resolution, and the same awareness across inputs. An object-dtype datetime index,
-  mixed zones in one index, strings or integers used as timestamps, and a non-monotonic index
-  are not supported.
+- Supported input is a monotonic `DatetimeIndex` with one timezone or none, at any single
+  resolution, with the same awareness across inputs. Object-dtype datetime indexes, mixed
+  zones in one index, strings or integers used as timestamps, and non-monotonic indexes are
+  refused.
 - `get_daily_vol` on daily bars uses the last bar strictly before `t` minus one day, which is
   two trading days back for most bars. This matches AFML Snippet 3.1.
 - The expanding-window `frac_diff` mask depends on the sample length, following AFML Snippet
-  5.2. Changing the length changes existing outputs.
-- `prob_bet_size` on an `(n, 2)` array returns `(n, 2)` opposite bets with no warning.
-- `PSR`, `DSR` and `minTRL` accept moments that no distribution can produce, and do not refuse
-  them.
+  5.2. Outputs change with the sample length.
+- `prob_bet_size` on an `(n, 2)` array returns `(n, 2)` opposite bets and emits no warning.
+- `time_decay` normalises over the whole series, so a factor changes when a later weight
+  changes.
+- `probabilistic_sharpe_ratio`, `deflated_sharpe_ratio` and `minTRL` take a per-period
+  Sharpe ratio and accept moments that no distribution can produce.
 - `PBO` on identical trials gives 0.0, because ties favour the in-sample winner.
+- `encode_quantile` keeps the codes for tied values at a bin edge and warns when they straddle
+  it.
 - `roll_measure`, `kyle_lambda` and `amihud_illiquidity` accept returns or prices in place of
-  each other, and `sharpe_ratio` accepts price levels. No check is made.
+  each other, and `sharpe_ratio` accepts price levels. These inputs are not checked.
 - The MCP server accepts `NaN`, `Infinity` and string integers such as `"3"` where the schema
   says integer.
 - The sequential bootstrap measures uniqueness on the event-start grid, not the bar grid.
