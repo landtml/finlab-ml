@@ -254,3 +254,18 @@ def test_encode_feeds_entropy_estimators():
     np.testing.assert_array_equal(np.bincount(codes, minlength=4), [100, 100, 100, 100])
     assert plug_in_entropy(codes) == pytest.approx(2.0, abs=1e-12)
     assert kontoyiannis_entropy(codes) > 0.0
+
+
+@pytest.mark.parametrize("n_bins", [2.5, float("nan"), float("inf")])
+def test_encode_quantile_rejects_non_integer_n_bins(n_bins):
+    x = np.random.default_rng(0).normal(size=200)
+    with pytest.raises(ValueError, match="n_bins"):
+        encode_quantile(x, n_bins)
+
+
+def test_encode_quantile_accepts_integer_valued_n_bins():
+    x = np.random.default_rng(0).normal(size=1000)
+    ref = encode_quantile(x, 3)
+    np.testing.assert_array_equal(encode_quantile(x, 3.0), ref)
+    np.testing.assert_array_equal(encode_quantile(x, np.int64(3)), ref)
+    assert np.bincount(ref).tolist() == [333, 333, 334]

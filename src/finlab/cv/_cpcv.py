@@ -43,6 +43,8 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 
+from .._checks import _require_type
+
 # No scikit-learn dependency: the splitter duck-types the sklearn cross-validator
 # protocol (``split``, ``get_n_splits``), so sklearn helpers still accept it.
 _Base = object
@@ -72,6 +74,7 @@ def make_t1(index: pd.Index, horizon: int) -> pd.Series:
     pd.Series
         ``index``-aligned series whose values are the event-end timestamps.
     """
+    _require_type(index, "index", pd.Index)
     if horizon < 1:
         raise ValueError(f"horizon must be >= 1, got {horizon!r}.")
     if not index.is_monotonic_increasing:
@@ -135,6 +138,15 @@ def _end_positions(index: pd.Index, t1: pd.Series | None) -> npt.NDArray[np.int_
     """
     n = len(index)
     if t1 is None:
+        # Warn only: the default (no purging, one-bar events) is unchanged.
+        warnings.warn(
+            "t1 is None: purging is skipped and every observation is treated as "
+            "a one-bar event, so overlapping labels can leak across the train/test "
+            "boundary. The embargo is still applied. Pass t1 (see finlab.cv.make_t1) "
+            "to purge.",
+            UserWarning,
+            stacklevel=3,
+        )
         return np.arange(n)
     if not isinstance(t1, pd.Series):
         raise TypeError(
@@ -447,7 +459,9 @@ class CombinatorialPurgedCV(_Base):
         # a mis-specified t1 raises when split() is called instead of lying
         # dormant until the caller happens to consume the first fold.
         end_pos = _end_positions(index, t1)
-        return self._iter_splits(n, index, end_pos)
+        # Build every fold now so a too-small training set raises here, not lazily
+        # while the caller iterates. The fold count is small, so materializing is cheap.
+        return iter(list(self._iter_splits(n, index, end_pos)))
 
     def _iter_splits(
         self, n: int, index: pd.Index, end_pos: npt.NDArray[np.int_]

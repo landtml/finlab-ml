@@ -1,8 +1,9 @@
 """Tests for finlab.tuning (AFML ch. 9)."""
 import numpy as np
+import pandas as pd
 import pytest
 
-from finlab.cv import PurgedKFold
+from finlab.cv import PurgedKFold, make_t1
 from finlab.tuning import cv_score, grid_search, randomized_search
 
 
@@ -73,3 +74,151 @@ def test_empty_grid_rejected():
     X, y = _data(60)
     with pytest.raises(ValueError):
         grid_search(Threshold, {}, X, y, PurgedKFold(3))
+
+
+def _nan_when_all_zero(y_true, y_pred, sample_weight=None):
+    # A candidate that predicts only zeros scores NaN, as a zero-weight test fold would.
+    if np.asarray(y_pred).sum() == 0:
+        return float("nan")
+    return float((np.asarray(y_true) == np.asarray(y_pred)).mean())
+
+
+def test_nan_first_candidate_loses_to_finite_later_candidate():
+    X, y = _data()
+    cv = PurgedKFold(n_splits=3)
+    res = grid_search(Threshold, {"threshold": [100.0, 0.5]}, X, y, cv,
+                      scoring=_nan_when_all_zero)
+    assert np.isnan(res.results["mean_score"].iloc[0])
+    assert res.best_params == {"threshold": 0.5}
+    assert res.best_score == pytest.approx(1.0)
+
+
+def test_all_nan_grid_returns_first_candidate_without_raising():
+    X, y = _data()
+    cv = PurgedKFold(n_splits=3)
+    res = grid_search(Threshold, {"threshold": [100.0, 200.0]}, X, y, cv,
+                      scoring=_nan_when_all_zero)
+    assert res.results["mean_score"].isna().all()
+    assert res.best_params == {"threshold": 100.0}
+    assert np.isnan(res.best_score)
+
+
+def test_all_finite_grid_ranking_unchanged():
+    X, y = _data()
+    cv = PurgedKFold(n_splits=5)
+    res = grid_search(Threshold, {"threshold": [2.0, -1.0, 0.5, 0.0]}, X, y, cv)
+    assert res.best_params == {"threshold": 0.5}
+    means = res.results["mean_score"].to_numpy()
+    assert res.best_score == means.max()
+def _datetime_frame(n=300, seed=0):
+    """The same data as ``_data``, carried on a DatetimeIndex."""
+    x, y = _data(n, seed)
+    idx = pd.date_range("2020-01-01", periods=n, freq="D")
+    return pd.DataFrame(x, index=idx, columns=["x"]), pd.Series(y, index=idx, name="y")
+
+
+def test_grid_search_datetime_index_matches_numpy_index():
+    # A datetime-indexed t1 must resolve against the DataFrame's own index. Splitting
+    # a numpy copy of X would give a RangeIndex and fail to compare with the dates.
+    n, horizon = 300, 5
+    X_np, y_np = _data(n)
+    X_df, y_df = _datetime_frame(n)
+    grid = {"threshold": [-1.0, 0.0, 0.5, 2.0]}
+    res_dt = grid_search(
+        Threshold, grid, X_df, y_df,
+        PurgedKFold(n_splits=5, t1=make_t1(X_df.index, horizon)),
+    )
+    res_np = grid_search(
+        Threshold, grid, X_np, y_np,
+        PurgedKFold(n_splits=5, t1=make_t1(pd.RangeIndex(n), horizon)),
+    )
+    assert res_dt.best_params == res_np.best_params
+    assert res_dt.best_score == pytest.approx(res_np.best_score)
+    np.testing.assert_allclose(
+        res_dt.results["mean_score"].to_numpy(), res_np.results["mean_score"].to_numpy()
+    )
+
+
+def test_randomized_search_datetime_index_runs():
+    X_df, y_df = _datetime_frame(200)
+    cv = PurgedKFold(n_splits=4, t1=make_t1(X_df.index, 3))
+    res = randomized_search(Threshold, {"threshold": [-1.0, 0.0, 0.5]}, 4, X_df, y_df, cv, seed=1)
+    assert len(res.results) == 4
+    assert res.best_score >= 0.0
+
+
+def test_cv_score_dataframe_range_index_matches_numpy():
+    # A plain RangeIndex DataFrame must score exactly like the numpy array it wraps.
+    X_np, y_np = _data(120)
+    X_df = pd.DataFrame(X_np)
+    cv = PurgedKFold(n_splits=4)
+    assert cv_score(Threshold, {"threshold": 0.5}, X_df, y_np, cv) == pytest.approx(
+        cv_score(Threshold, {"threshold": 0.5}, X_np, y_np, cv)
+    )
+
+
+def test_generator_cv_is_usable_by_every_candidate():
+    # A generator is consumed by the first candidate unless the splits are materialized once.
+    X, y = _data()
+    cv = PurgedKFold(n_splits=4)
+    expected = grid_search(Threshold, {"threshold": [-1.0, 0.5]}, X, y, list(cv.split(X)))
+    res = grid_search(Threshold, {"threshold": [-1.0, 0.5]}, X, y, cv.split(X))
+    assert len(res.results) == 2
+    assert res.results["mean_score"].tolist() == pytest.approx(expected.results["mean_score"].tolist())
+
+
+def test_sample_weight_length_must_match_rows():
+    X, y = _data()
+    with pytest.raises(ValueError, match="sample_weight.*300"):
+        grid_search(Threshold, {"threshold": [0.0]}, X, y, PurgedKFold(3), sample_weight=np.ones(10))
+    with pytest.raises(ValueError, match="sample_weight.*300"):
+        cv_score(Threshold, {"threshold": 0.0}, X, y, PurgedKFold(3), sample_weight=np.ones(301))
+
+
+def test_cv_score_warns_on_zero_weight_test_fold():
+    X, y = _data()
+    cv = PurgedKFold(n_splits=3)
+    first_test = next(iter(cv.split(X)))[1]
+    w = np.ones(len(y))
+    w[first_test] = 0.0
+    with pytest.warns(UserWarning, match="fold 0"):
+        mean, _ = cv_score(Threshold, {"threshold": 0.0}, X, y, cv, sample_weight=w)
+    assert np.isnan(mean)
+
+
+def test_y_length_must_match_rows():
+    X, y = _data()
+    y_long = np.concatenate([y, y[:100]])  # 400 labels for 300 rows
+    with pytest.raises(ValueError, match="y.*300"):
+        grid_search(Threshold, {"threshold": [0.0]}, X, y_long, PurgedKFold(3))
+    with pytest.raises(ValueError, match="y.*300"):
+        cv_score(Threshold, {"threshold": 0.0}, X, y_long, PurgedKFold(3))
+
+
+@pytest.mark.parametrize("bad", ["ab", b"ab"])
+def test_string_grid_value_rejected(bad):
+    X, y = _data()
+    with pytest.raises(TypeError, match="threshold"):
+        grid_search(Threshold, {"threshold": bad}, X, y, PurgedKFold(3))
+    with pytest.raises(TypeError, match="threshold"):
+        randomized_search(Threshold, {"threshold": bad}, 2, X, y, PurgedKFold(3))
+
+
+def test_non_string_iterable_grid_values_still_accepted():
+    X, y = _data()
+    res = grid_search(Threshold, {"threshold": (0.0, 0.5)}, X, y, PurgedKFold(3))
+    assert len(res.results) == 2
+    res = grid_search(Threshold, {"threshold": range(2)}, X, y, PurgedKFold(3))
+    assert len(res.results) == 2
+    res = randomized_search(Threshold, {"threshold": np.array([0.0, 0.5])}, 3, X, y, PurgedKFold(3))
+    assert len(res.results) == 3
+
+
+@pytest.mark.parametrize("call", ["grid", "cv"])
+def test_y_none_raises_value_error_naming_y(call):
+    X, _ = _data()
+    with pytest.raises(ValueError, match="y"):
+        if call == "grid":
+            grid_search(Threshold, {"threshold": [0.0]}, X, None, PurgedKFold(3))
+        else:
+            cv_score(Threshold, {"threshold": 0.0}, X, None, PurgedKFold(3))

@@ -213,9 +213,58 @@ def test_hrp_accepts_explicit_correlation() -> None:
     np.testing.assert_allclose(hrp_weights(C, corr=R), hrp_weights(C))
 
 
+def test_hrp_single_asset_still_checks_corr_shape() -> None:
+    with pytest.raises(ValueError, match="same shape"):
+        hrp_weights(np.array([[0.04]]), corr=np.ones((3, 3)))
+    with pytest.raises(ValueError, match="same shape"):
+        hrp_weights(np.array([[0.04]]), corr=np.ones((1, 2)))
+
+
 def test_hrp_single_asset_and_bad_inputs() -> None:
     assert hrp_weights(np.array([[2.0]])).tolist() == [1.0]
     with pytest.raises(ValueError):
         hrp_weights(np.array([[0.0, 0.0], [0.0, 1.0]]))
     with pytest.raises(ValueError):
         hrp_weights(np.eye(3), method="ward")
+
+
+def test_quasi_diagonalize_single_row_must_merge_leaves() -> None:
+    # Child ids 3 and 5 are not leaves of a two-leaf tree and not earlier rows.
+    link = np.array([[3.0, 5.0, 0.5230936064205157, 2.0]])
+    with pytest.raises(ValueError, match="child"):
+        quasi_diagonalize(link)
+
+
+def test_quasi_diagonalize_rejects_child_id_out_of_range() -> None:
+    with pytest.raises(ValueError, match="child"):
+        quasi_diagonalize(np.array([[0, 5, 1, 2]], dtype=float))
+
+
+def test_quasi_diagonalize_rejects_cyclic_link_without_hanging() -> None:
+    # Node 4 is the root and lists itself as a child; validation must raise before any walk.
+    with pytest.raises(ValueError, match="child"):
+        quasi_diagonalize(np.array([[0, 1, 1, 2], [4, 2, 1, 3]], dtype=float))
+
+
+def test_quasi_diagonalize_rejects_child_used_twice() -> None:
+    with pytest.raises(ValueError, match="more than once"):
+        quasi_diagonalize(np.array([[0, 1, 1, 2], [0, 2, 1, 3]], dtype=float))
+
+
+def test_quasi_diagonalize_valid_one_merge_is_unchanged() -> None:
+    assert quasi_diagonalize(np.array([[0.0, 1.0, 0.7, 2.0]])) == [0, 1]
+
+
+@pytest.mark.parametrize("bad", [np.inf, -np.inf, np.nan])
+def test_quasi_diagonalize_rejects_non_finite_link(bad) -> None:
+    link = np.array(
+        [
+            [3.0, 5.0, 0.52, 2.0],
+            [1.0, 2.0, 0.55, 2.0],
+            [4.0, 6.0, 0.56, 3.0],
+            [7.0, 8.0, 0.68, 5.0],
+            [bad, 9.0, 0.69, 6.0],
+        ]
+    )
+    with pytest.raises(ValueError, match="link"):
+        quasi_diagonalize(link)

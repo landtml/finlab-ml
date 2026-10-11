@@ -37,6 +37,13 @@ from .weights import indicator_matrix, sequential_bootstrap
 __all__ = ["SequentialBootstrapBagging"]
 
 
+def _same_index(a: pd.Index, b: pd.Index) -> bool:
+    # Two tz-aware indexes match when they name the same instants, whatever zone each uses.
+    if getattr(a, "tz", None) is not None and getattr(b, "tz", None) is not None:
+        return a.tz_convert("UTC").equals(b.tz_convert("UTC"))
+    return a.equals(b)
+
+
 class SequentialBootstrapBagging:
     """Bagged ensemble whose bags are drawn by sequential bootstrap.
 
@@ -107,6 +114,21 @@ class SequentialBootstrapBagging:
         if ya.shape[0] != n:
             raise ValueError("X and y must have the same number of rows.")
         w = None if sample_weight is None else np.asarray(sample_weight, dtype=float)
+        if w is not None and w.shape != (n,):
+            # A longer array would be silently truncated when the bags index it.
+            raise ValueError(
+                f"sample_weight has shape {w.shape} but X has {n} rows; expected length {n}."
+            )
+        # Labels must line up too: a pandas y or weight is otherwise used by position.
+        if isinstance(X, pd.DataFrame):
+            if isinstance(y, (pd.DataFrame, pd.Series)) and not _same_index(y.index, X.index):
+                raise ValueError("y index does not match X.index; align y to X before calling.")
+            if isinstance(sample_weight, (pd.DataFrame, pd.Series)) and not sample_weight.index.equals(
+                X.index
+            ):
+                raise ValueError(
+                    "sample_weight index does not match X.index; align sample_weight to X before calling."
+                )
         rng = np.random.default_rng(self.seed)
         size = n if self.max_samples is None else int(self.max_samples)
         if size < 1:
@@ -122,18 +144,28 @@ class SequentialBootstrapBagging:
         self.classes_ = np.unique(ya)
         self.estimators_: list[Any] = []
         self.draws_: list[np.ndarray] = []
-        for _ in range(self.n_estimators):
-            seed_b = int(rng.integers(0, 2**31 - 1))
-            if self.sequential:
-                draws = sequential_bootstrap(ind, n_samples=size, seed=seed_b)
-            else:
-                draws = np.random.default_rng(seed_b).integers(0, n, size=size)
-            est = self.base_factory()
-            w_b = None if w is None else w[draws]
-            est.fit(Xa[draws], ya[draws], sample_weight=w_b)
-            self.estimators_.append(est)
-            self.draws_.append(draws)
+        try:
+            for _ in range(self.n_estimators):
+                seed_b = int(rng.integers(0, 2**31 - 1))
+                if self.sequential:
+                    draws = sequential_bootstrap(ind, n_samples=size, seed=seed_b)
+                else:
+                    draws = np.random.default_rng(seed_b).integers(0, n, size=size)
+                est = self.base_factory()
+                w_b = None if w is None else w[draws]
+                est.fit(Xa[draws], ya[draws], sample_weight=w_b)
+                self.estimators_.append(est)
+                self.draws_.append(draws)
+        except Exception:
+            # A half-built ensemble would let predict run silently on a subset of bags.
+            for name in ("classes_", "estimators_", "draws_"):
+                self.__dict__.pop(name, None)
+            raise
         return self
+
+    def _check_fitted(self) -> None:
+        if not getattr(self, "estimators_", None):
+            raise RuntimeError("SequentialBootstrapBagging is not fitted; call fit first.")
 
     def predict_proba(self, X: npt.ArrayLike | pd.DataFrame) -> np.ndarray:
         """Average the bags' class probabilities; columns follow ``classes_``.
@@ -142,6 +174,7 @@ class SequentialBootstrapBagging:
         whose ``predict_proba`` columns follow their own ``classes_`` attribute
         are re-aligned to ``self.classes_``.
         """
+        self._check_fitted()
         Xa = X.to_numpy() if isinstance(X, pd.DataFrame) else np.asarray(X)
         total = np.zeros((Xa.shape[0], self.classes_.shape[0]))
         for est in self.estimators_:
@@ -155,6 +188,7 @@ class SequentialBootstrapBagging:
 
     def predict(self, X: npt.ArrayLike | pd.DataFrame) -> np.ndarray:
         """Predict by averaged probability if available, else by majority vote."""
+        self._check_fitted()
         if all(hasattr(e, "predict_proba") for e in self.estimators_):
             return self.classes_[self.predict_proba(X).argmax(axis=1)]
         Xa = X.to_numpy() if isinstance(X, pd.DataFrame) else np.asarray(X)

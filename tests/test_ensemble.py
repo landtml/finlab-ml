@@ -93,3 +93,81 @@ def test_sequential_requires_t1():
     X, y, _ = _data(40)
     with pytest.raises(ValueError):
         SequentialBootstrapBagging(NearestCentroid, 3).fit(X, y)
+
+
+@pytest.mark.parametrize("length", [10, 400])
+def test_sample_weight_length_must_match_rows(length):
+    X, y, t1 = _data()
+    bag = SequentialBootstrapBagging(NearestCentroid, n_estimators=2)
+    with pytest.raises(ValueError, match="sample_weight.*200"):
+        bag.fit(X, y, t1=t1, sample_weight=np.ones(length))
+
+
+def test_pandas_y_with_mismatched_index_is_rejected():
+    X, y, t1 = _data(200, seed=1)
+    Xdf = pd.DataFrame(X)
+    y_reversed = pd.Series(y, index=Xdf.index[::-1])
+    bag = SequentialBootstrapBagging(NearestCentroid, n_estimators=2)
+    with pytest.raises(ValueError, match="index"):
+        bag.fit(Xdf, y_reversed, t1=t1)
+
+
+def test_pandas_sample_weight_with_mismatched_index_is_rejected():
+    X, y, t1 = _data(200, seed=1)
+    Xdf = pd.DataFrame(X)
+    w_reversed = pd.Series(np.ones(200), index=Xdf.index[::-1])
+    bag = SequentialBootstrapBagging(NearestCentroid, n_estimators=2)
+    with pytest.raises(ValueError, match="index"):
+        bag.fit(Xdf, y, t1=t1, sample_weight=w_reversed)
+
+
+def test_aligned_pandas_y_and_weight_still_fit():
+    X, y, t1 = _data(300, seed=1)
+    Xdf = pd.DataFrame(X)
+    bag = SequentialBootstrapBagging(NearestCentroid, n_estimators=15, seed=3).fit(
+        Xdf,
+        pd.Series(y, index=Xdf.index),
+        t1=t1,
+        sample_weight=pd.Series(np.ones(len(y)), index=Xdf.index),
+    )
+    assert (bag.predict(X) == y).mean() > 0.85
+
+
+def test_failed_fit_leaves_no_partial_ensemble():
+    X, y, t1 = _data()
+    made = []
+
+    def factory():
+        made.append(1)
+        if len(made) == 2:
+            raise RuntimeError("bag 2 failed")
+        return NearestCentroid()
+
+    bag = SequentialBootstrapBagging(factory, n_estimators=4)
+    with pytest.raises(RuntimeError, match="bag 2 failed"):
+        bag.fit(X, y, t1=t1)
+    assert not hasattr(bag, "classes_")
+    assert not hasattr(bag, "estimators_")
+    with pytest.raises(RuntimeError, match="not fitted"):
+        bag.predict(X)
+
+
+def test_pandas_y_same_instants_in_another_timezone_is_accepted():
+    X, y, _ = _data(200, seed=1)
+    utc = pd.date_range("2020-01-01", periods=200, freq="D", tz="UTC")
+    t1 = make_t1(utc, 10)
+    Xdf = pd.DataFrame(X, index=utc)
+    y_taipei = pd.Series(y, index=utc.tz_convert("Asia/Taipei"))
+    bag = SequentialBootstrapBagging(NearestCentroid, n_estimators=3, seed=2).fit(Xdf, y_taipei, t1=t1)
+    assert len(bag.estimators_) == 3
+
+
+def test_pandas_y_shifted_instants_across_timezones_is_rejected():
+    X, y, _ = _data(200, seed=1)
+    utc = pd.date_range("2020-01-01", periods=200, freq="D", tz="UTC")
+    t1 = make_t1(utc, 10)
+    Xdf = pd.DataFrame(X, index=utc)
+    y_shifted = pd.Series(y, index=(utc + pd.Timedelta(days=1)).tz_convert("Asia/Taipei"))
+    bag = SequentialBootstrapBagging(NearestCentroid, n_estimators=2)
+    with pytest.raises(ValueError, match="index"):
+        bag.fit(Xdf, y_shifted, t1=t1)

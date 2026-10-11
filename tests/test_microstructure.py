@@ -384,3 +384,110 @@ def test_bvc_default_scale_is_causal() -> None:
     q[120:] += 50.0  # large jump in the future
     shifted = bulk_volume_classification(q, v)
     np.testing.assert_array_equal(base[:120], shifted[:120])
+
+
+@pytest.mark.parametrize("bad_price, bad_volume", [(np.inf, 100.0), (-np.inf, 100.0), (np.nan, 100.0)])
+def test_vpin_rejects_non_finite_prices(bad_price, bad_volume) -> None:
+    prices = np.array([10.0, 10.1, bad_price, 10.3, 10.2, 10.4])
+    volume = np.full(6, 100.0)
+    with pytest.raises(ValueError, match="prices"):
+        vpin(prices, volume, bucket_volume=200.0, n_window=2)
+
+
+@pytest.mark.parametrize("bad_volume", [np.inf, -np.inf, np.nan])
+def test_vpin_rejects_non_finite_volume(bad_volume) -> None:
+    prices = np.array([10.0, 10.1, 10.2, 10.3, 10.2, 10.4])
+    volume = np.array([100.0, 100.0, bad_volume, 100.0, 100.0, 100.0])
+    with pytest.raises(ValueError, match="volume"):
+        vpin(prices, volume, bucket_volume=200.0, n_window=2)
+
+
+# ---------------------------------------------------------------------------
+# Non-finite input is rejected, not silently absorbed
+# ---------------------------------------------------------------------------
+@pytest.mark.parametrize("bad", [np.nan, np.inf, -np.inf])
+def test_price_estimators_reject_non_finite_prices(bad) -> None:
+    prices = np.array([10.0, 10.1, bad, 10.3, 10.2, 10.4])
+    volume = np.full(6, 100.0)
+    with pytest.raises(ValueError, match="prices"):
+        tick_rule(prices)
+    with pytest.raises(ValueError, match="prices"):
+        roll_measure(prices)
+    with pytest.raises(ValueError, match="prices"):
+        bulk_volume_classification(prices, volume)
+    with pytest.raises(ValueError, match="prices"):
+        kyle_lambda(prices, volume)
+    with pytest.raises(ValueError, match="prices"):
+        kyle_lambda_tstat(prices, volume)
+
+
+@pytest.mark.parametrize("bad", [np.nan, np.inf, -np.inf])
+def test_volume_based_estimators_reject_non_finite_volume(bad) -> None:
+    prices = np.array([10.0, 10.1, 10.2, 10.3, 10.2, 10.4])
+    volume = np.array([100.0, 100.0, bad, 100.0, 100.0, 100.0])
+    with pytest.raises(ValueError, match="signed_volume"):
+        kyle_lambda(prices, volume)
+    with pytest.raises(ValueError, match="signed_volume"):
+        kyle_lambda_tstat(prices, volume)
+    with pytest.raises(ValueError, match="volume"):
+        bulk_volume_classification(prices, volume)
+
+
+@pytest.mark.parametrize("method", ["regression", "ratio"])
+@pytest.mark.parametrize("bad", [np.nan, np.inf])
+def test_amihud_rejects_non_finite_inputs(method, bad) -> None:
+    returns = np.array([0.01, -0.02, 0.03, 0.01])
+    dollar = np.array([1e6, 2e6, 1.5e6, 1e6])
+    bad_returns = returns.copy()
+    bad_returns[1] = bad
+    bad_dollar = dollar.copy()
+    bad_dollar[2] = bad
+    with pytest.raises(ValueError, match="returns"):
+        amihud_illiquidity(bad_returns, dollar, method=method)
+    with pytest.raises(ValueError, match="dollar_volume"):
+        amihud_illiquidity(returns, bad_dollar, method=method)
+
+
+def test_vpin_rejects_bucket_count_above_limit() -> None:
+    prices = np.linspace(100.0, 101.0, 300)
+    v = np.ones(300)
+    with pytest.raises(ValueError, match="bucket"):
+        vpin(prices, v, bucket_volume=1e-9, n_window=5)
+
+
+
+def test_vpin_rejects_non_integer_n_window() -> None:
+    rng = np.random.default_rng(7)
+    prices = 100.0 + rng.standard_normal(300).cumsum()
+    v = rng.uniform(1.0, 2.0, 300)
+    with pytest.raises(ValueError):
+        vpin(prices, v, bucket_volume=50.0, n_window=2.0)
+    out = vpin(prices, v, bucket_volume=50.0, n_window=np.int64(2))
+    assert out.shape[0] > 0
+
+
+def test_vpin_accepts_two_million_buckets() -> None:
+    # 2e9 shares in 1,000-share buckets is 2e6 buckets: valid high-volume input, under the cap.
+    prices = np.linspace(100.0, 101.0, 200)
+    v = np.full(200, 1e7)
+    out = vpin(prices, v, bucket_volume=1000.0, n_window=5)
+    assert out.shape[0] == 2_000_000
+    finite = out[np.isfinite(out)]
+    assert finite.size > 0
+    assert np.all((finite >= 0.0) & (finite <= 1.0))
+
+
+def test_vpin_rejects_bucket_count_above_ten_million() -> None:
+    prices = np.linspace(100.0, 101.0, 200)
+    v = np.full(200, 5.5e7)  # 1.1e10 shares / 1,000 = 1.1e7 buckets
+    with pytest.raises(ValueError, match=r"1\.1e\+07 .*exceeds 10,000,000"):
+        vpin(prices, v, bucket_volume=1000.0, n_window=5)
+
+
+@pytest.mark.parametrize("bucket_volume", [float("nan"), float("inf"), 0.0, -1.0])
+def test_vpin_rejects_nonfinite_or_nonpositive_bucket_volume(bucket_volume: float) -> None:
+    rng = np.random.default_rng(0)
+    p = 100 + np.cumsum(rng.normal(0, 0.1, 50))
+    v = rng.uniform(1, 2, 50)
+    with pytest.raises(ValueError, match="bucket_volume"):
+        vpin(p, v, bucket_volume=bucket_volume, n_window=2)

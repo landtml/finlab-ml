@@ -56,6 +56,7 @@ implementation of ch. 20.
 from __future__ import annotations
 
 import math
+import numbers
 from dataclasses import dataclass
 from typing import Any
 
@@ -81,6 +82,16 @@ _CSW_B_05 = 4.6  # b_0.05 from AFML 17.3.2 (Monte Carlo, Chu-Stinchcombe-White)
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
+
+
+def _require_integer(value: Any, message: str) -> None:
+    # Type and finiteness come first so that int() never sees NaN, inf or text.
+    if not isinstance(value, numbers.Real):
+        raise ValueError(message)
+    if not isinstance(value, numbers.Integral) and not math.isfinite(value):
+        raise ValueError(message)
+    if value != int(value):
+        raise ValueError(message)
 
 
 def _as_float_vector(series: Any) -> tuple[np.ndarray, pd.Index | None]:
@@ -211,6 +222,19 @@ class CusumResult:
     initial_size: int
 
 
+_MAGNITUDE_MESSAGE = (
+    "recursive residuals are not finite or underflow; the series magnitude may be outside "
+    "the usable range, so rescale the series"
+)
+
+
+def _extreme_magnitude(*arrays: np.ndarray) -> bool:
+    # Squared residuals overflow above about 1e154 and underflow below about 1e-154,
+    # so a largest absolute value far outside [1e-100, 1e100] points at scale.
+    hi = float(np.max(np.abs(np.concatenate([a.ravel() for a in arrays]))))
+    return hi > 1e100 or 0.0 < hi < 1e-100
+
+
 def cusum_test(series: Any, exog: Any = None) -> CusumResult:
     """Brown-Durbin-Evans CUSUM test on recursive residuals (AFML 17.3.1).
 
@@ -260,8 +284,24 @@ def cusum_test(series: Any, exog: Any = None) -> CusumResult:
         raise ValueError("initial design X_p'X_p is singular; use more leading rows.")
     resid = w[p:]
     sigma = float(math.sqrt(np.mean(resid * resid)))
-    if sigma == 0.0:
-        raise ValueError("recursive residuals are all zero; no variation in series.")
+    # The default constant regressor is ignored here; only user inputs can carry scale.
+    scale_arrays = (y,) if exog is None else (y, x)
+    if not math.isfinite(sigma):
+        if _extreme_magnitude(*scale_arrays):
+            raise ValueError(_MAGNITUDE_MESSAGE)
+        raise ValueError(
+            "recursive residuals are not finite; this is usually caused by near-collinear "
+            "regressors. Remove one of the regressors."
+        )
+    if not sigma > 0.0:
+        if np.all(y == y[0]):
+            raise ValueError("recursive residuals are all zero; no variation in series.")
+        if _extreme_magnitude(*scale_arrays):
+            raise ValueError(_MAGNITUDE_MESSAGE)
+        raise ValueError(
+            "recursive residuals are all zero because the regressors reproduce the series "
+            "exactly; the CUSUM test has nothing to measure."
+        )
 
     stat = np.full(n_obs, np.nan)
     z = np.full(n_obs, np.nan)
@@ -301,7 +341,11 @@ def _csw_fixed(y: np.ndarray, sigma: np.ndarray, ref: int) -> np.ndarray:
     n_obs = y.shape[0]
     out = np.full(n_obs, np.nan)
     for t in range(ref + 1, n_obs):
-        out[t] = (y[t] - y[ref]) / (sigma[t] * math.sqrt(t - ref))
+        denom = sigma[t] * math.sqrt(t - ref)
+        if denom == 0.0:
+            # Flat prefix: sigma_t = 0 and the statistic is undefined, keep NaN.
+            continue
+        out[t] = (y[t] - y[ref]) / denom
     return out
 
 
@@ -311,6 +355,9 @@ def _csw_sup(y: np.ndarray, sigma: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     best = np.full(n_obs, np.nan)
     arg = np.full(n_obs, -1, dtype=np.int64)
     for t in range(1, n_obs):
+        if sigma[t] == 0.0:
+            # Flat prefix: the statistic is undefined, keep NaN with no argmax.
+            continue
         bval = -np.inf
         barg = -1
         for n in range(t):
@@ -402,6 +449,14 @@ def chu_stinchcombe_white(
     if n_obs < 2:
         raise ValueError("need at least two observations.")
     sigma = _prefix_sigma(y)
+    # The full-sample sigma is zero only if every difference is zero (constant series,
+    # reported as NaN below) or the squares underflowed; it is inf if they overflowed.
+    if not np.all(y == y[0]) and (not math.isfinite(sigma[-1]) or sigma[-1] == 0.0):
+        raise ValueError(
+            "sigma is zero or not finite because the squared differences underflow or "
+            "overflow; the series magnitude is likely outside the usable range, so rescale "
+            "the series"
+        )
     if reference is None:
         stat, ref = _csw_sup(y, sigma)
         ref_out = ref
@@ -411,9 +466,11 @@ def chu_stinchcombe_white(
         crit[ok] = csw_critical_value(lag[ok], b)
         stat = np.where(ok, stat, np.nan)
     else:
+        _require_integer(reference, "reference must be an integer.")
         if not 0 <= reference < n_obs - 1:
             raise ValueError(f"reference must be in [0, {n_obs - 2}], got {reference}.")
-        stat = _csw_fixed(y, sigma, int(reference))
+        reference = int(reference)
+        stat = _csw_fixed(y, sigma, reference)
         crit = np.full(n_obs, np.nan)
         t_idx = np.arange(reference + 1, n_obs)
         crit[reference + 1 :] = csw_critical_value(t_idx - reference, b)
@@ -564,6 +621,7 @@ def adf_stat(series: Any, lag: int, constant: str = "c") -> float:
         behaviour gives large positive values.
     """
     y, _ = _as_float_vector(series)
+    _require_integer(lag, "lag must be an integer.")
     if lag < 0:
         raise ValueError("lag must be >= 0.")
     code = _constant_code(constant)
@@ -610,6 +668,8 @@ def sadf(
     numba. ``lags`` and ``constant`` follow the arguments of Snippet 17.1.
     """
     y, index = _as_float_vector(series)
+    _require_integer(lags, "lags must be an integer.")
+    _require_integer(min_length, "min_length must be an integer.")
     if lags < 0:
         raise ValueError("lags must be >= 0.")
     code = _constant_code(constant)

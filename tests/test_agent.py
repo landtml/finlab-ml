@@ -139,3 +139,249 @@ def test_subprocess_round_trip():
     assert proc.returncode == 0, proc.stderr
     reply = json.loads(proc.stdout.splitlines()[0])
     assert reply["id"] == 7 and not reply["result"]["isError"]
+
+
+def test_call_tool_unknown_name_returns_error_shape():
+    result, is_error = tl.call_tool("no_such_tool", {})
+    assert is_error is True
+    assert result == {"error": "unknown tool 'no_such_tool'"}
+
+
+def test_tool_error_is_reported_by_call_tool():
+    assert issubclass(tl.ToolError, ValueError)
+    with pytest.raises(tl.ToolError, match="non-empty"):
+        tl.TOOLS["sharpe_ratio"].handler({"returns": []})
+    result, is_error = tl.call_tool("sharpe_ratio", {"returns": []})
+    assert is_error is True
+    assert "non-empty" in result["error"]
+    # Missing arguments (None) are treated as an empty dict, not a crash.
+    result, is_error = tl.call_tool("sharpe_ratio", None)
+    assert is_error is True and "error" in result
+
+
+def test_list_tools_entries_have_name_description_and_input_schema():
+    entries = tl.list_tools()
+    assert [e["name"] for e in entries] == list(tl.TOOLS.keys())
+    assert entries, "registry must not be empty"
+    for e in entries:
+        assert set(e) == {"name", "description", "inputSchema"}
+        assert isinstance(e["name"], str) and e["name"]
+        assert isinstance(e["description"], str) and e["description"]
+        assert e["inputSchema"]["type"] == "object"
+        assert isinstance(e["inputSchema"]["properties"], dict)
+def test_non_string_method_is_invalid_request_not_crash():
+    reply = srv.handle_message({"jsonrpc": "2.0", "id": 3, "method": 5})
+    assert reply["id"] == 3 and reply["error"]["code"] == -32600
+
+
+def test_list_params_is_invalid_params_not_crash():
+    reply = srv.handle_message({"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": [1]})
+    assert reply["id"] == 4 and reply["error"]["code"] == -32602
+
+
+def test_list_arguments_reported_as_tool_error():
+    out, err = _call("sharpe_ratio", [1])
+    assert err and "object" in out["error"]
+
+
+def test_stdio_loop_survives_malformed_messages():
+    lines = "\n".join([
+        json.dumps({"jsonrpc": "2.0", "id": 1, "method": 5}),
+        json.dumps({"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": [1]}),
+        json.dumps({"jsonrpc": "2.0", "id": 3, "method": "tools/call",
+                    "params": {"name": "sharpe_ratio", "arguments": [1]}}),
+        "[1, 2]",
+        json.dumps({"jsonrpc": "2.0", "id": 4, "method": "ping"}),
+    ]) + "\n"
+    out = io.StringIO()
+    srv.main(io.StringIO(lines), out)
+    replies = [json.loads(x) for x in out.getvalue().splitlines()]
+    assert [r.get("id") for r in replies] == [1, 2, 3, None, 4]
+    assert replies[0]["error"]["code"] == -32600
+    assert replies[1]["error"]["code"] == -32602
+    assert replies[2]["result"]["isError"]
+    assert replies[3]["error"]["code"] == -32600
+    assert replies[4] == {"jsonrpc": "2.0", "id": 4, "result": {}}
+
+
+def test_stdio_loop_survives_unexpected_exception(monkeypatch):
+    real = srv.handle_message
+
+    def boom_on_method(msg):
+        if msg.get("method") == "boom":
+            raise RuntimeError("boom")
+        return real(msg)
+
+    monkeypatch.setattr(srv, "handle_message", boom_on_method)
+    lines = "\n".join([
+        json.dumps({"jsonrpc": "2.0", "id": 1, "method": "boom"}),
+        json.dumps({"jsonrpc": "2.0", "method": "boom"}),
+        json.dumps({"jsonrpc": "2.0", "id": 2, "method": "ping"}),
+    ]) + "\n"
+    out = io.StringIO()
+    srv.main(io.StringIO(lines), out)
+    replies = [json.loads(x) for x in out.getvalue().splitlines()]
+    assert [r["id"] for r in replies] == [1, 2]
+    assert replies[0]["error"]["code"] == -32603
+    assert replies[1] == {"jsonrpc": "2.0", "id": 2, "result": {}}
+
+
+def test_deeply_nested_line_is_parse_error_and_server_survives():
+    lines = "[" * 100_000 + "\n" + json.dumps({"jsonrpc": "2.0", "id": 9, "method": "ping"}) + "\n"
+    out = io.StringIO()
+    srv.main(io.StringIO(lines), out)
+    replies = [json.loads(x) for x in out.getvalue().splitlines()]
+    assert replies[0]["error"]["code"] == -32700
+    assert replies[1] == {"jsonrpc": "2.0", "id": 9, "result": {}}
+
+
+def test_tool_overflow_is_reported_as_tool_error(monkeypatch):
+    def handler(args):
+        raise OverflowError("int too large")
+
+    monkeypatch.setitem(tl.TOOLS, "boom", tl.Tool("boom", "raises", {"type": "object", "properties": {}}, handler))
+    result, is_error = tl.call_tool("boom", {})
+    assert is_error is True
+    assert result["error"].startswith("OverflowError")
+
+
+def test_oversized_integer_id_is_parse_error_and_server_survives():
+    big = "1" * 5000
+    lines = "\n".join([
+        '{"jsonrpc":"2.0","id":' + big + ',"method":"ping"}',
+        json.dumps({"jsonrpc": "2.0", "id": 5, "method": "ping"}),
+    ]) + "\n"
+    out = io.StringIO()
+    srv.main(io.StringIO(lines), out)
+    replies = [json.loads(x) for x in out.getvalue().splitlines()]
+    assert replies[0]["error"]["code"] == -32700
+    assert replies[1] == {"jsonrpc": "2.0", "id": 5, "result": {}}
+
+
+def _strict_loads(text):
+    def reject(name):
+        raise ValueError(f"non-standard constant {name}")
+
+    return json.loads(text, parse_constant=reject)
+
+
+@pytest.mark.parametrize("token", ["NaN", "Infinity", "-Infinity"])
+def test_non_standard_constant_id_is_parse_error_and_reply_is_strict_json(token):
+    line = '{"jsonrpc":"2.0","id":' + token + ',"method":"ping"}'
+    out = io.StringIO()
+    srv.main(io.StringIO(line + "\n"), out)
+    reply = _strict_loads(out.getvalue().splitlines()[0])
+    assert reply["error"]["code"] == -32700
+    assert reply["id"] is None
+
+
+def test_string_boolean_is_rejected_not_truthy():
+    out, err = _call("sharpe_ratio", {"returns": [1, 2, 3], "annualize": "false"})
+    assert err and "'annualize' must be a boolean" in out["error"]
+    out, err = _call("cusum_filter", {"series": [1, 2, 3], "threshold": 1, "is_returns": "false"})
+    assert err and "'is_returns' must be a boolean" in out["error"]
+    out, err = _call("sharpe_ratio", {"returns": [1, 2], "annualize": False})
+    assert not err and out["sharpe"] == pytest.approx(sharpe_ratio(np.array([1.0, 2.0]), annualize=False))
+
+
+def test_nested_array_is_rejected_for_flat_input():
+    out, err = _call("sharpe_ratio", {"returns": [[0.1, 0.2], [0.3, 0.4]]})
+    assert err and "'returns' must be a flat array of numbers" in out["error"]
+
+
+def test_boolean_elements_are_rejected_as_numbers_and_symbols():
+    out, err = _call("sharpe_ratio", {"returns": [True, False, True, True]})
+    assert err and "'returns' element 0" in out["error"] and "bool" in out["error"]
+    out, err = _call("kontoyiannis_entropy", {"message": ["a", True]})
+    assert err and "'message' element 1" in out["error"]
+    out, err = _call("plug_in_entropy", {"message": [False, 1]})
+    assert err and "'message' element 0" in out["error"]
+
+
+def test_matrix_bool_and_string_elements_are_rejected():
+    rows = [[True, False], [False, True], [True, True], [False, False]]
+    out, err = _call("probability_of_backtest_overfitting", {"performance_matrix": rows, "n_partitions": 2})
+    assert err and "'performance_matrix' element (0, 0) must be a number, got bool" in out["error"]
+    rows = [["0.1", "0.2"], ["0.3", "-0.1"], ["0.2", "0.5"], ["0.0", "0.4"]]
+    out, err = _call("probability_of_backtest_overfitting", {"performance_matrix": rows, "n_partitions": 2})
+    assert err and "'performance_matrix' element (0, 0) must be a number, got str" in out["error"]
+    rows = [[0.1, 0.2], [0.3, -0.1], [0.2, 0.5], [0.0, 0.4]]
+    out, err = _call("probability_of_backtest_overfitting", {"performance_matrix": rows, "n_partitions": 2})
+    assert not err and "pbo" in out
+
+
+def test_non_numeric_element_names_argument_index_and_type():
+    out, err = _call("sharpe_ratio", {"returns": [0.1, "x"]})
+    assert err and "element 1" in out["error"] and "str" in out["error"]
+    assert "'returns'" in out["error"]
+    out, err = _call("sharpe_ratio", {"returns": ["0.1", "x"]})
+    assert err and "element 0" in out["error"] and "str" in out["error"]
+
+
+def test_int_argument_keeps_large_integers_exact():
+    assert tl._int({"seed": 9007199254740993}, "seed") == 9007199254740993
+    assert type(tl._int({"seed": 9007199254740993}, "seed")) is int
+    assert tl._int({"seed": 3.0}, "seed") == 3
+    corr = [[1.0, 0.9, 0.1], [0.9, 1.0, 0.2], [0.1, 0.2, 1.0]]
+    out, err = _call("onc_clusters", {"corr": corr, "seed": 9007199254740993})
+    assert not err
+
+
+def test_oversized_integers_are_tool_errors_naming_the_argument():
+    huge = int("1" + "0" * 399)
+    out, err = _call("sharpe_ratio", {"returns": [0.1, 0.2, -0.1, 0.3], "periods_per_year": huge})
+    assert err and "'periods_per_year'" in out["error"]
+    out, err = _call("onc_clusters", {"corr": [[1.0, 0.9], [0.9, 1.0]], "seed": huge})
+    assert err and "'seed'" in out["error"]
+    out, err = _call("onc_clusters", {"corr": [[1.0, 0.9], [0.9, 1.0]], "max_k": huge})
+    assert err and "'max_k'" in out["error"]
+
+
+def test_fracdiff_thres_out_of_range_is_rejected():
+    out, err = _call("frac_diff_ffd", {"series": [1, 2, 3], "d": 0.4, "thres": 2})
+    assert err and "'thres'" in out["error"]
+    out, err = _call("frac_diff_ffd", {"series": [1, 2, 3], "d": 0.4, "thres": 0})
+    assert err and "'thres'" in out["error"]
+
+
+def test_onc_max_k_must_be_integer():
+    corr = [[1.0, 0.9, 0.1, 0.0], [0.9, 1.0, 0.0, 0.1], [0.1, 0.0, 1.0, 0.8], [0.0, 0.1, 0.8, 1.0]]
+    out, err = _call("onc_clusters", {"corr": corr, "max_k": 2.7})
+    assert err and "'max_k' must be an integer" in out["error"]
+    out, err = _call("onc_clusters", {"corr": corr, "max_k": 2})
+    assert not err and out["n_clusters"] <= 2
+
+
+@pytest.mark.parametrize("params", [[], 0, "x", [1], False])
+def test_tools_call_params_that_are_not_an_object_are_invalid_params(params):
+    reply = srv.handle_message({"jsonrpc": "2.0", "id": 11, "method": "tools/call", "params": params})
+    assert reply["id"] == 11
+    assert reply["error"] == {"code": -32602, "message": "invalid params: expected an object"}
+
+
+@pytest.mark.parametrize("params", [[], 0, "", False, "x", [1]])
+def test_methods_that_ignore_params_accept_any_params(params):
+    ping = srv.handle_message({"jsonrpc": "2.0", "id": 13, "method": "ping", "params": params})
+    assert ping == {"jsonrpc": "2.0", "id": 13, "result": {}}
+    listed = srv.handle_message({"jsonrpc": "2.0", "id": 14, "method": "tools/list", "params": params})
+    assert "error" not in listed
+    assert {t["name"] for t in listed["result"]["tools"]} >= {"sharpe_ratio"}
+
+
+@pytest.mark.parametrize("params", [{}, {"arguments": {}}, {"name": None}, {"name": 5}])
+def test_tools_call_without_string_name_says_missing_tool_name(params):
+    reply = srv.handle_message({"jsonrpc": "2.0", "id": 12, "method": "tools/call", "params": params})
+    assert reply["id"] == 12
+    assert reply["error"]["code"] == -32602
+    assert "missing tool name" in reply["error"]["message"]
+
+
+def test_cpcv_rejects_non_positive_n_samples():
+    out, err = _call("cpcv_split_summary", {"n_samples": -5, "n_groups": 6, "n_test_groups": 2})
+    assert err and "n_samples must be a positive integer, got -5" in out["error"]
+
+
+def test_cpcv_rejects_negative_horizon():
+    out, err = _call("cpcv_split_summary",
+                     {"n_samples": 120, "n_groups": 6, "n_test_groups": 2, "horizon": -1})
+    assert err and "'horizon'" in out["error"]

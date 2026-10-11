@@ -73,7 +73,7 @@ jobs:
           # as they do in the checkout.
           suite="$RUNNER_TEMP/suite"
           rm -rf "$suite" && mkdir "$suite"
-          cp -r tests docs examples pyproject.toml "$suite/"
+          cp -r tests docs examples tools pyproject.toml "$suite/"
           cd "$suite"
           "$RUNNER_TEMP/venv/bin/python" -m pytest -q
 

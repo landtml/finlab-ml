@@ -128,6 +128,27 @@ def test_record_validation_errors(kwargs: dict[str, object], message: str) -> No
         TrialRecord(**kwargs)  # type: ignore[arg-type]
 
 
+@pytest.mark.parametrize(
+    "returns",
+    [["0.1", "0.2", "0.3"], [True, False, True], [0.1, "0.2"], [0.1, np.True_]],
+)
+def test_record_rejects_string_and_bool_returns(returns: list[object]) -> None:
+    with pytest.raises(ValueError, match="'a'"):
+        TrialRecord("a", {}, returns)  # type: ignore[arg-type]
+
+
+def test_record_rejects_string_as_params_pair() -> None:
+    # "fa" unpacked into ('f', 'a') used to be accepted as a key and a value.
+    with pytest.raises(ValueError, match="params"):
+        TrialRecord("a", ["fa", "st"], [0.1, 0.2])  # type: ignore[arg-type]
+
+
+def test_record_plain_dict_and_returns_still_accepted() -> None:
+    rec = TrialRecord("a", {"k": 1}, [0.1, 0.2])
+    assert rec.params_dict == {"k": 1}
+    np.testing.assert_allclose(rec.returns, [0.1, 0.2])
+
+
 # ---------------------------------------------------------------------------
 # TrialRegistry: registration and the performance matrix
 # ---------------------------------------------------------------------------
@@ -291,6 +312,27 @@ def test_dsr_single_trial_is_psr_against_zero() -> None:
     sr = sharpe_ratio(x, annualize=False)
     expected = probabilistic_sharpe_ratio(sr, 0.0, x.size, skew(x), kurtosis(x, fisher=False))
     assert reg.deflated_sharpe() == expected
+
+
+def test_dsr_accepts_identically_zero_trial_alongside_a_random_one() -> None:
+    reg = TrialRegistry()
+    reg.record("zero", {}, np.zeros(64))
+    reg.record("random", {}, _noise(71, T=64, mean=0.001))
+    assert math.isfinite(reg.deflated_sharpe())
+
+
+def test_dsr_selected_identically_zero_trial_uses_normal_moments() -> None:
+    # A losing trial plus two zero trials: the zero trial has the best Sharpe ratio (0) and is selected.
+    loser = np.random.default_rng(90).normal(-0.002, 0.01, 120)
+    reg = TrialRegistry()
+    reg.record("loser", {}, loser)
+    reg.record("never_trades", {}, np.zeros(120))
+    reg.record("never_trades_2", {}, np.zeros(120))
+    srs = np.array([sharpe_ratio(loser, annualize=False), 0.0, 0.0])
+    expected = deflated_sharpe_ratio(0.0, 3, float(np.var(srs, ddof=1)), 120, 0.0, 3.0)
+    result = reg.deflated_sharpe()
+    assert math.isfinite(result)
+    assert result == pytest.approx(expected, rel=1e-14)
 
 
 def test_dsr_rejects_empty_registry_and_zero_variance_trial() -> None:

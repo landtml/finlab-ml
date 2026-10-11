@@ -605,3 +605,56 @@ def test_yfinance_real_data_no_leakage():
 
     assert (n_test_seen == cv.get_n_paths()).all()
     assert cv.build_paths(df).index.equals(df.index)
+
+
+def test_missing_t1_warns_and_keeps_embargo_only_split():
+    """t1=None must warn (purging skipped) but produce the same folds as before."""
+    import warnings
+
+    from finlab.cv import PurgedKFold
+
+    X = pd.DataFrame({"x": np.arange(60.0)}, index=_daily_index(60))
+    cv = PurgedKFold(n_splits=4, embargo_pct=0.05)
+    with pytest.warns(UserWarning, match="t1 is None"):
+        with_warn = list(cv.split(X))
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        silent = list(PurgedKFold(n_splits=4, embargo_pct=0.05).split(X))
+    assert len(with_warn) == len(silent) == 4
+    for (tr_a, te_a), (tr_b, te_b) in zip(with_warn, silent):
+        np.testing.assert_array_equal(tr_a, tr_b)
+        np.testing.assert_array_equal(te_a, te_b)
+
+
+def test_cpcv_missing_t1_warns_once_per_split_call():
+    X = pd.DataFrame({"x": np.arange(60.0)}, index=_daily_index(60))
+    cv = CombinatorialPurgedCV(n_groups=6, n_test_groups=2)
+    with pytest.warns(UserWarning, match="t1 is None") as record:
+        cv.split(X)
+    assert len([w for w in record if "t1 is None" in str(w.message)]) == 1
+
+
+def test_t1_given_does_not_warn():
+    import warnings
+
+    from finlab.cv import PurgedKFold
+
+    X = pd.DataFrame({"x": np.arange(60.0)}, index=_daily_index(60))
+    t1 = make_t1(X.index, 3)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        list(PurgedKFold(n_splits=4, t1=t1).split(X))
+
+
+@pytest.mark.parametrize("bad", [list(pd.date_range("2024-01-01", periods=4)), np.zeros((4, 2))])
+def test_make_t1_rejects_non_pandas_index(bad) -> None:
+    with pytest.raises(TypeError, match="index"):
+        make_t1(bad, 2)
+
+
+def test_min_train_size_raises_eagerly_from_split():
+    # split() must raise on the call itself, not when the generator is first consumed.
+    X = _frame(126)
+    cv = CombinatorialPurgedCV(6, 2, embargo_pct=0.01)
+    with pytest.raises(ValueError, match="training observation"):
+        cv.split(X, t1=make_t1(X.index, 21))

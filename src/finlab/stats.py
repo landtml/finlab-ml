@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import math
 import numbers
+import warnings
 from dataclasses import dataclass
 from typing import Union
 
@@ -85,7 +86,9 @@ def sharpe_ratio(
     -------
     float
         ``mean / std(ddof=1)``, multiplied by ``sqrt(periods_per_year)`` when
-        ``annualize`` is True. NaN if fewer than two observations remain.
+        ``annualize`` is True. NaN if fewer than two observations remain. An
+        all-zero series gives 0.0; any other constant series gives NaN with a
+        warning.
 
     Notes
     -----
@@ -97,13 +100,28 @@ def sharpe_ratio(
     x = _as_1d(returns)
     x = x[np.isfinite(x)]
     if x.size < 2:
+        # Warn so a caller does not mistake the NaN for a missing-data marker.
+        warnings.warn(
+            "sharpe_ratio: fewer than two finite observations, returning NaN",
+            UserWarning,
+            stacklevel=2,
+        )
+        return float("nan")
+    if np.all(x == 0.0):
+        # An identically zero series has Sharpe ratio 0 by definition, not an undefined one.
+        return 0.0
+    mu = float(np.mean(x))
+    # Constant input still gives a tiny nonzero np.std from float noise, so test the
+    # range against a relative tolerance instead of testing the std for exact zero.
+    if float(np.ptp(x)) <= 1e-12 * max(1.0, abs(mu)):
+        warnings.warn(
+            "sharpe_ratio: returns are constant, so the Sharpe ratio is undefined; returning NaN",
+            UserWarning,
+            stacklevel=2,
+        )
         return float("nan")
     sd = float(np.std(x, ddof=1))
-    mu = float(np.mean(x))
-    if sd == 0.0:
-        sr = 0.0 if mu == 0.0 else math.copysign(math.inf, mu)
-    else:
-        sr = mu / sd
+    sr = mu / sd
     return sr * math.sqrt(periods_per_year) if annualize else sr
 
 
@@ -152,9 +170,19 @@ def probabilistic_sharpe_ratio(
     exactly for any skew, kurtosis and T.
     """
     denom = _psr_denominator(sr_hat, skew, kurtosis)
+    if not math.isfinite(n_obs):
+        # NaN slips past the comparison below, and an infinite sample gives a certain answer.
+        raise ValueError(f"n_obs must be an integer, got {n_obs!r}")
     if n_obs < 2:
         raise ValueError("n_obs must be at least 2")
     z = (sr_hat - sr_benchmark) * math.sqrt(n_obs - 1) / denom
+    if not (math.isfinite(sr_hat) and math.isfinite(sr_benchmark)):
+        # Infinite inputs make z NaN or infinite, which would otherwise pass silently.
+        warnings.warn(
+            "probabilistic_sharpe_ratio: non-finite input (sr_hat or sr_benchmark), result may be NaN",
+            UserWarning,
+            stacklevel=2,
+        )
     return float(norm.cdf(z))
 
 
@@ -399,6 +427,8 @@ def min_track_record_length(
     """
     if not 0.0 < prob < 1.0:
         raise ValueError("prob must lie in (0, 1)")
+    if not math.isfinite(sr_benchmark):
+        raise ValueError(f"sr_benchmark must be finite, got {sr_benchmark!r}")
     if sr_hat <= sr_benchmark:
         raise ValueError("minTRL requires sr_hat > sr_benchmark")
     denom_sq = _psr_denominator(sr_hat, skew, kurt) ** 2
@@ -408,6 +438,9 @@ def min_track_record_length(
 
 def _psr_denominator(sr_hat: float, skew: float, kurt: float) -> float:
     """Return sqrt(1 - skew*SR + (kurt-1)/4 * SR^2), raising if non-positive."""
+    # Checked first: an infinite SR would otherwise fail below with a message about skew and kurtosis.
+    if not math.isfinite(sr_hat):
+        raise ValueError(f"sr_hat must be finite, got {sr_hat!r}")
     inside = 1.0 - skew * sr_hat + (kurt - 1.0) / 4.0 * sr_hat * sr_hat
     if not inside > 0.0:
         raise ValueError(
