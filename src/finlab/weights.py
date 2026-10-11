@@ -521,10 +521,10 @@ def time_decay(
     * for ``c_last in [0, 1]``: ``b = (1 - c_last) / T``, so ``a = c_last``;
     * for ``c_last in (-1, 0)``: ``b = 1 / ((1 + c_last) T)``, and the factor is
       clipped to 0 for the oldest part of the sample.
-    Decay runs on cumulative uniqueness, not on calendar time, so redundant
+    Decay runs on cumulative uniqueness; calendar time plays no role, so redundant
     observations do not shrink the weights too fast.
 
-    Scope: the oldest observation has ``C = w_1``, not 0, so its factor is
+    Scope: the oldest observation has ``C = w_1`` (nonzero), so its factor is
     ``c_last + (1 - c_last) w_1 / T``. It equals ``c_last`` only in the limit of
     small ``w_1 / T`` (see docs/proofs/weights.md).
     """
