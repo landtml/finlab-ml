@@ -50,7 +50,9 @@ def naive_events(close, t_events, pt_sl, target, min_ret, vert=None, side=None):
         path = close.loc[t0:end]
         rel = (path / close.loc[t0] - 1.0) * sd
         t_pt = rel[rel > pt_sl[0] * trg].index.min() if pt_sl[0] > 0 else pd.NaT
-        t_sl = rel[rel < -pt_sl[1] * trg].index.min() if pt_sl[1] > 0 else pd.NaT
+        # With side omitted, the stop uses pt_sl[0] too (the documented rule).
+        sl_mult = pt_sl[0] if side is None else pt_sl[1]
+        t_sl = rel[rel < -sl_mult * trg].index.min() if sl_mult > 0 else pd.NaT
         if not pd.isna(t_sl) and (pd.isna(t_pt) or t_sl <= t_pt):
             t1, code = t_sl, "sl"
         elif not pd.isna(t_pt):
@@ -234,6 +236,26 @@ def test_meta_labels_rejects_abstention():
     ev = get_events(close, close.index[:5], (1.0, 1.0), pd.Series(0.01, index=close.index), 0.0)
     with pytest.raises(ValueError):
         meta_labels(ev, close, np.array([1.0, 0.0, 1.0, -1.0, 1.0]))
+
+
+def test_get_bins_meta_refuses_nan_side():
+    close = _random_walk(30, seed=11)
+    ev = get_events(close, close.index[:5], (1.0, 1.0), pd.Series(0.01, index=close.index), 0.0)
+    ev["side"] = np.array([1.0, np.nan, 1.0, -1.0, np.nan])
+    with pytest.raises(ValueError, match="side is NaN for 2 event"):
+        get_bins(ev, close, meta=True)
+
+
+def test_get_bins_without_meta_ignores_nan_side():
+    close = _random_walk(30, seed=11)
+    ev = get_events(close, close.index[:5], (1.0, 1.0), pd.Series(0.01, index=close.index), 0.0)
+    ev["side"] = 1.0
+    with pytest.warns(UserWarning):
+        plain = get_bins(ev, close)
+    ev["side"] = np.array([1.0, np.nan, 1.0, -1.0, np.nan])
+    with pytest.warns(UserWarning):
+        nan_side = get_bins(ev, close)
+    pd.testing.assert_frame_equal(nan_side, plain)
 
 
 # ---------------------------------------------------------------------------
@@ -429,18 +451,26 @@ def test_vertical_barrier_and_events_keep_index_timezone():
 # ---------------------------------------------------------------------------
 
 
-def test_get_events_warns_when_vertical_barrier_falls_between_bars():
+def test_vertical_barrier_between_bars_is_priced_at_the_last_bar_before_it():
     c = _random_walk(40, seed=13)
     t0 = c.index[0]
     between = pd.Series([c.index[10] + pd.Timedelta(hours=12)], index=[t0])
     on_grid = pd.Series([c.index[10]], index=[t0])
     trgt = pd.Series(10.0, index=c.index)
-    with pytest.warns(UserWarning, match="between bars"):
-        ev = get_events(c, [t0], (10, 10), trgt, 0.01, vertical_barrier_times=between)
-    assert ev.loc[t0, "t1"] == c.index[10] + pd.Timedelta(hours=12)
     with warnings.catch_warnings():
         warnings.simplefilter("error", UserWarning)
-        get_events(c, [t0], (10, 10), trgt, 0.01, vertical_barrier_times=on_grid)
+        ev = get_events(c, [t0], (10, 10), trgt, 0.01, vertical_barrier_times=between)
+        ev_grid = get_events(c, [t0], (10, 10), trgt, 0.01, vertical_barrier_times=on_grid)
+    assert ev.loc[t0, "t1"] == c.index[10] + pd.Timedelta(hours=12)
+    expected = c.iloc[10] / c.iloc[0] - 1.0
+    assert get_bins(ev, c).loc[t0, "ret"] == pytest.approx(expected)
+    assert get_bins(ev_grid, c).loc[t0, "ret"] == pytest.approx(expected)
+
+
+def test_get_bins_still_drops_a_t1_after_the_last_bar():
+    c = _random_walk(40, seed=13)
+    ev = pd.DataFrame({"t1": [c.index[-1] + pd.Timedelta(days=1)]}, index=[c.index[0]])
+    assert get_bins(ev, c).empty
 
 
 # ---------------------------------------------------------------------------
@@ -491,3 +521,340 @@ def test_get_daily_vol_duplicate_timestamps_raise_clear_error():
     dup = pd.concat([s, s.iloc[-3:]]).sort_index(kind="stable")
     with pytest.raises(ValueError, match="duplicate timestamps"):
         get_daily_vol(dup)
+
+
+@pytest.mark.parametrize("bad_price", [0.0, -5.0])
+def test_get_daily_vol_rejects_non_positive_prices(bad_price: float) -> None:
+    # A zero price made the return inf, which ewm silently skipped, and a negative price gave finite
+    # values. get_events and get_bins already reject these.
+    idx = pd.date_range("2020-01-01", periods=10, freq="D")
+    px = pd.Series(np.arange(1.0, 11.0), idx)
+    px.iloc[3] = bad_price
+    with pytest.raises(ValueError, match="strictly positive"):
+        get_daily_vol(px, span=3)
+
+
+@pytest.mark.parametrize("bad_min_ret", [float("nan"), float("inf")])
+def test_get_events_rejects_non_finite_min_ret(bad_min_ret: float) -> None:
+    # A NaN min_ret made "target > min_ret" False for every event, so all events were dropped
+    # silently. Non-finite pt_sl values are already rejected.
+    from finlab.labeling import get_events
+
+    idx = pd.date_range("2020-01-01", periods=10, freq="D")
+    close = pd.Series(np.arange(100.0, 110.0), idx)
+    with pytest.raises(ValueError, match="min_ret"):
+        get_events(close, idx[:3], [1, 1], pd.Series(0.05, index=idx[:3]), bad_min_ret)
+
+
+def test_trend_scanning_rejects_non_integral_window() -> None:
+    # A window of 3.9 was silently truncated to 3.
+    from finlab.labeling import trend_scanning_labels
+
+    cs = pd.Series(np.exp(np.linspace(0, 1, 10)), pd.date_range("2020-01-01", periods=10))
+    with pytest.raises(ValueError, match="window"):
+        trend_scanning_labels(cs, [3.9])
+
+
+def test_get_events_side_none_uses_pt_sl_zero_for_the_stop() -> None:
+    # With side omitted, the stop width came from pt_sl[1], not pt_sl[0].
+    from finlab.labeling import get_events
+
+    idx = pd.date_range("2020-01-01", periods=6, freq="D")
+    close = pd.Series([100.0, 98.0, 97.0, 96.0, 95.0, 94.0], index=idx)
+    tgt = pd.Series(0.01, index=idx)
+    out = get_events(close, idx[:1], (1.0, 3.0), tgt, 0.0)
+    # Stop width is 1 * 0.01, so the -2% move on bar 1 stops the event out.
+    assert out.loc[idx[0], "t1"] == idx[1]
+    assert out.loc[idx[0], "barrier"] == "sl"
+
+
+
+
+def test_get_events_rejects_non_positive_target_when_min_ret_is_negative() -> None:
+    # A negative target passed the filter trgt > min_ret and gave a stop on bar 1.
+    from finlab.labeling import get_events
+
+    idx = pd.date_range("2020-01-01", periods=6, freq="D")
+    close = pd.Series([100.0, 98.0, 97.0, 96.0, 95.0, 94.0], index=idx)
+    with pytest.raises(ValueError, match="positive"):
+        get_events(close, idx[:1], (1.0, 1.0), pd.Series(-0.5, index=idx), -1.0)
+
+
+def test_trend_scanning_rejects_string_window_sizes() -> None:
+    # A string is iterable, so '345' was read as the windows 3, 4 and 5.
+    s = pd.Series(np.linspace(100, 120, 50))
+    with pytest.raises(ValueError, match="window"):
+        trend_scanning_labels(s, "345")
+
+
+def test_trend_scanning_rejects_non_finite_threshold() -> None:
+    # A NaN t_threshold labelled every bar 0 with no error.
+    s = pd.Series(np.r_[np.linspace(100, 120, 20), np.linspace(120, 100, 20)])
+    with pytest.raises(ValueError, match="t_threshold"):
+        trend_scanning_labels(s, [5, 10], t_threshold=float("nan"))
+
+
+def test_get_daily_vol_rejects_nat_label() -> None:
+    # A NaT timestamp received a finite volatility.
+    s = pd.Series([1.0, 2.0, 3.0], index=pd.DatetimeIndex(["2020-01-01", pd.NaT, "2020-01-03"]))
+    with pytest.raises(ValueError, match="NaT"):
+        get_daily_vol(s)
+
+
+@pytest.mark.parametrize("bad", [-2, float("nan"), float("inf"), 1e15])
+def test_add_vertical_barrier_rejects_bad_num_days(bad: float) -> None:
+    # A negative num_days gave expiries before the event, and NaN, inf and huge values leaked numpy,
+    # pandas or OverflowError messages.
+    idx = pd.date_range("2020-01-01", periods=6, freq="D")
+    s = pd.Series(range(6), index=idx)
+    with pytest.raises(ValueError, match="num_days"):
+        add_vertical_barrier(idx[3:5], s, num_days=bad)
+
+
+def test_get_events_side_none_rejects_one_zero_barrier() -> None:
+    # With side omitted both barriers use pt_sl[0], so (0, 2) silently switched the stop off and
+    # (2, 0) put a stop at 2. Those one-sided specs are refused by name.
+    from finlab.labeling import get_events
+
+    idx = pd.date_range("2020-01-01", periods=6, freq="D")
+    close = pd.Series([100.0, 98.0, 97.0, 96.0, 95.0, 94.0], index=idx)
+    tgt = pd.Series(0.01, index=idx)
+    with pytest.raises(ValueError, match="pt_sl"):
+        get_events(close, idx[:1], (0, 2), tgt, 0.0)
+    with pytest.raises(ValueError, match="pt_sl"):
+        get_events(close, idx[:1], (2, 0), tgt, 0.0)
+    # With side given, pt_sl[1] is the stop, so a zero stop is a real stop-free spec.
+    side = pd.Series(1, index=idx[:1])
+    out = get_events(close, idx[:1], (2, 0), tgt, 0.0, side=side)
+    assert len(out) == 1
+
+
+def test_trend_scanning_accepts_one_shot_window_iterable() -> None:
+    # The integer-window loop consumed a generator, so the windows read after it were empty and the
+    # call raised. A one-shot iterable gives the same result as a list.
+    from finlab.labeling import trend_scanning_labels
+
+    c = pd.Series([100, 100, 95, 100, 101, 102, 103, 104.0], index=pd.date_range("2020-01-01", periods=8))
+    want = trend_scanning_labels(c, [3, 4])
+    got = trend_scanning_labels(c, (w for w in [3, 4]))
+    pd.testing.assert_frame_equal(got, want)
+
+
+def test_get_events_accepts_negative_infinite_min_ret() -> None:
+    # Every non-finite min_ret used to be refused. Only NaN and +inf are refused now (both drop every
+    # event, which is what the guard is for). -inf drops none.
+    from finlab.labeling import get_events
+
+    idx = pd.date_range("2020-01-01", periods=8, freq="D")
+    c = pd.Series([100, 100, 95, 100, 101, 102, 103, 104.0], index=idx)
+    out = get_events(c, idx[:1], (1, 1), pd.Series(0.01, index=idx), float("-inf"))
+    assert out["barrier"].tolist() == ["sl"]
+
+
+def test_add_vertical_barrier_rejects_unsorted_close_index() -> None:
+    # searchsorted ran on an unsorted grid and gave expiries at the end of the series. get_events
+    # already refuses an unsorted close, so this function refuses it too.
+    from finlab.labeling import add_vertical_barrier
+
+    idx = pd.date_range("2020-01-01", periods=10, freq="D")
+    c = pd.Series(range(100, 110), index=idx, dtype=float)
+    ev = idx[:2]
+    with pytest.raises(ValueError, match="increasing"):
+        add_vertical_barrier(ev, c.iloc[::-1], 2)
+    assert add_vertical_barrier(ev, c, 2).tolist() == [idx[2], idx[3]]
+
+
+def test_get_events_names_a_duplicate_target_index() -> None:
+    # A target with a repeated label made reindex raise pandas' duplicate-label error. close and
+    # t_events already get a named message, so target gets one too.
+    from finlab.labeling import get_events
+
+    idx = pd.date_range("2020-01-01", periods=8, freq="D")
+    c = pd.Series([100, 100, 95, 100, 101, 102, 103, 104.0], index=idx)
+    dup = pd.Series([0.01] * 8, index=[idx[0]] * 8)
+    with pytest.raises(ValueError, match="target index must be unique"):
+        get_events(c, idx[:1], (1, 1), dup, 0.0)
+
+
+def _ev_fixture():
+    idx = pd.date_range("2020-01-01", periods=50, freq="D")
+    rng = np.random.default_rng(0)
+    close = pd.Series(100 * np.exp(np.cumsum(rng.normal(0, 0.01, 50))), index=idx)
+    return idx, close
+
+
+def test_get_events_warns_when_pt_sl_1_is_ignored_without_side() -> None:
+    # With side omitted, pt_sl[0] sets both barriers (documented), so pt_sl = (1, 2) ran with a stop
+    # of 1 and no sign of pt_sl[1]. The value is kept; the call now warns.
+    from finlab.labeling import get_events
+
+    idx, close = _ev_fixture()
+    with pytest.warns(UserWarning, match=r"pt_sl\[1\] is ignored"):
+        out = get_events(close, idx[:20], [1, 2], pd.Series(0.02, index=idx), 0.0)
+    assert out["barrier"].value_counts().to_dict() == {"pt": 12, "sl": 8}
+
+
+def test_get_events_refuses_zero_width_targets_under_negative_min_ret() -> None:
+    # A zero width is refused under a negative min_ret: a retained zero width would stop out on its
+    # first bar. The docstring now says so.
+    from finlab.labeling import get_events
+
+    idx, close = _ev_fixture()
+    target = pd.Series(0.02, index=idx)
+    target.iloc[3] = 0.0
+    assert len(get_events(close, idx[:20], [1, 1], target, 0.0)) == 19
+    with pytest.raises(ValueError, match="positive"):
+        get_events(close, idx[:20], [1, 1], target, -0.5)
+    with pytest.raises(ValueError, match="positive"):
+        get_events(close, idx[:20], [1, 1], target, -np.inf)
+
+
+def test_add_vertical_barrier_refuses_duplicate_grid_timestamps() -> None:
+    # The docstring says "strictly increasing" for close, but a duplicated timestamp passed
+    # is_monotonic_increasing, so expiries were computed on a grid get_events then refuses.
+    from finlab.labeling import add_vertical_barrier
+
+    idx = pd.date_range("2020-01-01", periods=10)
+    c = pd.Series(100.0 + np.arange(10.0), index=idx)
+    dup = pd.concat([c.iloc[:5], c.iloc[4:9]])
+    with pytest.raises(ValueError, match="strictly increasing"):
+        add_vertical_barrier(c.index[:3], dup, 1)
+
+
+def test_trend_scanning_refuses_negative_threshold() -> None:
+    # The threshold bounds |t|, so a negative one labelled every bar +1 or -1 and none 0. It must be
+    # non-negative.
+    from finlab.labeling import trend_scanning_labels
+
+    idx = pd.date_range("2020-01-01", periods=50, freq="D")
+    close = pd.Series(100 * np.exp(np.cumsum(np.random.default_rng(0).normal(0, 0.01, 50))), index=idx)
+    with pytest.raises(ValueError, match="non-negative"):
+        trend_scanning_labels(close, [3], -1.0)
+
+
+
+
+def test_trend_scanning_refuses_string_window_sizes() -> None:
+    # float('3') parsed the string, so ['3'] ran as window 3.
+    from finlab.labeling import trend_scanning_labels
+
+    idx = pd.date_range("2020-01-01", periods=50, freq="D")
+    close = pd.Series(100 * np.exp(np.cumsum(np.random.default_rng(0).normal(0, 0.01, 50))), index=idx)
+    with pytest.raises(ValueError, match="integers"):
+        trend_scanning_labels(close, ["3"])
+
+
+def test_get_events_side_with_missing_rows_names_the_coverage() -> None:
+    # A side covering 5 of 9 events was reported as a bad value ("must equal -1 or +1"), when the
+    # index is what is missing. The message now names the coverage.
+    import pandas as pd
+
+    from finlab import labeling as L
+
+    idx = pd.date_range("2020-01-01", periods=60, freq="D")
+    rng = np.random.default_rng(0)
+    close = pd.Series(100 * np.exp(np.cumsum(rng.normal(0, 0.01, 60))), idx)
+    t_events = idx[5:50:5]
+    with pytest.raises(ValueError, match="covers 5 of 9 events"):
+        L.get_events(close, t_events, [1, 1], pd.Series(0.02, idx), 0.0, side=pd.Series(1.0, t_events[:5]))
+
+
+def test_get_events_refuses_one_zero_pt_sl_with_side_omitted_as_intended() -> None:
+    # With side omitted, a one-zero pt_sl is refused, and a non-zero pt_sl[1] is ignored with a
+    # warning. Both rules are intended.
+    import pandas as pd
+
+    from finlab import labeling as L
+
+    idx = pd.date_range("2020-01-01", periods=60, freq="D")
+    rng = np.random.default_rng(0)
+    close = pd.Series(100 * np.exp(np.cumsum(rng.normal(0, 0.01, 60))), idx)
+    t_events = idx[5:50:5]
+    vb = L.add_vertical_barrier(t_events, close, 3)
+    for pt_sl in ([1, 0], [0, 1]):
+        with pytest.raises(ValueError, match="side omitted"):
+            L.get_events(close, t_events, pt_sl, pd.Series(0.02, idx), 0.0, vb)
+    with pytest.warns(UserWarning):
+        assert len(L.get_events(close, t_events, [2, 1], pd.Series(0.02, idx), 0.0, vb)) == 9
+
+
+def test_get_events_refuses_non_datetime_close_index() -> None:
+    # An integer close index was read as nanoseconds, so t1 came out as 1970 timestamps and get_bins
+    # failed later with a raw TypeError. get_daily_vol refuses it.
+    idx = pd.RangeIndex(30)
+    close = pd.Series(100.0 + np.arange(30.0), index=idx)
+    tgt = pd.Series(0.02, index=idx)
+    with pytest.raises(ValueError, match="DatetimeIndex"):
+        get_events(close, idx[:5], [1, 1], tgt, 0.0)
+
+
+def test_get_events_refuses_target_that_labels_no_event() -> None:
+    # A target stamped at noon against midnight events reindexed to all NaN, so every event was
+    # dropped with no message.
+    from finlab.labeling import get_events
+
+    idx = pd.date_range("2020-01-01", periods=30, freq="D")
+    close = pd.Series(100.0 + np.arange(30.0), index=idx)
+    tgt = pd.Series(0.02, index=idx + pd.Timedelta(hours=12))
+    with pytest.raises(ValueError, match="target"):
+        get_events(close, idx[:10], [1, 1], tgt, 0.0)
+
+
+def test_get_events_refuses_vertical_barriers_that_label_no_event() -> None:
+    # Vertical barriers with a default RangeIndex lost every expiry silently.
+    from finlab.labeling import add_vertical_barrier, get_events
+
+    idx = pd.date_range("2020-01-01", periods=30, freq="D")
+    close = pd.Series(100.0 + np.arange(30.0), index=idx)
+    tgt = pd.Series(0.02, index=idx)
+    vb = add_vertical_barrier(idx[:10], close, 3)
+    with pytest.raises(ValueError, match="vertical_barrier_times"):
+        get_events(close, idx[:10], [1, 1], tgt, 0.0, vertical_barrier_times=pd.Series(vb.to_numpy()))
+
+
+def test_get_events_names_timezone_for_naive_vertical_index_with_aware_events() -> None:
+    close = _random_walk(60, seed=13).tz_localize("Europe/Berlin")
+    events = close.index[:3]
+    target = pd.Series(0.02, index=events)
+    naive_vertical = pd.Series(close.index[10:13].tz_localize(None), index=events.tz_localize(None))
+    with pytest.raises(ValueError, match="timezone") as info:
+        get_events(close, events, (1, 1), target, 0.01, vertical_barrier_times=naive_vertical)
+    assert "vertical_barrier_times" in str(info.value)
+    assert "Europe/Berlin" in str(info.value)
+
+
+def test_get_events_names_the_timezone_when_t_events_and_close_differ() -> None:
+    c = _random_walk(40, seed=13)
+    aware = c.tz_localize("America/New_York")
+    trgt = pd.Series(0.01, index=aware.index)
+    with pytest.raises(ValueError, match="timezone"):
+        get_events(aware, aware.index[:5].tz_localize(None), (1, 1), trgt, 0.0)
+    with pytest.raises(ValueError, match="timezone"):
+        get_events(c, aware.index[:5], (1, 1), pd.Series(0.01, index=c.index), 0.0)
+
+
+def test_get_bins_warns_when_every_event_is_dropped() -> None:
+    idx, close = _ev_fixture()
+    events = pd.DataFrame({"t1": pd.NaT, "trgt": 0.02}, index=idx[:5])
+    events["t1"] = pd.to_datetime(events["t1"])
+    with pytest.warns(UserWarning, match="empty"):
+        out = get_bins(events, close)
+    assert out.empty
+    good = pd.DataFrame({"t1": idx[5:10]}, index=idx[:5])
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        assert not get_bins(good, close).empty
+
+
+@pytest.mark.parametrize("num_days", [0.5, 0.7, 1 / 7, 1, 2, 3])
+def test_fractional_num_days_on_us_index_matches_ns_index(num_days: float) -> None:
+    # Expiry is built in ns; searchsorted on a microsecond grid used to refuse the lossy cast.
+    grid_ns = pd.date_range("2020-01-01 09:00", periods=60, freq="7h31min", unit="ns")
+    events = grid_ns[:5]
+    close_ns = pd.Series(np.arange(60.0), index=grid_ns)
+    close_us = pd.Series(np.arange(60.0), index=grid_ns.as_unit("us"))
+    ref = add_vertical_barrier(events, close_ns, num_days=num_days)
+    got = add_vertical_barrier(events.as_unit("us"), close_us, num_days=num_days)
+    np.testing.assert_array_equal(
+        got.to_numpy().astype("datetime64[ns]"), ref.to_numpy().astype("datetime64[ns]")
+    )

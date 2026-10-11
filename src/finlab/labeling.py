@@ -28,6 +28,8 @@ the chapter, and the sampling of events (Chapter 2) that produces
 
 from __future__ import annotations
 
+import math
+import numbers
 import warnings
 from typing import Sequence
 
@@ -35,7 +37,7 @@ import numpy as np
 import pandas as pd
 from numba import prange
 
-from ._checks import _require_type
+from ._checks import _require_type, as_datetime_index, index_tz
 from ._jit import jit, pjit
 
 __all__ = [
@@ -89,6 +91,9 @@ def get_daily_vol(close: pd.Series, span: int = 100) -> pd.Series:
     _require_type(close, "close", pd.Series)
     if not isinstance(close.index, pd.DatetimeIndex):
         raise TypeError("close must be indexed by a DatetimeIndex.")
+    if close.index.hasnans:
+        # A NaT timestamp got a finite volatility, and the real dates were not affected.
+        raise ValueError("close index contains NaT; every price needs a timestamp.")
     # The lookback and the EWM recursion both need time order, whatever order the input has.
     orig_index = close.index
     close = close.sort_index()
@@ -102,6 +107,9 @@ def get_daily_vol(close: pd.Series, span: int = 100) -> pd.Series:
     finite = np.isfinite(px)
     if np.isinf(px).any() or (finite.any() and not finite[np.argmax(finite):].all()):
         raise ValueError("close must contain only finite prices.")
+    if np.any(px[finite] <= 0):
+        # A zero price makes the return inf, which ewm skips silently; a negative one has no meaning.
+        raise ValueError("close must contain only strictly positive prices.")
     idx = close.index
     prev = idx.searchsorted(idx - pd.Timedelta(days=1), side="left") - 1
     valid = prev >= 0
@@ -124,6 +132,27 @@ def _utc_values(index: pd.Index) -> np.ndarray:
     if getattr(index, "tz", None) is not None:
         return index.tz_convert(None).to_numpy()
     return index.to_numpy()
+
+
+def _datetime_index(values) -> pd.DatetimeIndex:
+    # Aware datetimes in one zone keep it, and mixed zones (object arrays from pd.concat or a Series of
+    # zones) go to UTC with the same instants. Strings and naive values parse as before.
+    index = as_datetime_index(pd.Index(values))
+    if isinstance(index, pd.DatetimeIndex):
+        return index
+    return pd.DatetimeIndex(values)
+
+
+def _zone_name(tz):
+    # The IANA name of a zone, so one zone from zoneinfo, dateutil or pytz compares equal.
+    # Other zone objects (UTC, fixed offsets, None) compare as themselves.
+    name = getattr(tz, "key", None) or getattr(tz, "zone", None)  # zoneinfo, pytz
+    if isinstance(name, str):
+        return name
+    filename = getattr(tz, "_filename", None)  # dateutil tzfile keeps its path
+    if isinstance(filename, str) and "zoneinfo/" in filename:
+        return filename.split("zoneinfo/", 1)[1]
+    return tz
 
 
 def _restore_tz(values: np.ndarray, index: pd.Index) -> pd.DatetimeIndex:
@@ -158,9 +187,25 @@ def add_vertical_barrier(
 
     Scope: calendar-day offsets only.
     """
-    t_events = pd.DatetimeIndex(t_events)
-    grid = close.index
-    pos = grid.searchsorted(t_events + pd.Timedelta(days=num_days), side="left")
+    # A negative or non-finite num_days gave expiries before the event, or leaked
+    # numpy, pandas and OverflowError messages. Reject them, and name the range error from pandas.
+    if not math.isfinite(float(num_days)) or num_days < 0:
+        raise ValueError(f"num_days must be a finite, non-negative number of days, got {num_days!r}.")
+    t_events = _datetime_index(t_events)
+    # An object index of aware Timestamps is read as its DatetimeIndex, so the zone reaches the result.
+    grid = as_datetime_index(close.index)
+    if not grid.is_monotonic_increasing or grid.has_duplicates:
+        # searchsorted needs an ascending grid. get_events refuses the same input.
+        raise ValueError("close.index must be strictly increasing.")
+    try:
+        expiry = t_events + pd.Timedelta(days=num_days)
+        # Round up to the grid's unit: searchsorted refuses a lossy ns-to-grid cast. The first bar at
+        # or after expiry is the first bar at or after its ceiling, so the result is unchanged.
+        if getattr(grid, "unit", None) is not None:
+            expiry = expiry.ceil(grid.unit).as_unit(grid.unit)
+    except (OverflowError, ValueError) as exc:  # pandas' out-of-bounds errors are ValueError subclasses
+        raise ValueError(f"num_days={num_days!r} is out of range for a timestamp offset.") from exc
+    pos = grid.searchsorted(expiry, side="left")
     valid = pos < len(grid)
     vals = np.full(len(t_events), np.datetime64("NaT", "ns"))
     vals[valid] = _utc_values(grid)[pos[valid]]
@@ -255,7 +300,9 @@ def get_events(
         Unit barrier width (absolute return), indexed by time. Its values at
         ``t_events`` are used. Snippet 3.3 calls this ``trgt``.
     min_ret : float
-        Events with ``target <= min_ret`` (or NaN) are dropped.
+        Events with ``target <= min_ret`` (or NaN) are dropped. A retained target must be positive:
+        if ``min_ret`` is negative (or ``-inf``) and an event's target is zero or negative, the call
+        raises ``ValueError`` rather than keeping a zero-width barrier.
     vertical_barrier_times : pd.Series, optional
         Expiry timestamp per event, indexed by ``t_events`` (see
         :func:`add_vertical_barrier`). NaT or a missing value means no vertical
@@ -274,7 +321,8 @@ def get_events(
 
         ``t1``
             Time of the first barrier touch (NaT if none was touched and there
-            is no vertical barrier).
+            is no vertical barrier). :class:`finlab.ensemble.SequentialBootstrapBagging`
+            refuses a NaT ``t1``, so drop those events before bagging on this output.
         ``trgt``
             Unit barrier width used for the event.
         ``side``
@@ -300,25 +348,60 @@ def get_events(
     """
     px = _check_prices(close)
     grid = close.index
+    if not isinstance(grid, pd.DatetimeIndex):
+        # An integer index would be read as nanoseconds, so t1 would become 1970 timestamps.
+        raise ValueError("close must be indexed by a DatetimeIndex; get_events needs timestamps for t1.")
     ev_index = pd.Index(t_events)
     if ev_index.has_duplicates:
         raise ValueError("t_events must not contain duplicates.")
+    ev_tz = getattr(ev_index, "tz", None)
+    if isinstance(ev_index, pd.DatetimeIndex) and (ev_tz is None) != (grid.tz is None):
+        # Naive and aware labels never match, and the generic message below hid the cause.
+        raise ValueError(
+            f"t_events timezone ({ev_tz}) must match close timezone ({grid.tz}); "
+            "localize one of them before calling get_events."
+        )
     if not ev_index.isin(grid).all():
         raise ValueError("every t_events label must be an index label of close.")
     pt_sl_arr = np.asarray(pt_sl, dtype=float).reshape(-1)
     if pt_sl_arr.shape[0] != 2 or np.any(pt_sl_arr < 0) or not np.all(np.isfinite(pt_sl_arr)):
         raise ValueError("pt_sl must be two finite, non-negative floats.")
+    if side is None and (pt_sl_arr[0] == 0) != (pt_sl_arr[1] == 0):
+        # With side omitted, pt_sl[0] is used for both barriers, so a zero in one entry
+        # and not the other silently disables a barrier the caller asked for. Refused by name.
+        raise ValueError(
+            "pt_sl with side omitted uses pt_sl[0] for both barriers, so one zero entry and one positive "
+            "entry silently drop a barrier. Pass side, or make pt_sl[0] and pt_sl[1] both zero or both positive."
+        )
+    if math.isnan(float(min_ret)) or float(min_ret) == math.inf:
+        # A NaN threshold compares False with every target, and +inf drops every target, so both
+        # dropped every event silently. -inf keeps every target with a positive width; a zero or
+        # negative target is refused under a negative min_ret, see the check below.
+        raise ValueError("min_ret must be finite or -inf (keeps every target), got a NaN or +inf.")
 
     # A naive target against an aware close reindexes to all NaN and drops every
     # event without a message, so the mismatch is refused up front.
-    target_tz = getattr(target.index, "tz", None)
+    target_tz = index_tz(target.index)  # object indexes of aware Timestamps have their zone
     grid_tz = getattr(grid, "tz", None)
-    if target_tz != grid_tz:
+    if _zone_name(target_tz) != _zone_name(grid_tz):
         raise ValueError(
             f"target index timezone ({target_tz}) must match close timezone "
             f"({grid_tz}); convert one of them before calling get_events."
         )
+    if target.index.has_duplicates:
+        # reindex would fail with a pandas duplicate-label error; name the input instead.
+        raise ValueError("target index must be unique.")
+    if len(ev_index) and not ev_index.isin(target.index).any():
+        # A target that labels no event would reindex to all NaN and drop every event silently.
+        raise ValueError(
+            "target index shares no label with t_events, so every event would be dropped; "
+            "align target to the event timestamps."
+        )
     trgt_all = target.reindex(ev_index).to_numpy(dtype=float)
+    # A negative min_ret would let a non-positive width through the filter below, giving a
+    # stop-out on the first bar. The width is an absolute return, so it must be positive.
+    if np.any(np.isfinite(trgt_all) & (trgt_all <= 0.0) & (trgt_all > min_ret)):
+        raise ValueError("target must be positive for every retained event (an absolute return width).")
     keep = np.isfinite(trgt_all) & (trgt_all > min_ret)
     ev_index = ev_index[keep]
     trgt = trgt_all[keep]
@@ -331,6 +414,12 @@ def get_events(
     if side is None:
         side_v = np.ones(len(ev_index), dtype=float)
     else:
+        covered = int(ev_index.isin(side.index).sum())
+        if covered < len(ev_index):
+            # A side that misses events reads as NaN, so the index is named as the problem.
+            raise ValueError(
+                f"side must share the t_events index; it covers {covered} of {len(ev_index)} events."
+            )
         side_v = side.reindex(ev_index).to_numpy(dtype=float)
         if not np.all(np.isin(side_v, (-1.0, 1.0))):
             raise ValueError("side must equal -1 or +1 for every retained event.")
@@ -340,24 +429,37 @@ def get_events(
     vert_time = pd.DatetimeIndex([pd.NaT] * len(ev_index))
     has_vert = np.zeros(len(ev_index), dtype=bool)
     if vertical_barrier_times is not None:
+        vert_tz = index_tz(vertical_barrier_times.index)
+        if _zone_name(vert_tz) != _zone_name(grid_tz):
+            raise ValueError(
+                f"vertical_barrier_times index timezone ({vert_tz}) must match close timezone "
+                f"({grid_tz}); convert one of them before calling get_events."
+            )
+        if len(ev_index) and not ev_index.isin(vertical_barrier_times.index).any():
+            # No shared label would mean every expiry is lost silently.
+            raise ValueError(
+                "vertical_barrier_times index shares no label with t_events; "
+                "align it to the event timestamps."
+            )
         vt = vertical_barrier_times.reindex(ev_index)
-        vert_time = pd.DatetimeIndex(vt.to_numpy())
+        vert_time = _datetime_index(vt.to_numpy())
         has_vert = ~pd.isna(vert_time)
         if np.any(has_vert):
             ends_v = grid.searchsorted(vert_time[has_vert], side="right") - 1
             if np.any(ends_v < starts[has_vert]):
                 raise ValueError("a vertical barrier falls before its event start.")
             ends[has_vert] = ends_v
-            # The scan stops at the prior bar while get_bins prices t1 at the next one,
-            # so a barrier between bars makes the two disagree.
-            if np.any(grid.get_indexer(vert_time[has_vert]) < 0):
-                warnings.warn(
-                    "a vertical barrier falls between bars: the path is cut at the prior "
-                    "bar, but get_bins prices t1 at the next bar. Place barriers on the bar grid.",
-                    UserWarning,
-                    stacklevel=2,
-                )
 
+    # With side omitted, both horizontal barriers use pt_sl[0] (AFML snippet 3.6).
+    sl_mult = float(pt_sl_arr[0]) if side is None else float(pt_sl_arr[1])
+    if side is None and pt_sl_arr[1] != pt_sl_arr[0] and pt_sl_arr[1] > 0:
+        # pt_sl[1] is not used without side. The value is kept, but the override is no longer silent.
+        warnings.warn(
+            "side is omitted, so both barriers use pt_sl[0]; pt_sl[1] is ignored. Pass side to use "
+            "pt_sl[1] for the stop.",
+            UserWarning,
+            stacklevel=2,
+        )
     hit_pos, code = _scan_first_touch(
         px,
         starts,
@@ -365,7 +467,7 @@ def get_events(
         np.ascontiguousarray(trgt),
         np.ascontiguousarray(side_v),
         float(pt_sl_arr[0]),
-        float(pt_sl_arr[1]),
+        sl_mult,
     )
 
     n = len(ev_index)
@@ -427,22 +529,35 @@ def get_bins(events: pd.DataFrame, close: pd.Series, meta: bool = False) -> pd.D
 
     Notes
     -----
-    Prices are taken at the start time and at ``t1`` with a backward fill
-    (the first bar at or after the timestamp), as in Snippet 3.5. An event
-    whose ``t1`` lies after the last bar has no end price and is dropped.
+    The start price is the first bar at or after the event start (Snippet 3.5).
+    The end price is the last bar at or before ``t1``, the same bar the path
+    scan in :func:`get_events` stops at, so a vertical barrier between bars is
+    priced without looking ahead. An event whose ``t1`` lies after the last bar
+    has no end price and is dropped.
+
+    With ``meta=True`` every event needs a side: a NaN ``side`` raises
+    ``ValueError`` rather than dropping the event.
 
     Scope: one price series. Returns are simple (arithmetic) returns.
     """
     _require_type(events, "events", pd.DataFrame)
     _require_type(close, "close", pd.Series)
     ev = events.dropna(subset=["t1"])
-    t1_vals = pd.DatetimeIndex(ev["t1"])
+    t1_vals = _datetime_index(ev["t1"])
     px_start = close.reindex(ev.index, method="bfill").to_numpy(dtype=float)
-    px_end = close.reindex(t1_vals, method="bfill").to_numpy(dtype=float)
+    # The scan cuts the path at the last bar at or before a vertical barrier, so t1 is priced there too.
+    px_end = close.reindex(t1_vals, method="ffill").to_numpy(dtype=float, copy=True)
+    # A t1 after the last bar has no end price; ffill would otherwise reuse the last bar.
+    px_end[np.asarray(t1_vals > close.index[-1])] = np.nan
     ret = px_end / px_start - 1.0
     if meta:
         if "side" not in ev.columns:
             raise ValueError("meta=True requires a 'side' column in events.")
+        n_nan_side = int(events["side"].isna().sum())
+        if n_nan_side:
+            raise ValueError(
+                f"side is NaN for {n_nan_side} event(s); get_bins(meta=True) needs a side for every event."
+            )
         ret = ret * ev["side"].to_numpy(dtype=float)
     elif "side" in ev.columns:
         # Warn only: the label is still sign(raw return), and the warning does not change it.
@@ -456,6 +571,13 @@ def get_bins(events: pd.DataFrame, close: pd.Series, meta: bool = False) -> pd.D
     finite = np.isfinite(ret)
     ret = ret[finite]
     index = ev.index[finite]
+    if len(events) and not len(ret):
+        warnings.warn(
+            "get_bins dropped every event (no event has a t1 inside close and a finite return), "
+            "so the result is empty.",
+            UserWarning,
+            stacklevel=2,
+        )
     if meta:
         bin_ = (ret > 0).astype(np.int64)
     else:
@@ -666,6 +788,20 @@ def trend_scanning_labels(
         index = close.index
     else:
         raise TypeError("close must be a pandas Series.")
+    if not math.isfinite(float(t_threshold)) or float(t_threshold) < 0:
+        # A NaN threshold compares False with every |t|, so every bar would be labelled 0.
+        # A negative one would label every bar +/-1 and none 0.
+        raise ValueError(f"t_threshold must be finite and non-negative, got {t_threshold!r}.")
+    if isinstance(window_sizes, (str, bytes)):
+        # A string is iterable, so '345' would be read as the windows 3, 4 and 5.
+        raise ValueError("window_sizes must be a sequence of integers, not a string.")
+    # Read the iterable once: a generator would be consumed by the check below and then empty.
+    window_sizes = list(window_sizes)
+    for w in window_sizes:
+        # int() truncated 3.9 to 3 silently; the docstring asks for integers. A string is refused before
+        # float() parses it, as make_t1 does.
+        if isinstance(w, (str, bytes, bool, np.bool_)) or not isinstance(w, numbers.Real) or not float(w).is_integer():
+            raise ValueError(f"window sizes must be integers, got {w!r}.")
     windows = np.asarray(sorted({int(w) for w in window_sizes}), dtype=np.int64)
     if windows.size == 0 or windows.min() < 3:
         raise ValueError("window_sizes must be non-empty integers >= 3.")

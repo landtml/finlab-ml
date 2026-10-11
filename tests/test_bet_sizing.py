@@ -309,3 +309,421 @@ def test_prob_bet_size_names_both_lengths_on_side_mismatch():
         prob_bet_size([0.7, 0.2, 0.5], side=[1, -1], num_classes=3)
     with pytest.raises(ValueError, match="side has length 2 but prob has length 3"):
         prob_bet_size([0.7, 0.2, 0.5], side=[1, -1])
+
+
+def test_prob_bet_size_aligns_side_by_label():
+    # A side Series listed in another order must be matched to the probability by date.
+    days = pd.to_datetime(["2021-01-04", "2021-01-05"])
+    prob = pd.Series([0.9, 0.2], index=days)
+    side = pd.Series([-1.0, 1.0], index=days[::-1])
+    np.testing.assert_allclose(prob_bet_size(prob, side=side), prob_bet_size([0.9, 0.2], side=[1, -1]))
+
+
+def test_prob_bet_size_refuses_side_with_a_label_missing_from_prob():
+    days = pd.to_datetime(["2021-01-04", "2021-01-05", "2021-01-06"])
+    prob = pd.Series([0.9, 0.2], index=days[:2])
+    side = pd.Series([1.0, -1.0], index=[days[0], days[2]])
+    with pytest.raises(ValueError, match="labels differ"):
+        prob_bet_size(prob, side=side)
+
+
+def test_average_active_signals_tz_aware_index_matches_naive() -> None:
+    # .values dropped the timezone, so searchsorted raised TypeError.
+    naive = pd.date_range("2024-01-01", periods=5, freq="D")
+    aware = naive.tz_localize("Asia/Taipei")
+    sig_vals = [0.5, 1.0, -1.0, 0.25, 0.75]
+    t1_pos = [1, 2, 3, 4, 4]
+    want = average_active_signals(
+        pd.Series(sig_vals, index=naive), pd.Series(naive[t1_pos], index=naive)
+    ).tolist()
+    got = average_active_signals(
+        pd.Series(sig_vals, index=aware), pd.Series(aware[t1_pos], index=aware)
+    ).tolist()
+    assert got == want
+
+
+def test_discretize_signal_stays_in_unit_interval_when_step_does_not_divide_it() -> None:
+    # A step that does not divide 1 must not push a bet past 1: round(1/0.6) * 0.6 = 1.2.
+    got = discretize_signal([1.0, -1.0, 0.5], 0.6)
+    assert np.all(np.abs(got) <= 1.0)
+    assert got[0] == 1.0 and got[1] == -1.0
+
+
+def test_discretize_signal_step_dividing_one_unchanged() -> None:
+    got = discretize_signal([0.26, -0.74, 1.0], 0.25)
+    assert got.tolist() == [0.25, -0.75, 1.0]
+
+
+def test_calibrate_sigmoid_width_rejects_overflowing_width() -> None:
+    # x * x overflowed to inf for finite x, so the round trip gave 0.
+    with pytest.raises(ValueError, match="overflow"):
+        calibrate_sigmoid_width(1e200, 0.5)
+
+
+def test_calibrate_sigmoid_width_rejects_negative_target_for_positive_x() -> None:
+    # m* = -0.95 gave the same width as +0.95 for x > 0.
+    with pytest.raises(ValueError, match="m_star"):
+        calibrate_sigmoid_width(10.0, -0.95)
+
+
+@pytest.mark.parametrize("bad_w", [float("nan")])
+def test_sigmoid_bet_size_rejects_nan_width(bad_w: float) -> None:
+    # The check "if w <= 0" let NaN through.
+    with pytest.raises(ValueError, match="w must be"):
+        sigmoid_bet_size(bad_w, 1.0)
+
+
+@pytest.mark.parametrize("bad_forecast", [float("nan"), float("inf")])
+def test_limit_price_rejects_non_finite_forecast(bad_forecast: float) -> None:
+    # The forecast was never checked, so NaN passed through as a NaN limit.
+    with pytest.raises(ValueError, match="forecast"):
+        limit_price(1, 0, bad_forecast, 1.0, 4)
+
+
+@pytest.mark.parametrize("bad_target", [2.0, 2.5])
+def test_limit_price_rejects_non_integer_target(bad_target: float) -> None:
+    # A float target raised TypeError from range().
+    with pytest.raises(ValueError, match="target must be an integer"):
+        limit_price(bad_target, 0, 100.0, 1.0, 4)
+
+
+@pytest.mark.parametrize("bad_cap", [2.5, 4.0])
+def test_limit_price_rejects_non_integer_max_position(bad_cap: float) -> None:
+    # max_position = 2.5 was accepted silently.
+    with pytest.raises(ValueError, match="max_position must be an integer"):
+        limit_price(1, 0, 100.0, 1.0, bad_cap)
+
+
+def test_sigmoid_bet_size_infinite_divergence_is_at_limit() -> None:
+    # inf / hypot(sqrt(w), inf) was inf / inf, which gave NaN.
+    from finlab.bet_sizing import sigmoid_bet_size, target_position
+
+    assert float(sigmoid_bet_size(1.0, float("inf"))) == 1.0
+    assert float(sigmoid_bet_size(1.0, float("-inf"))) == -1.0
+    assert target_position(1.0, float("inf"), 0.5, 10) == 10
+
+
+def test_calibrate_sigmoid_width_rejects_underflowing_width() -> None:
+    # x * x underflowed to 0 at x = 1e-170, so the width was 0 and sigmoid_bet_size then raised.
+    # At 1e-160 the width was subnormal and did not round-trip.
+    from finlab.bet_sizing import calibrate_sigmoid_width
+
+    with pytest.raises(ValueError, match="underflows"):
+        calibrate_sigmoid_width(1e-170, 0.95)
+    # The (1e-160, 0.95) case used to be refused because the 1e-9 round trip ignored the precision
+    # of a subnormal width. It now returns a width whose round trip is within that precision.
+    w = calibrate_sigmoid_width(1e-160, 0.95)
+    assert w > 0.0
+    from finlab.bet_sizing import sigmoid_bet_size
+
+    assert float(sigmoid_bet_size(w, 1e-160)) == pytest.approx(0.95, abs=1e-3)
+
+
+def test_calibrate_sigmoid_width_tiny_target_raises_value_error() -> None:
+    # abs(m_star) ** -2 raised a raw OverflowError for m_star below ~1e-154, before the width guard
+    # was reached. It is a ValueError like the other width overflows.
+    from finlab.bet_sizing import calibrate_sigmoid_width
+
+    with pytest.raises(ValueError, match="overflows"):
+        calibrate_sigmoid_width(1.0, 1e-200)
+
+
+def test_calibrate_sigmoid_width_keeps_representable_width() -> None:
+    # x * x overflowed before the factor (below 1) was applied, so a width of about 2e304 was
+    # rejected as an overflow. Scaling before squaring keeps it.
+    from finlab.bet_sizing import calibrate_sigmoid_width, sigmoid_bet_size
+
+    w = calibrate_sigmoid_width(1e155, 0.999999)
+    assert w == pytest.approx(2.000003000004e304, rel=1e-9)
+    assert float(sigmoid_bet_size(w, 1e155)) == pytest.approx(0.999999, abs=1e-12)
+
+
+def test_calibrate_sigmoid_width_keeps_subnormal_width_that_round_trips() -> None:
+    # The subnormal-width guard rejected every subnormal width, even one that calibrates back to
+    # m_star within float tolerance. The round trip decides now, not the magnitude.
+    from finlab.bet_sizing import calibrate_sigmoid_width, sigmoid_bet_size
+
+    w = calibrate_sigmoid_width(1e-155, 0.5)
+    assert 0.0 < w < np.finfo(np.float64).tiny
+    assert float(sigmoid_bet_size(w, 1e-155)) == pytest.approx(0.5, abs=1e-9)
+    w2 = calibrate_sigmoid_width(3e-155, 0.99)
+    assert float(sigmoid_bet_size(w2, 3e-155)) == pytest.approx(0.99, abs=1e-9)
+
+
+def test_target_position_rejects_non_integer_cap() -> None:
+    # limit_price refused a float cap, but target_position accepted 2.5 and returned 0 with no error.
+    from finlab.bet_sizing import target_position
+
+    with pytest.raises(ValueError, match="max_position must be an integer"):
+        target_position(1.0, 0.6, 0.4, 2.5)
+
+
+def test_limit_price_rejects_bool_position() -> None:
+    # bool is a numbers.Integral, so True was accepted as a target of 1.
+    from finlab.bet_sizing import limit_price
+
+    with pytest.raises(ValueError, match="target must be an integer"):
+        limit_price(True, 0, 0.5, 1.0, 10)
+    with pytest.raises(ValueError, match="max_position must be an integer"):
+        limit_price(1, 0, 0.5, 1.0, True)
+
+
+def test_target_position_rejects_non_finite_width_and_price() -> None:
+    # An infinite width gave 0 and an infinite market price gave a full short, while limit_price
+    # rejects the same width. An infinite forecast stays valid (the sigmoid limit is +/-1).
+    from finlab.bet_sizing import target_position
+
+    with pytest.raises(ValueError, match="w must be > 0 and finite"):
+        target_position(float("inf"), 0.6, 0.4, 10)
+    with pytest.raises(ValueError, match="market_price must be finite"):
+        target_position(1.0, 0.6, float("inf"), 10)
+    with pytest.raises(ValueError, match="forecast must not be NaN"):
+        target_position(1.0, float("nan"), 0.4, 10)
+    assert target_position(1.0, float("inf"), 0.5, 10) == 10
+
+
+def test_average_active_signals_naive_grid_with_aware_signals() -> None:
+    # Comparing Index objects made a naive grid against tz-aware signals raise TypeError inside the
+    # sweep. The expected values are [1, .75, .75, .5, 0, 0] (UTC instants).
+    from finlab.bet_sizing import average_active_signals
+
+    d = pd.date_range("2020-01-01", periods=2, freq="D", tz="UTC")
+    sig = pd.Series([1.0, 0.5], index=d)
+    t1 = pd.Series(pd.date_range("2020-01-03", periods=2, freq="D", tz="UTC"), index=d)
+    grid = pd.date_range("2020-01-01", periods=6, freq="D")
+    got = average_active_signals(sig, t1, index=grid)
+    assert got.tolist() == pytest.approx([1.0, 0.75, 0.75, 0.5, 0.0, 0.0])
+
+
+def test_average_active_signals_naive_t1_with_aware_signals() -> None:
+    # The before-start check compared a naive t1 with aware signals and raised.
+    from finlab.bet_sizing import average_active_signals
+
+    d = pd.date_range("2020-01-01", periods=2, freq="D", tz="UTC")
+    sig = pd.Series([1.0, 0.5], index=d)
+    t1 = pd.Series(pd.date_range("2020-01-03", periods=2, freq="D"), index=d)
+    grid = pd.date_range("2020-01-01", periods=6, freq="D")
+    assert average_active_signals(sig, t1, index=grid).tolist() == pytest.approx(
+        [1.0, 0.75, 0.75, 0.5, 0.0, 0.0]
+    )
+
+
+def test_discretize_signal_rejects_step_whose_quotient_overflows() -> None:
+    # For steps below about 1.7e-309, signal / step overflowed to inf, and the clip turned a 0.3 bet
+    # into a full 1.0 with no error. Such a step is refused instead.
+    from finlab.bet_sizing import discretize_signal
+
+    with pytest.raises(ValueError, match="step is too small"):
+        discretize_signal([0.3], 1e-309)
+    assert discretize_signal([0.3], 1e-6).tolist() == pytest.approx([0.3])
+
+
+def test_prob_bet_size_negative_zero_is_probability_zero() -> None:
+    # -0.0 is the same probability as 0.0, but 1 / sqrt(-0.0) flipped the sign, so the largest short
+    # became the largest long. np.round(-0.0001, 3) is -0.0 in practice.
+    from finlab.bet_sizing import prob_bet_size
+
+    assert prob_bet_size([-0.0]).tolist() == prob_bet_size([0.0]).tolist() == [-1.0]
+    assert prob_bet_size(np.round([-0.0001], 3)).tolist() == [-1.0]
+
+
+def test_prob_bet_size_rejects_non_integer_num_classes() -> None:
+    # num_classes=2.5 took the "> 2" branch and was computed with 2.5, while the error said side was
+    # required. It is now refused as a non-integer.
+    from finlab.bet_sizing import prob_bet_size
+
+    with pytest.raises(ValueError, match="num_classes must be an integer"):
+        prob_bet_size([0.9], side=[1], num_classes=2.5)
+
+
+def test_prob_bet_size_accepts_integral_float_num_classes() -> None:
+    # 2.0 is a whole number and is accepted. Only non-integral values such as 2.5 are refused.
+    from finlab.bet_sizing import prob_bet_size
+
+    assert np.allclose(prob_bet_size([0.7], num_classes=2.0), prob_bet_size([0.7], num_classes=2))
+    with pytest.raises(ValueError, match="num_classes must be an integer"):
+        prob_bet_size([0.7], num_classes=2.5)
+
+
+def test_prob_bet_size_scalar_prob_with_length_one_side_names_shapes() -> None:
+    # The message said "side has length 1 but prob has length 1".
+    from finlab.bet_sizing import prob_bet_size
+
+    with pytest.raises(ValueError, match="side shape \\(1,\\) does not match prob shape \\(\\)"):
+        prob_bet_size(0.7, side=[1])
+
+
+def test_average_active_signals_integer_index_is_averaged() -> None:
+    # The tz check read .tz on a plain Index and raised AttributeError. The expected result is
+    # [0.5, 0.4].
+    from finlab.bet_sizing import average_active_signals
+
+    out = average_active_signals(pd.Series([0.5, 0.3], index=[1, 2]), pd.Series([2, 3], index=[1, 2]))
+    assert out.tolist() == [0.5, 0.4]
+
+
+def test_average_active_signals_mismatched_index_types_raise_value_error() -> None:
+    # A non-datetime index with datetime end times must fail as ValueError.
+    from finlab.bet_sizing import average_active_signals
+
+    t1 = pd.Series(pd.date_range("2020-01-02", periods=2), index=[1, 2])
+    with pytest.raises(ValueError):
+        average_active_signals(pd.Series([0.5, 0.3], index=[1, 2]), t1)
+
+
+def test_average_active_signals_mixed_awareness_keeps_caller_timezone() -> None:
+    # The UTC conversion leaked into the result index (naive, shifted by 8 h).
+    from finlab.bet_sizing import average_active_signals
+
+    idx = pd.date_range("2020-01-01", periods=2, tz="Asia/Taipei")
+    t1 = pd.Series(pd.date_range("2020-01-02", periods=2), index=idx)
+    out = average_active_signals(pd.Series([0.5, 0.3], index=idx), t1)
+    assert out.index.equals(idx)
+    assert str(out.index.tz) == "Asia/Taipei"
+
+
+def test_limit_price_rejects_zero_width_like_target_position() -> None:
+    # target_position refused w = 0 while limit_price returned the forecast. Both now refuse, since
+    # w must be > 0.
+    from finlab.bet_sizing import limit_price, target_position
+
+    with pytest.raises(ValueError, match="w must be"):
+        limit_price(2, 0, 0.6, 0.0, 10)
+    with pytest.raises(ValueError, match="w must be"):
+        target_position(0.0, 0.6, 0.5, 10)
+
+
+def test_calibrate_sigmoid_width_exact_for_representable_input() -> None:
+    # The sqrt((1-m)(1+m)) step gave 299.99999999999994 where the exact width is 300.0.
+    from finlab.bet_sizing import calibrate_sigmoid_width
+
+    assert calibrate_sigmoid_width(10.0, 0.5) == 300.0
+    assert calibrate_sigmoid_width(np.float32(10), 0.5) == 300.0
+
+
+def test_calibrate_sigmoid_width_large_x_does_not_overflow_the_square() -> None:
+    # x * x overflows near 1e154 but the width is representable, so the scaling must still hold.
+    from finlab.bet_sizing import calibrate_sigmoid_width
+
+    w = calibrate_sigmoid_width(1e155, 0.99999)
+    assert math.isfinite(w) and w > 0
+
+
+def test_calibrate_sigmoid_width_subnormal_width_that_calibrates_is_returned() -> None:
+    # (1e-160, 0.5) returns the subnormal width 3e-320; an earlier guard refused it because the 1e-9
+    # round trip ignores the precision of a subnormal width.
+    from finlab.bet_sizing import calibrate_sigmoid_width, sigmoid_bet_size
+
+    w = calibrate_sigmoid_width(1e-160, 0.5)
+    assert w == pytest.approx(3e-320, rel=1e-2, abs=0.0)  # abs=0: subnormal values are below the 1e-12 default
+    w2 = calibrate_sigmoid_width(1e-160, 0.999)
+    assert w2 == pytest.approx(2e-323, rel=0.5, abs=0.0)
+    assert float(sigmoid_bet_size(w2, 1e-160)) == pytest.approx(0.999, abs=1e-3)
+
+
+def test_calibrate_sigmoid_width_pin_subnormal_widths_that_calibrate() -> None:
+    # Subnormal widths whose rounding step moves the bet by at most 1e-3 are still returned, so the
+    # refusal must not catch these.
+    from finlab.bet_sizing import calibrate_sigmoid_width, sigmoid_bet_size
+
+    for x, m in ((1e-160, 0.5), (1e-160, 0.999), (1e-155, 0.5)):
+        w = calibrate_sigmoid_width(x, m)
+        assert 0.0 < w < np.finfo(np.float64).tiny
+        assert float(sigmoid_bet_size(w, x)) == pytest.approx(m, abs=1e-3)
+
+
+def test_calibrate_sigmoid_width_refuses_subnormal_width_too_coarse_to_calibrate() -> None:
+    # At x = 1.15e-162 the only subnormal width is 5e-324, one rounding step. Its bet was 0.41 for a
+    # target of 0.5 (0.09 off), yet the tolerance was m/2 because x * x underflowed, so the width was
+    # accepted. The width must be refused instead.
+    from finlab.bet_sizing import calibrate_sigmoid_width, sigmoid_bet_size
+
+    with pytest.raises(ValueError, match="underflows"):
+        calibrate_sigmoid_width(1.15084165586488e-162, 0.6746939996559512)
+    with pytest.raises(ValueError, match="underflows"):
+        calibrate_sigmoid_width(1e-162, 0.5)
+    # Every width that is accepted in the subnormal range round-trips within 1e-3.
+    rng = np.random.default_rng(12)
+    for x in 10.0 ** rng.uniform(-165, -150, 200):
+        for m in rng.uniform(0.01, 0.99, 3):
+            try:
+                w = calibrate_sigmoid_width(float(x), float(m))
+            except ValueError:
+                continue
+            if w < np.finfo(np.float64).tiny:
+                assert abs(float(sigmoid_bet_size(w, float(x))) - m) <= 1e-3
+
+
+def test_limit_price_refuses_zero_width_as_intended() -> None:
+    # w = 0 is refused by limit_price, as target_position refuses it. The zero width is refused on
+    # purpose rather than priced at the forecast.
+    from finlab.bet_sizing import limit_price, target_position
+
+    with pytest.raises(ValueError, match="w must be > 0"):
+        limit_price(1, 0, 12.0, 0.0, 5)
+    with pytest.raises(ValueError, match="w must be > 0"):
+        target_position(0.0, 12.0, 10.0, 5)
+
+
+def test_position_arguments_refuse_whole_float_as_intended() -> None:
+    # A position argument must be an integer type, so 5.0 is refused by both limit_price and
+    # target_position. numpy integers are still accepted.
+    from finlab.bet_sizing import limit_price, target_position
+
+    with pytest.raises(ValueError, match="max_position must be an integer"):
+        limit_price(2, 0, 12.0, 1.0, 5.0)
+    with pytest.raises(ValueError, match="max_position must be an integer"):
+        target_position(0.5, 12.0, 10.0, 5.0)
+    assert math.isfinite(limit_price(np.int64(2), np.int64(0), 12.0, 1.0, np.int64(5)))
+    assert target_position(0.5, 12.0, 10.0, np.int64(5)) == 4
+
+
+def test_calibrate_sigmoid_width_is_accurate_when_m_is_near_one() -> None:
+    # 1 - m * m cancelled when m is near 1, so the width had a relative error of 5.5e-10 at (10,
+    # 1 - 1e-8). Factoring 1 - m * m as (1 - m)(1 + m) keeps it near 1e-15.
+    from decimal import Decimal, localcontext
+
+    from finlab.bet_sizing import calibrate_sigmoid_width, sigmoid_bet_size
+
+    m = 1 - 1e-8
+    w = calibrate_sigmoid_width(10.0, m)
+    with localcontext() as ctx:
+        ctx.prec = 60
+        md = Decimal(m)
+        exact = Decimal(100) * (1 - md * md) / (md * md)
+        assert abs((Decimal(w) - exact) / exact) < Decimal("1e-13")
+    assert float(sigmoid_bet_size(w, 10.0)) == pytest.approx(m, rel=1e-14)
+
+
+def test_target_position_large_cap_is_not_snapped() -> None:
+    # The snap tolerance scaled with |k|, so at 5e5 shares it moved a bet 0.00025 share up to the
+    # next integer. int(m * cap) gives -500484 (truncation toward zero).
+    from finlab.bet_sizing import target_position
+
+    assert target_position(4.084685686539295, -1.1683697144921645, 0.0, 10**6) == -500484
+    # A bet clearly below the position still truncates; this is a documented limit, not a snap.
+    assert target_position(0.03772579937783819, 47.77086633466709, 47.7, 29) == 9
+
+
+def test_discretize_signal_step_floor_is_documented() -> None:
+    # Overflow starts for a step below about |signal| * 5.6e-309, so a step of 1e-308 is valid and a
+    # step of 1e-309 is refused by name. The docstring states this floor.
+    from finlab.bet_sizing import discretize_signal
+
+    assert discretize_signal([0.3], 1e-308).tolist() == pytest.approx([0.3])
+    assert discretize_signal([-0.3], 1e-308).tolist() == pytest.approx([-0.3])
+    with pytest.raises(ValueError, match="step is too small"):
+        discretize_signal([0.3], 1e-309)
+
+
+def test_average_active_signals_accepts_the_same_instants_in_two_zones() -> None:
+    idx = pd.date_range("2020-01-01", periods=10, freq="D", tz="UTC")
+    sig = pd.Series(np.linspace(-1, 1, 10), index=idx)
+    t1 = pd.Series(idx + pd.Timedelta(days=3), index=idx)
+    t1_tpe = pd.Series(t1.to_numpy(), index=idx.tz_convert("Asia/Taipei")).dt.tz_convert("Asia/Taipei")
+    want = average_active_signals(sig, t1)
+    got = average_active_signals(sig, t1_tpe)
+    np.testing.assert_allclose(got.to_numpy(), want.to_numpy())
+    shifted = pd.Series(t1_tpe.to_numpy(), index=t1_tpe.index + pd.Timedelta(hours=1))
+    with pytest.raises(ValueError, match="share an index"):
+        average_active_signals(sig, shifted)

@@ -36,7 +36,7 @@ from typing import Sequence
 import numpy as np
 import pandas as pd
 
-from ._checks import _require_type
+from ._checks import _require_type, as_datetime_index, index_tz
 from ._jit import jit
 
 __all__ = [
@@ -62,6 +62,30 @@ def _grid(index: pd.Index | Sequence) -> pd.Index:
     return grid
 
 
+def _require_ends_after_starts(t1: pd.Series) -> None:
+    # A swapped start and end gave an empty span, so the label got zero weight or NaN without a message.
+    ends = pd.Index(t1.to_numpy())
+    try:
+        bad = np.asarray(ends < pd.Index(t1.index)) & ~np.asarray(pd.isna(ends))
+    except TypeError:
+        return  # Not comparable (for example mixed timezones); searchsorted reports it.
+    if bad.any():
+        first = [str(t) for t in t1.index[bad][:3]]
+        raise ValueError(
+            f"t1 has {int(bad.sum())} entries whose end is before its start; first start times: "
+            f"{', '.join(first)}. Check that t1 holds the end time and the index the start time."
+        )
+
+
+def _utc_keys(index: pd.Index) -> pd.Index:
+    # Object indexes of mixed-zone Timestamps (from pd.concat) and aware indexes in another zone are
+    # put in UTC, so the grid and the searchsorted keys share one dtype and the same instants.
+    idx = as_datetime_index(pd.Index(index))
+    if isinstance(idx, pd.DatetimeIndex) and idx.tz is not None:
+        idx = idx.tz_convert("UTC")
+    return idx
+
+
 def _spans(grid: pd.Index, t1: pd.Series) -> tuple[np.ndarray, np.ndarray]:
     """Bar positions ``[start, end]`` (inclusive) of each label.
 
@@ -70,13 +94,15 @@ def _spans(grid: pd.Index, t1: pd.Series) -> tuple[np.ndarray, np.ndarray]:
     that starts after the last bar gets ``end < start`` and an empty span.
     """
     n = len(grid)
-    starts = np.asarray(grid.searchsorted(pd.Index(t1.index), side="left"), dtype=np.int64)
+    _require_ends_after_starts(t1)
+    grid = _utc_keys(grid)
+    starts = np.asarray(grid.searchsorted(_utc_keys(t1.index), side="left"), dtype=np.int64)
     vals = t1.to_numpy()
     ends = np.full(len(vals), n - 1, dtype=np.int64)
     valid = ~pd.isna(vals)
     if np.any(valid):
         ends[valid] = (
-            np.asarray(grid.searchsorted(pd.Index(vals[valid]), side="right"), dtype=np.int64) - 1
+            np.asarray(grid.searchsorted(_utc_keys(pd.Index(vals[valid])), side="right"), dtype=np.int64) - 1
         )
     return starts, ends
 
@@ -170,6 +196,27 @@ def num_co_events(index: pd.Index | Sequence, t1: pd.Series) -> pd.Series:
 # ---------------------------------------------------------------------------
 
 
+def _refuse_bad_concurrency_in_spans(
+    grid: pd.Index, t1: pd.Series, c: np.ndarray, starts: np.ndarray, ends: np.ndarray
+) -> None:
+    """Refuse NaN or non-positive concurrency on any bar inside a label's span."""
+    bad_bars = np.flatnonzero(~(c > 0))  # NaN compares False, so it counts as bad
+    if bad_bars.size == 0:
+        return
+    # First bad bar at or after each span start; it lies inside the span if it is <= the end.
+    nxt = np.searchsorted(bad_bars, starts, side="left")
+    first_bad = bad_bars[np.minimum(nxt, bad_bars.size - 1)]
+    hit = (nxt < bad_bars.size) & (starts <= ends) & (first_bad <= ends)
+    if hit.any():
+        k = int(np.flatnonzero(hit)[0])
+        bar = int(first_bad[k])
+        raise ValueError(
+            f"label {t1.index[k]!r} spans bar {grid[bar]!r}, where the concurrency c_t is "
+            f"{float(c[bar])!r}; uniqueness is undefined there. c_t must be positive on every "
+            "bar inside a label's span."
+        )
+
+
 def average_uniqueness(
     index: pd.Index | Sequence, t1: pd.Series, c_t: pd.Series | np.ndarray
 ) -> pd.Series:
@@ -198,14 +245,19 @@ def average_uniqueness(
     harmonic mean of ``c_t`` over the span. It is 1 exactly when ``c_t = 1``
     on the whole span (no overlap), and it lies in ``(0, 1]`` otherwise.
 
-    Scope: bars where ``c_t = 0`` contribute 0. Such bars cannot lie inside any
-    label's span, so this only matters for malformed input.
+    Raises
+    ------
+    ValueError
+        If a bar inside a label's span has NaN or non-positive ``c_t``. Such a
+        bar has no defined uniqueness, and averaging over the full span would
+        silently understate the label's uniqueness.
     """
     grid = _grid(index)
     starts, ends = _spans(grid, t1)
     c = np.asarray(c_t, dtype=np.float64).reshape(-1)
     if c.shape[0] != len(grid):
         raise ValueError("c_t must have one entry per bar in index.")
+    _refuse_bad_concurrency_in_spans(grid, t1, c, starts, ends)
     u = np.zeros_like(c)
     np.divide(1.0, c, out=u, where=c > 0)
     sums = _span_sums(u, starts, ends)
@@ -262,6 +314,8 @@ def sample_average_uniqueness(
         m = np.asarray(index_matrix, dtype=np.float64)
     if m.ndim != 2:
         raise ValueError("index_matrix must be two-dimensional.")
+    if np.isnan(m).any():
+        raise ValueError("index_matrix is an indicator matrix and contains NaN; NaN would count as an active bar.")
     n_bars, n_ev = m.shape
     if draws is None:
         pos = np.arange(n_ev, dtype=np.int64)
@@ -415,6 +469,8 @@ def sequential_bootstrap(
         m = np.asarray(index_matrix, dtype=np.float64)
     if m.ndim != 2:
         raise ValueError("index_matrix must be two-dimensional.")
+    if np.isnan(m).any():
+        raise ValueError("index_matrix is an indicator matrix and contains NaN; NaN would count as an active bar.")
     n_bars, n_ev = m.shape
     if n_ev == 0:
         raise ValueError("index_matrix has no labels.")
@@ -473,6 +529,14 @@ def sample_weight_by_return(
     _require_type(t1, "t1", pd.Series)
     _require_type(close, "close", pd.Series)
     grid = _grid(index)
+    # index_tz reads the zone of an object index of aware Timestamps too.
+    grid_tz, close_tz = index_tz(grid), index_tz(close.index)
+    if (grid_tz is None) != (close_tz is None):
+        # Naive and aware labels never match, so every price came back NaN and close was blamed.
+        raise ValueError(
+            f"index timezone ({grid_tz}) must match close timezone ({close_tz}); "
+            "localize one of them before calling sample_weight_by_return."
+        )
     px = close.reindex(grid).to_numpy(dtype=np.float64)
     if not np.all(np.isfinite(px)) or np.any(px <= 0):
         raise ValueError("close must cover every bar in index with positive prices.")
@@ -527,14 +591,24 @@ def time_decay(
     Scope: the oldest observation has ``C = w_1`` (nonzero), so its factor is
     ``c_last + (1 - c_last) w_1 / T``. It equals ``c_last`` only in the limit of
     small ``w_1 / T`` (see docs/proofs/weights.md).
+
+    Caveat: ``T`` is the total over the whole series, so a row's factor changes
+    when a later weight changes. Weights built on train and test together carry
+    test-period information into the training weights; build them on the
+    training labels alone when that matters.
     """
     if not (-1.0 < c_last <= 1.0):
         raise ValueError("c_last must lie in (-1, 1].")
+    if isinstance(weights, pd.DataFrame) and weights.shape[1] == 1:
+        weights = weights.iloc[:, 0]
+    if np.ndim(weights) != 1:
+        # reshape(-1) used to flatten a 2-D input into a decay vector of the wrong length.
+        raise ValueError(f"weights must be 1-D, got shape {np.shape(weights)}.")
     if isinstance(weights, pd.Series):
         ws = weights.sort_index()
         values = ws.to_numpy(dtype=np.float64)
     else:
-        values = np.asarray(weights, dtype=np.float64).reshape(-1)
+        values = np.asarray(weights, dtype=np.float64)
     if np.any(values < 0.0) or not np.all(np.isfinite(values)):
         raise ValueError("weights must be finite and non-negative.")
     cum = np.cumsum(values)

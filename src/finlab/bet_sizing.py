@@ -35,6 +35,7 @@ model) and the meta-labeling pipeline itself (see :mod:`finlab.labeling`).
 from __future__ import annotations
 
 import math
+import numbers
 import warnings
 
 import numpy as np
@@ -42,7 +43,7 @@ import numpy.typing as npt
 import pandas as pd
 from scipy.special import ndtr
 
-from ._checks import _require_type
+from ._checks import _require_type, _same_index, as_datetime_index, tz_mismatch_message
 
 __all__ = [
     "prob_bet_size",
@@ -55,6 +56,31 @@ __all__ = [
 ]
 
 FloatArray = npt.NDArray[np.float64]
+
+
+def _as_integer(value: object) -> int | None:
+    """Return ``value`` as an int when it is a whole number, else None. bool is never whole here."""
+    if isinstance(value, (bool, np.bool_)):
+        return None
+    if isinstance(value, numbers.Integral):
+        return int(value)
+    if isinstance(value, numbers.Real) and math.isfinite(value) and float(value).is_integer():
+        return int(value)
+    return None
+
+
+def _align_side_to_prob(prob: pd.Series, side: pd.Series) -> pd.Series:
+    """Return ``side`` reindexed to the labels of ``prob``, refusing labels that do not match."""
+    if not (prob.index.is_unique and side.index.is_unique):
+        raise ValueError("prob and side labels differ or repeat: both need unique labels to align by label.")
+    missing_side = int(np.count_nonzero(~prob.index.isin(side.index)))
+    missing_prob = int(np.count_nonzero(~side.index.isin(prob.index)))
+    if missing_side or missing_prob:
+        raise ValueError(
+            f"prob and side labels differ: {missing_side} prob label(s) have no side, "
+            f"{missing_prob} side label(s) have no prob."
+        )
+    return side.reindex(prob.index)
 
 
 def prob_bet_size(
@@ -73,7 +99,9 @@ def prob_bet_size(
     side : array-like, optional
         Predicted label in ``{-1, +1}``. Gives the sign of the bet. Required when
         ``num_classes > 2``; for two classes it is applied when passed and the bet
-        is long when it is omitted.
+        is long when it is omitted. When ``prob`` and ``side`` are both pandas
+        Series, ``side`` is matched to ``prob`` by label; labels that do not match
+        on both sides raise ``ValueError``. Arrays are matched by position.
     num_classes : int, default 2
         Number of possible labels ``k``.
 
@@ -88,16 +116,27 @@ def prob_bet_size(
     ``+/- 1``; probabilities outside ``[0, 1]`` are rejected, and for
     ``num_classes > 2`` so are probabilities below ``1/num_classes``.
     """
-    p = np.asarray(prob, dtype=np.float64)
+    if isinstance(prob, pd.Series) and isinstance(side, pd.Series) and not prob.index.equals(side.index):
+        # Labels decide the match when both inputs carry them; arrays stay positional.
+        side = _align_side_to_prob(prob, side)
+    # Adding +0.0 turns a signed zero into +0.0: -0.0 would flip the sign of z at p = 0.
+    p = np.asarray(prob, dtype=np.float64) + 0.0
     if np.any((p < 0) | (p > 1)) or np.any(np.isnan(p)):
         raise ValueError("probabilities must lie in [0, 1].")
+    if _as_integer(num_classes) is None:
+        # A non-integral float such as 2.5 must not take the "> 2" branch, so it is refused.
+        # A whole float such as 2.0 is accepted: only a non-integral value is refused.
+        raise ValueError(f"num_classes must be an integer, got {num_classes!r}.")
+    num_classes = _as_integer(num_classes)
     if num_classes < 2:
         raise ValueError(f"num_classes must be >= 2, got {num_classes!r}.")
     s = None if side is None else np.asarray(side, dtype=np.float64)
     if s is not None and s.ndim > 0 and s.shape != p.shape:
         # Checked here so the mismatch names both lengths, not a numpy broadcast error.
-        n_prob = p.shape[0] if p.ndim else 1
-        raise ValueError(f"side has length {s.shape[0]} but prob has length {n_prob}.")
+        if p.ndim == 0:
+            # A scalar prob has no length, so say the shapes instead of "length 1 vs 1".
+            raise ValueError(f"side shape {s.shape} does not match prob shape ().")
+        raise ValueError(f"side has length {s.shape[0]} but prob has length {p.shape[0]}.")
     if s is not None and not np.all(np.isin(s, (-1.0, 1.0))):
         raise ValueError("side values must be -1 or +1.")
     with np.errstate(divide="ignore", invalid="ignore"):
@@ -135,11 +174,14 @@ def sigmoid_bet_size(w: float, x: npt.ArrayLike) -> FloatArray:
     numpy.ndarray
         Values in ``(-1, 1)`` for finite ``x``.
     """
-    if w <= 0:
+    if not w > 0:  # also rejects NaN, which "w <= 0" let through
         raise ValueError(f"w must be > 0, got {w!r}.")
     x = np.asarray(x, dtype=np.float64)
     # hypot avoids the overflow of x * x for very large |x|, where the bet is at its limit.
-    return x / np.hypot(math.sqrt(w), x)
+    # At x = +-inf the ratio is inf / inf, so take the limit +-1 directly.
+    with np.errstate(invalid="ignore"):
+        bet = x / np.hypot(math.sqrt(w), x)
+    return np.where(np.isinf(x), np.sign(x), bet)[()]  # [()] keeps a scalar input scalar
 
 
 def calibrate_sigmoid_width(x: float, m_star: float) -> float:
@@ -164,6 +206,9 @@ def calibrate_sigmoid_width(x: float, m_star: float) -> float:
         raise ValueError("x must be nonzero to calibrate the sigmoid width.")
     if x < 0:
         raise ValueError(f"x must be positive to calibrate the sigmoid width, got {x!r}.")
+    if m_star < 0:
+        # For x > 0 the bet is always positive, so a negative target is unattainable, not a mirror.
+        raise ValueError(f"m_star must be positive for x > 0, got {m_star!r}.")
     if not 0.0 < abs(m_star) < 1.0:
         raise ValueError(f"|m_star| must be in (0, 1), got {m_star!r}.")
     if not math.isfinite(x):
@@ -173,7 +218,49 @@ def calibrate_sigmoid_width(x: float, m_star: float) -> float:
             UserWarning,
             stacklevel=2,
         )
-    return float(x * x * (abs(m_star) ** -2 - 1.0))
+    # w = x^2 (m^-2 - 1) = (x/m)^2 (1 - m^2). The scaling comes first and the square is a plain
+    # product, so a representable width is not lost to an overflow of x * x, and a tiny m
+    # gives an inf width, which the overflow check below reports. The ** operator is avoided
+    # because Python raises OverflowError from it.
+    m = float(abs(m_star))
+    y = float(x) / m
+    q = y * y
+    if math.isfinite(q):
+        # Square first, then scale by (1 - m^2): exact for representable inputs, e.g. w = 300 at
+        # x = 10, m = 0.5. The root form below rounds that to 299.99999999999994.
+        # 1 - m * m is written as (1 - m)(1 + m): the factored form keeps its relative error near 1e-15
+        # when m is close to 1, where the subtraction would cancel.
+        w = float(q * ((1.0 - m) * (1.0 + m)))
+    else:
+        # y * y overflows above about 1.3e154, so the factor is rooted first to keep the product finite.
+        ys = y * math.sqrt((1.0 - m) * (1.0 + m))
+        w = float(ys * ys)
+    if math.isfinite(x) and w < np.finfo(np.float64).tiny:
+        # A zero width breaks sigmoid_bet_size, and a subnormal one may not calibrate
+        # back. A subnormal width that does calibrate back is kept, so the round
+        # trip decides, not the magnitude.
+        back = float(sigmoid_bet_size(w, x)) if w > 0.0 else float("nan")
+        # A subnormal w is off by up to half the smallest subnormal step. Its effect on the bet is
+        # |dm/dw| * err = (m / 2) / (x^2 + w) * err. The whole step is used as the error (twice the
+        # rounding bound, so it is safe), and that bound is added to the 1e-9 floor. Main returned
+        # 3e-320 for (1e-160, 0.5); the round trip decides, not the magnitude.
+        step = float(np.nextafter(0.0, 1.0))
+        rounding = (step / (float(x) * float(x) + w)) * (abs(m_star) / 2.0) if w > 0.0 else float("inf")
+        # x * x underflows for |x| below about 1.5e-162, so the denominator above is w alone and
+        # the bound reaches m / 2 for a width of one step. A subnormal width is only kept when its
+        # rounding moves the bet by at most 1e-3, the precision the subnormal tests check.
+        if not (rounding <= 1e-3 and abs(back - m_star) <= 1e-9 + rounding):
+            raise ValueError(f"the width underflows for x = {x!r}; x is too small to calibrate.")
+    if math.isfinite(x) and not math.isfinite(w):
+        # x * x overflows for |x| above about 1.3e154; an inf width would calibrate to a bet of 0.
+        raise ValueError(f"the width overflows for x = {x!r}; x is too large to calibrate.")
+    return w
+
+
+def _require_position_int(name: str, value: object) -> None:
+    """Reject anything that is not an integer position; bool is refused too."""
+    if isinstance(value, (bool, np.bool_)) or not isinstance(value, numbers.Integral):
+        raise ValueError(f"{name} must be an integer, got {value!r}.")
 
 
 def target_position(w: float, forecast: float, market_price: float, max_position: int) -> int:
@@ -182,8 +269,16 @@ def target_position(w: float, forecast: float, market_price: float, max_position
     Truncates toward zero, as the book does, so the position never exceeds
     ``max_position`` in absolute value.
     """
+    _require_position_int("max_position", max_position)
     if max_position < 1:
         raise ValueError(f"max_position must be >= 1, got {max_position!r}.")
+    # Same checks as limit_price: an infinite width or price must not give 0 or a full short.
+    if not (math.isfinite(w) and w > 0):
+        raise ValueError(f"w must be > 0 and finite, got {w!r}.")
+    if not math.isfinite(market_price):
+        raise ValueError(f"market_price must be finite, got {market_price!r}.")
+    if math.isnan(forecast):
+        raise ValueError(f"forecast must not be NaN, got {forecast!r}.")
     m = float(sigmoid_bet_size(w, forecast - market_price))
     return int(m * max_position)
 
@@ -211,15 +306,23 @@ def limit_price(
     Pricing an order between the current price and the forecast: the returned
     value lies between them, and approaches the forecast as the order is filled.
     """
+    # Positions are whole units; a float target or cap made range() or the cap arithmetic fail or
+    # silently truncate, so both must be integers.
+    for name, value in (("target", target), ("current", current), ("max_position", max_position)):
+        _require_position_int(name, value)
     if max_position < 1:
         raise ValueError(f"max_position must be >= 1, got {max_position!r}.")
     if abs(target) > max_position:
         raise ValueError(f"target {target!r} exceeds max_position {max_position!r}.")
     if abs(current) > max_position:
         raise ValueError(f"current {current!r} exceeds max_position {max_position!r}.")
-    if w < 0 or not math.isfinite(w):
-        # A negative width has no square root; an infinite one gives an infinite, non-price limit.
+    if not (w > 0 and math.isfinite(w)):
+        # w = 0 is refused as in target_position and sigmoid_bet_size; a negative width has no
+        # square root, and an infinite one gives an infinite, non-price limit.
         raise ValueError(f"w must be > 0 and finite, got {w!r}.")
+    if not math.isfinite(forecast):
+        # A NaN forecast would pass through every fill as a NaN limit price.
+        raise ValueError(f"forecast must be finite, got {forecast!r}.")
     if target == current:
         return float("nan")
     if abs(target) == max_position:
@@ -235,6 +338,11 @@ def limit_price(
         m = position / max_position
         total += forecast - m * math.sqrt(w / (1.0 - m * m))
     return total / n_fills
+
+
+def _is_aware(index: pd.Index) -> bool:
+    """True for a tz-aware datetime index. A plain Index has no timezone, so it is naive."""
+    return isinstance(index, pd.DatetimeIndex) and index.tz is not None
 
 
 def average_active_signals(
@@ -272,13 +380,27 @@ def average_active_signals(
     """
     _require_type(signals, "signals", pd.Series)
     _require_type(t1, "t1", pd.Series)
-    if not signals.index.equals(t1.index):
-        raise ValueError("signals and t1 must share an index.")
+    if not _same_index(signals.index, t1.index):
+        raise ValueError(
+            tz_mismatch_message(signals.index, t1.index, "signals", "t1")
+            or "signals and t1 must share an index."
+        )
     nat_rows = t1.index[t1.isna().to_numpy()]
     if len(nat_rows) > 0:
         # searchsorted sends NaT past the grid, which would keep the event active forever.
         raise ValueError(f"t1 contains NaT at rows {list(nat_rows)}; every event needs an end time.")
-    before_start = signals.index[t1.to_numpy() < signals.index.to_numpy()]
+    sig_idx = as_datetime_index(pd.Index(signals.index))
+    t1_idx = as_datetime_index(pd.Index(t1))
+    if len({_is_aware(i) for i in (sig_idx, t1_idx)}) > 1:
+        # Signals and t1 with mixed awareness: compare on the UTC wall clock.
+        sig_idx, t1_idx = (
+            i.tz_convert("UTC").tz_localize(None) if _is_aware(i) else i for i in (sig_idx, t1_idx)
+        )
+    try:
+        before_start = signals.index[np.asarray(t1_idx < sig_idx, dtype=bool)]
+    except TypeError as exc:
+        # An integer index with datetime end times is not a comparison the sweep can make.
+        raise ValueError("signals and t1 hold values that cannot be compared (mixed types).") from exc
     if len(before_start) > 0:
         # An end before its start would make the event silently disappear from the average.
         raise ValueError(
@@ -287,9 +409,23 @@ def average_active_signals(
     if index is None:
         index = signals.index
     grid = pd.Index(index).sort_values()
-    start = grid.searchsorted(signals.index.values, side="left")
-    # Position of the last grid point not after t1.
-    end = grid.searchsorted(t1.values, side="right") - 1
+    # The output keeps the caller's index (and timezone); only the comparison copies are converted.
+    out_index = grid
+    grid = as_datetime_index(grid)
+    if len({_is_aware(i) for i in (grid, sig_idx, t1_idx)}) > 1:
+        # Naive and tz-aware values cannot be compared. The aware values are compared on their UTC
+        # wall clock: the aware side is put on UTC and the timezone dropped for the sweep.
+        grid, sig_idx, t1_idx = (
+            i.tz_convert("UTC").tz_localize(None) if _is_aware(i) else i
+            for i in (grid, sig_idx, t1_idx)
+        )
+    # Pass Index objects, not .values: .values drops the timezone of a tz-aware index.
+    try:
+        start = grid.searchsorted(sig_idx, side="left")
+        # Position of the last grid point not after t1.
+        end = grid.searchsorted(t1_idx, side="right") - 1
+    except TypeError as exc:
+        raise ValueError("signals and t1 hold values that cannot be compared (mixed types).") from exc
     valid = (end >= start) & (start < len(grid))
     n = len(grid)
     total = np.zeros(n + 1)
@@ -322,14 +458,19 @@ def average_active_signals(
     avg = np.where(flags["ninf"], -np.inf, avg)
     avg = np.where(flags["pinf"] & flags["ninf"], np.nan, avg)
     avg = np.where(flags["nan"], np.nan, avg)
-    return pd.Series(avg, index=grid, name="signal")
+    return pd.Series(avg, index=out_index, name="signal")
 
 
 def discretize_signal(signal: npt.ArrayLike, step: float) -> FloatArray:
     """Round bet sizes to multiples of ``step`` to limit overtrading [10.5].
 
-    ``m* = round(m / step) * step``. ``step`` must be in ``(0, 1]``, and every
-    signal must be finite and lie in ``[-1, 1]``; otherwise ``ValueError`` is raised.
+    ``m* = round(m / step) * step``, clipped to ``[-1, 1]``. The clip matters only when
+    ``step`` does not divide 1 (for example 0.6 rounds 1.0 up to 1.2), so the result
+    is then the endpoint ``+/-1``, which is not a multiple of ``step``. ``step`` must be
+    in ``(0, 1]``, and every signal must be finite and lie in ``[-1, 1]``; otherwise
+    ``ValueError`` is raised. Floor: ``signal / step`` overflows float64 when ``step`` is
+    below about ``|signal| * 5.6e-309`` (about 1.7e-309 for a signal of 0.3); such a step
+    is refused with ``ValueError`` rather than returned as an endpoint.
     """
     if not 0.0 < step <= 1.0:
         raise ValueError(f"step must be in (0, 1], got {step!r}.")
@@ -337,4 +478,9 @@ def discretize_signal(signal: npt.ArrayLike, step: float) -> FloatArray:
     if not np.all(np.isfinite(s) & (np.abs(s) <= 1.0)):
         # Bet sizes live in [-1, 1]; values outside it would pass through as oversized targets.
         raise ValueError("discretize_signal: signal values must be finite and lie in [-1, 1].")
-    return np.round(s / step) * step
+    with np.errstate(over="ignore"):
+        q = s / step
+    if not np.all(np.isfinite(q)):
+        # A step this small makes s / step overflow, and the clip would turn the bet into +/-1.
+        raise ValueError(f"step is too small: signal / step overflows for step = {step!r}.")
+    return np.clip(np.round(q) * step, -1.0, 1.0)

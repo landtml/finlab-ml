@@ -125,7 +125,7 @@ def test_train_test_disjoint(n_groups, k):
 
 
 # --------------------------------------------------------------------------- #
-# 5. Path-stitch regression (rejects the degenerate ".copy()" behaviour)      #
+# 5. Path stitching (rejects the degenerate ".copy()" behaviour)             #
 # --------------------------------------------------------------------------- #
 def test_path_folds_canonical_6_2():
     X = _frame(120)
@@ -658,3 +658,158 @@ def test_min_train_size_raises_eagerly_from_split():
     cv = CombinatorialPurgedCV(6, 2, embargo_pct=0.01)
     with pytest.raises(ValueError, match="training observation"):
         cv.split(X, t1=make_t1(X.index, 21))
+
+
+def test_make_t1_huge_horizon_clips_to_last_bar_without_overflow() -> None:
+    # arange(n) + 2**63 - 1 must not wrap to a negative position and raise IndexError.
+    from finlab.cv import make_t1
+
+    t1 = make_t1(pd.RangeIndex(10), 2**63 - 1)
+    assert (t1.to_numpy() == 9).all()
+    assert t1.iloc[0] == 9
+
+
+def test_make_t1_rejects_non_integer_horizon() -> None:
+    # A horizon of 2.5 must be refused, not silently used as 2.
+    from finlab.cv import make_t1
+
+    with pytest.raises(ValueError, match="horizon"):
+        make_t1(pd.RangeIndex(10), 2.5)
+
+
+def test_cpcv_date_t1_with_numpy_x_is_refused_by_name() -> None:
+    # A date-labelled t1 with a NumPy X (integer positions) must not raise a raw pandas
+    # TypeError from the comparison. It is refused by name, since t1 cannot be aligned to X.
+    from finlab.cv import CombinatorialPurgedCV, make_t1
+
+    ix = pd.date_range("2021-01-01", periods=40)
+    cv = CombinatorialPurgedCV(n_groups=5, n_test_groups=2, t1=make_t1(ix, 3))
+    with pytest.raises(ValueError, match="t1 is indexed by"):
+        cv.split(np.zeros((40, 2)))
+
+
+def test_nat_t1_value_is_named_and_a_missing_label_keeps_the_alignment_message() -> None:
+    X = pd.DataFrame({"f": np.arange(60.0)}, index=pd.bdate_range("2020-01-01", periods=60))
+    t1 = make_t1(X.index, 5)
+    with_nat = t1.copy()
+    with_nat.iloc[10] = pd.NaT
+    with pytest.raises(ValueError, match="NaT.*drop"):
+        list(CombinatorialPurgedCV(6, 2).split(X, t1=with_nat))
+    with pytest.raises(ValueError, match="unaligned/missing"):
+        list(CombinatorialPurgedCV(6, 2).split(X, t1=t1.iloc[:-10]))
+
+
+def test_embargo_size_ignores_float_noise_in_the_product() -> None:
+    # 0.07 * 100 is 7.000000000000001, so a bare ceil gave 8 bars.
+    from finlab.cv import PurgedKFold
+
+    n = 100
+    assert CombinatorialPurgedCV(n_groups=5, n_test_groups=2, embargo_pct=0.07)._embargo_size(n) == 7
+    assert CombinatorialPurgedCV(n_groups=5, n_test_groups=2, embargo_pct=0.075)._embargo_size(n) == 8
+    ends = np.arange(n)
+    for pct, first_train in ((0.07, 27), (0.075, 28)):
+        train, _ = next(iter(PurgedKFold(n_splits=5, embargo_pct=pct)._iter(n, ends)))
+        # Fold 0 tests rows 0-19; the embargo removes the next ceil(pct * n) rows.
+        assert train.min() == first_train
+
+
+def test_non_timestamp_t1_is_refused_with_a_clear_message():
+    from finlab.cv import PurgedKFold
+
+    X = _frame(100)
+    as_text = pd.Series(X.index.astype(str), index=X.index)
+    for cv in (CombinatorialPurgedCV(6, 2), PurgedKFold(5)):
+        with pytest.raises(ValueError, match="timestamp"):
+            list(cv.split(X, t1=as_text))
+    ok = pd.Series(X.index + pd.Timedelta(days=2), index=X.index)
+    assert len(list(CombinatorialPurgedCV(6, 2).split(X, t1=ok))) > 0
+
+
+def test_naive_t1_against_aware_x() -> None:
+    # A naive t1 index against a tz-aware X reached the comparison as a raw pandas TypeError.
+    idx = pd.date_range("2020-01-01", periods=40, freq="D", tz="Asia/Taipei")
+    X = pd.DataFrame({"x": np.arange(40.0)}, index=idx)
+    naive = idx.tz_localize(None)
+    t1 = pd.Series(naive + pd.Timedelta(days=3), index=naive)
+    with pytest.raises(ValueError, match="same timestamps as X") as exc:
+        list(CombinatorialPurgedCV(n_groups=4, n_test_groups=1, t1=t1, min_train_size=0).split(X))
+    assert "TypeError" not in str(exc.value)
+
+
+def test_aware_t1_against_naive_x() -> None:
+    idx = pd.date_range("2020-01-01", periods=40, freq="D")
+    X = pd.DataFrame({"x": np.arange(40.0)}, index=idx)
+    aware = idx.tz_localize("Asia/Taipei")
+    t1 = pd.Series(aware + pd.Timedelta(days=3), index=aware)
+    with pytest.raises(ValueError, match="same timestamps as X"):
+        list(CombinatorialPurgedCV(n_groups=4, n_test_groups=1, t1=t1, min_train_size=0).split(X))
+
+
+def test_integer_t1_index_against_datetime_x() -> None:
+    # Integer-valued t1 on a RangeIndex is the positional mode, which needs an integer X index too.
+    idx = pd.date_range("2020-01-01", periods=40, freq="D")
+    X = pd.DataFrame({"x": np.arange(40.0)}, index=idx)
+    t1 = pd.Series(np.arange(40) + 3, index=pd.RangeIndex(40))
+    with pytest.raises(ValueError, match="same timestamps as X"):
+        list(CombinatorialPurgedCV(n_groups=4, n_test_groups=1, t1=t1, min_train_size=0).split(X))
+
+
+def test_integer_positional_mode_is_still_allowed() -> None:
+    X = pd.DataFrame({"x": np.arange(40.0)})
+    t1 = pd.Series(np.minimum(np.arange(40) + 3, 39), index=pd.RangeIndex(40))
+    assert len(list(CombinatorialPurgedCV(n_groups=4, n_test_groups=1, t1=t1, min_train_size=0).split(X))) > 0
+
+
+def test_string_x_index_is_refused_as_not_timestamps() -> None:
+    # String labels with a datetime t1 must not get the "denser sample" message, which blames the grid.
+    grid = pd.date_range("2020-01-01", periods=40, freq="D")
+    X = pd.DataFrame({"x": np.arange(40.0)}, index=[str(d.date()) for d in grid])
+    t1 = pd.Series(grid + pd.Timedelta(days=3), index=grid)
+    with pytest.raises(ValueError, match="X.index must hold timestamps") as exc:
+        list(CombinatorialPurgedCV(n_groups=4, n_test_groups=1, t1=t1, min_train_size=0).split(X))
+    assert "denser" not in str(exc.value)
+
+
+def test_object_datetime_t1_is_accepted() -> None:
+    # Plain datetime.datetime values are timestamps, so they must not be refused as non-Timestamp objects.
+    grid = pd.date_range("2020-01-01", periods=12, freq="D")
+    ends = list(grid[3:]) + [grid[-1]] * 3
+    as_py = pd.Series(pd.Index([v.to_pydatetime() for v in ends], dtype=object), index=pd.DatetimeIndex(grid))
+    as_dt = pd.Series(pd.DatetimeIndex(ends), index=pd.DatetimeIndex(grid))
+    assert np.array_equal(_end_positions(pd.DatetimeIndex(grid), as_py), _end_positions(pd.DatetimeIndex(grid), as_dt))
+
+
+def test_object_string_and_date_t1_are_still_refused() -> None:
+    grid = pd.date_range("2020-01-01", periods=12, freq="D")
+    for bad in ([str(v.date()) for v in grid], [v.date() for v in grid]):
+        t1 = pd.Series(pd.Index(bad, dtype=object), index=pd.DatetimeIndex(grid))
+        with pytest.raises(ValueError, match="timestamp"):
+            _end_positions(pd.DatetimeIndex(grid), t1)
+
+
+def test_mixed_zone_object_t1_is_accepted() -> None:
+    # Aware values in two zones name the same instants as UTC; the message must not call t1 tz=None.
+    grid = pd.date_range("2020-01-01", periods=12, freq="D", tz="UTC")
+    ends = list(grid[3:]) + [grid[-1]] * 3
+    mixed = [v if i % 2 == 0 else v.tz_convert("Asia/Tokyo") for i, v in enumerate(ends)]
+    t1_mixed = pd.Series(pd.Index(mixed, dtype=object), index=grid)
+    t1_utc = pd.Series(pd.DatetimeIndex(ends), index=grid)
+    assert np.array_equal(_end_positions(grid, t1_mixed), _end_positions(grid, t1_utc))
+
+
+def test_object_t1_names_its_real_zone_against_naive_x() -> None:
+    naive = pd.date_range("2020-01-01", periods=12, freq="D")
+    tokyo = naive.tz_localize("Asia/Tokyo")
+    ends = list(tokyo[3:]) + [tokyo[-1]] * 3
+    t1 = pd.Series(pd.Index(ends, dtype=object), index=naive)
+    with pytest.raises(ValueError, match="Asia/Tokyo") as exc:
+        _end_positions(naive, t1)
+    assert "t1 tz=None" not in str(exc.value)
+
+
+def test_datetime_t1_names_its_real_zone_against_naive_x() -> None:
+    naive = pd.date_range("2020-01-01", periods=12, freq="D")
+    tokyo = naive.tz_localize("Asia/Tokyo")
+    t1 = pd.Series(pd.DatetimeIndex(list(tokyo[3:]) + [tokyo[-1]] * 3), index=naive)
+    with pytest.raises(ValueError, match="Asia/Tokyo"):
+        _end_positions(naive, t1)
