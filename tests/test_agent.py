@@ -387,6 +387,44 @@ def test_cpcv_rejects_negative_horizon():
     assert err and "'horizon'" in out["error"]
 
 
+def test_cpcv_summary_refuses_split_count_beyond_cap():
+    # C(20, 10) = 184756 splits must be refused, not all materialized (38 s, 1.6 GB).
+    out, err = _call("cpcv_split_summary",
+                     {"n_samples": 1000, "n_groups": 20, "n_test_groups": 10})
+    assert err and "splits" in out["error"]
+
+
+def test_cpcv_summary_huge_group_count_refused_without_computing_binomial():
+    out, err = _call("cpcv_split_summary",
+                     {"n_samples": 1000, "n_groups": 10**18, "n_test_groups": 5 * 10**17})
+    assert err and "splits" in out["error"]
+
+
+def test_notification_method_with_id_gets_a_reply() -> None:
+    # A request with an id sent to a notifications/* method must get a reply; a client waiting
+    # on that id would otherwise hang. Only messages without an id may be silent.
+    reply = srv.handle_message({"jsonrpc": "2.0", "id": 5, "method": "notifications/initialized"})
+    assert reply is not None and reply["id"] == 5
+    assert reply["error"]["code"] == -32601
+    assert srv.handle_message({"jsonrpc": "2.0", "method": "notifications/initialized"}) is None
+
+
+def test_symbol_list_rejects_non_integer_floats():
+    # Non-integer floats such as 1.5 and 2.5 must be refused as symbols, since the schema says
+    # string or integer. NaN and infinity are left to the MCP number-handling checks.
+    out, err = _call("kontoyiannis_entropy", {"message": [1.5, 2.5, 1.5, 2.5, 1.5, 2.5]})
+    assert err and "string or integer" in out["error"]
+    out, err = _call("kontoyiannis_entropy", {"message": [1.0, 2.0, 1.0, 2.0, 1.0, 2.0]})
+    assert not err
+
+
+def test_cpcv_summary_bounds_samples_times_splits_not_splits_alone() -> None:
+    # The cap must cover samples times splits: n = 100000 with 4950 splits would materialize
+    # about 3.9 GB of index arrays in one request.
+    out, err = _call("cpcv_split_summary", {"n_samples": 100000, "n_groups": 100, "n_test_groups": 2})
+    assert err and "n_samples" in out["error"]
+
+
 BATCH_ERROR = {"jsonrpc": "2.0", "id": None,
                "error": {"code": -32600, "message": "batch requests are not supported"}}
 
@@ -427,3 +465,182 @@ def test_stdio_serves_ping_and_tools_list_around_batches_and_responses():
     assert replies[0] == {"jsonrpc": "2.0", "id": 1, "result": {}}
     assert replies[1] == BATCH_ERROR
     assert {t["name"] for t in replies[2]["result"]["tools"]} >= {"sharpe_ratio"}
+
+
+def test_cpcv_split_summary_description_states_the_work_limit() -> None:
+    # The work cap (n_samples x splits <= 20,000,000) refuses some requests, so the tool schema
+    # must say so. The cap stays (it bounds server work); the limit is stated in the tool
+    # description, so the refusal is not a surprise.
+    from finlab.agent.tools import MAX_CPCV_WORK, list_tools
+
+    tool = next(t for t in list_tools() if t["name"] == "cpcv_split_summary")
+    assert f"{MAX_CPCV_WORK:,}" in tool["description"]
+
+
+@pytest.mark.parametrize("bad_id", [{"a": 1}, [1], True, False])
+def test_server_rejects_request_id_that_is_not_string_number_or_null(bad_id) -> None:
+    # Ids of other types must be refused: the reply echoed any type, so a client could not match it.
+    # JSON-RPC allows a string, a number or null; anything else is an invalid request.
+    from finlab.agent.server import handle_message
+
+    reply = handle_message({"jsonrpc": "2.0", "id": bad_id, "method": "ping"})
+    assert reply["error"]["code"] == -32600
+    assert reply["id"] is None
+
+
+def test_server_still_echoes_valid_request_ids() -> None:
+    from finlab.agent.server import handle_message
+
+    assert handle_message({"jsonrpc": "2.0", "id": "x", "method": "ping"})["id"] == "x"
+    assert handle_message({"jsonrpc": "2.0", "id": 7, "method": "ping"})["id"] == 7
+    assert handle_message({"jsonrpc": "2.0", "id": None, "method": "ping"})["id"] is None
+
+
+def test_ragged_matrix_gets_the_named_rectangular_error() -> None:
+    # A ragged matrix must get the named rectangular error, not numpy's inhomogeneous-shape message.
+    # _mat already names the rectangular rule for the same input, and the tool error names it too.
+    from finlab.agent.tools import call_tool
+
+    result, is_error = call_tool("hrp_weights", {"cov": [[1, 0], [0]]})
+    assert is_error is True
+    assert "rectangular" in result["error"]
+    assert "inhomogeneous" not in result["error"]
+
+
+def test_id_that_parses_to_infinity_is_refused_and_reply_is_strict_json():
+    # 1e400 is a JSON number that Python reads as inf. _valid_id must refuse it, since the reply
+    # would write id Infinity, which strict JSON readers reject. It is an invalid id (id null).
+    import json as _json
+
+    msg = _json.loads('{"jsonrpc":"2.0","id":1e400,"method":"ping"}')
+    reply = srv.handle_message(msg)
+    assert reply["error"]["code"] == -32600
+    assert reply["id"] is None
+    out = io.StringIO()
+    srv.main(io.StringIO('{"jsonrpc":"2.0","id":1e400,"method":"ping"}\n'), out)
+    assert _strict_loads(out.getvalue().splitlines()[0])["id"] is None
+
+
+def test_batch_of_only_notifications_gets_no_reply() -> None:
+    # JSON-RPC sends no response for a batch made only of notifications. The
+    # batch error is kept for batches that contain requests, and for an empty batch.
+    import io
+
+    from finlab.agent import server
+
+    out = io.StringIO()
+    server.main(stdin=io.StringIO('[{"jsonrpc":"2.0","method":"notifications/initialized"}]\n'), stdout=out)
+    assert out.getvalue() == ""
+    assert server.handle_message([]) is not None
+    reply = server.handle_message([{"jsonrpc": "2.0", "id": 1, "method": "ping"}])
+    assert reply is not None and reply["error"]["code"] == -32600
+
+
+def test_plug_in_entropy_tool_description_names_bits_per_symbol() -> None:
+    # The tool must not say "bits per word": plug_in_entropy divides by word_length, so the value
+    # is bits per symbol (the library docstring). An agent that reads the schema gets the unit
+    # wrong by a factor of word_length. The description matches the value.
+    from finlab.agent.tools import list_tools
+    from finlab.entropy import plug_in_entropy
+
+    tool = next(t for t in list_tools() if t["name"] == "plug_in_entropy")
+    assert "bits per symbol" in tool["description"]
+    assert "bits per word" not in tool["description"]
+    # The value is the per-symbol figure the description states (1.9502 / 2 for word_length 2).
+    seq = [1, 2, 3, 4, 1, 2, 3, 4]
+    assert plug_in_entropy(seq, word_length=2) == pytest.approx(0.9751060324573735)
+
+
+def test_psr_and_dsr_tool_descriptions_state_per_period_input() -> None:
+    # The sharpe_ratio tool annualises by default, so chaining it unchanged inflates sr_hat.
+    from finlab.agent.tools import list_tools
+
+    for name in ("probabilistic_sharpe_ratio", "deflated_sharpe_ratio"):
+        tool = next(t for t in list_tools() if t["name"] == name)
+        assert "per period" in tool["description"]
+        assert "per period" in tool["inputSchema"]["properties"]["sr_hat"]["description"]
+
+
+def test_unknown_key_is_refused_by_name():
+    # 'kurtosis' is not declared by deflated_sharpe_ratio (it is 'kurt'), and
+    # 'annualise' is not declared by sharpe_ratio ('annualize'). Both must be refused, not
+    # dropped silently, since a dropped key returned isError false.
+    out, err = _call("deflated_sharpe_ratio",
+                     {"sr_hat": 0.3, "n_trials": 40, "var_sr": 0.02, "n_obs": 250, "kurtosis": 6})
+    assert err
+    assert "kurtosis" in out["error"]
+    assert "kurt" in out["error"] and "n_trials" in out["error"]
+    out, err = _call("sharpe_ratio", {"returns": [0.01, -0.005, 0.02], "annualise": False})
+    assert err
+    assert "annualise" in out["error"]
+    assert "annualize" in out["error"] and "returns" in out["error"]
+
+
+def test_declared_keys_still_work():
+    out, err = _call("deflated_sharpe_ratio",
+                     {"sr_hat": 0.3, "n_trials": 40, "var_sr": 0.02, "n_obs": 250,
+                      "skew": -0.5, "kurt": 6})
+    assert not err
+    assert out["dsr"] == pytest.approx(deflated_sharpe_ratio(0.3, 40, 0.02, 250, -0.5, 6.0), rel=1e-12)
+    r = [0.01, -0.005, 0.02, 0.004]
+    out, err = _call("sharpe_ratio", {"returns": r, "annualize": False})
+    assert not err
+    assert out["sharpe"] == pytest.approx(sharpe_ratio(np.array(r), annualize=False), rel=1e-12)
+
+
+def _pbo_request(matrix, req_id=1):
+    args = {"performance_matrix": matrix.tolist(), "n_partitions": 8}
+    return {
+        "jsonrpc": "2.0",
+        "id": req_id,
+        "method": "tools/call",
+        "params": {"name": "probability_of_backtest_overfitting", "arguments": args},
+    }
+
+
+def test_pbo_equity_curve_warning_reaches_reply():
+    rng = np.random.default_rng(21)
+    returns = rng.normal(0, 0.01, (240, 12)).round(6)
+    equity = np.cumsum(returns, axis=0).round(6)  # cumulative curves, not per-period returns
+    reply = srv.handle_message(_pbo_request(equity))
+    assert reply["result"]["isError"] is False
+    body = json.loads(reply["result"]["content"][0]["text"])
+    assert "pbo" in body and "n_combinations" in body
+    assert body["warnings"]
+    assert any("cumulative" in w or "equity" in w for w in body["warnings"])
+
+
+def test_clean_reply_has_no_warnings_key():
+    rng = np.random.default_rng(21)
+    returns = rng.normal(0, 0.01, (240, 12)).round(6)
+    reply = srv.handle_message(_pbo_request(returns))
+    assert reply["result"]["isError"] is False
+    body = json.loads(reply["result"]["content"][0]["text"])
+    assert "warnings" not in body
+    assert body["pbo"] == pytest.approx(0.5142857142857142, rel=1e-12)
+
+
+def test_version_strings_match_pyproject():
+    import re
+    from pathlib import Path
+
+    import finlab
+
+    pyproject = (Path(__file__).resolve().parents[1] / "pyproject.toml").read_text(encoding="utf-8")
+    declared = re.search(r'^version = "([^"]+)"', pyproject, re.MULTILINE).group(1)
+    assert finlab.__version__ == declared
+    result = _rpc("initialize")["result"]
+    assert result["serverInfo"]["version"] == declared
+
+
+def test_nan_in_arguments_parse_error_reply_keeps_request_id():
+    line = (
+        '{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"sharpe_ratio",'
+        '"arguments":{"returns":[0.01,NaN,0.02,-0.01]}}}'
+    )
+    out = io.StringIO()
+    srv.main(io.StringIO(line + "\n"), out)
+    reply = _strict_loads(out.getvalue().splitlines()[0])
+    assert reply["id"] == 7
+    assert reply["error"]["code"] == -32700
+    assert reply["error"]["message"] == "parse error: non-standard constant NaN"
