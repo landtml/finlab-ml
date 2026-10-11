@@ -67,6 +67,17 @@ def test_limit_price_short_target_is_mirror_of_long():
     assert short_price == pytest.approx(2 * 10.0 - long_price)
 
 
+@pytest.mark.parametrize(
+    ("reduce_args", "fill_args"),
+    [((1, 3), (2, 0)), ((-1, -3), (-2, 0))],
+)
+def test_limit_price_reduction_prices_the_levels_crossed(reduce_args, fill_args):
+    # Cutting 3 -> 1 fills the same levels (1 and 2) as building 0 -> 2, so the prices match.
+    reduced = limit_price(*reduce_args, 10.0, 1.0, 10)
+    assert math.isfinite(reduced)
+    assert reduced == pytest.approx(limit_price(*fill_args, 10.0, 1.0, 10), rel=1e-14)
+
+
 def test_two_class_probability_mapping():
     m = prob_bet_size([0.5, 0.9, 0.1, 1.0, 0.0])
     assert m[0] == 0.0

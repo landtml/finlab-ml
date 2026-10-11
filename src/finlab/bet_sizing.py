@@ -206,10 +206,8 @@ def limit_price(
     if abs(target) == max_position:
         return float("nan")  # the cap term m == 1 has no finite limit price
     step = 1 if target > current else -1
-    lo = abs(current + step)
-    hi = abs(target)
-    if hi < lo:
-        return float("nan")
+    # Fill levels lie between |current + step| and |target|, in whichever direction the order runs.
+    lo, hi = sorted((abs(current + step), abs(target)))
     # Levels carry the sign of the position being traded; a flat target takes the current side.
     side = 1 if (target > 0 or (target == 0 and current > 0)) else -1
     total = 0.0
