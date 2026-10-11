@@ -7,87 +7,67 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [0.1.2] - 2026-10-10
 
-Changes since 0.1.1: a QA pass over the library, and a change to how releases are published.
-
 ### Changed
 
-- A merge to `main` that sets a new version in `pyproject.toml` is tagged and published
-  by the Release workflow once CI passes on it, with the sdist and wheel attached.
-  The release notes come from `.github/releases/vX.Y.Z.md`, or from this changelog
-  section when that file is absent.
-- `RELEASING.md` describes the release pull request and the steps that follow it.
-- Degenerate or invalid input now raises a `ValueError` or `TypeError` that names the
-  argument, or emits a `UserWarning` that names the cause. Valid-input results are unchanged,
-  except where listed under Fixed.
-- `prob_bet_size` applies `side` when it is passed with two classes. Omitting `side` keeps
-  the long bet, as before.
-- `discretize_signal` raises on infinite input; it used to warn.
+- `discretize_signal` raises `ValueError` for infinite input.
 - `quasi_diagonalize` raises `ValueError` for an invalid or cyclic linkage matrix, and for a
   single-row link.
-- The MCP server rejects oversized integer literals, `NaN` and `Infinity` literals, and
-  non-boolean values for boolean arguments. Nested arrays are rejected with the argument name
-  and element index. Non-object `params` return error `-32602`.
-- The VPIN bucket cap is 10,000,000.
-
-### Added
-
-- `tools/check_attribution.py` and a CI job that rejects AI attribution in new commit messages
-  and pull request bodies.
-- `tools/prune_branches.py` and a branch-cleanup workflow.
-- The release workflow repairs a tag that has no sdist or wheel asset.
+- `prob_bet_size` applies `side` when it is passed with two classes. Omitting `side` keeps the
+  long bet.
+- The MCP server returns a parse error for oversized integer literals and for `NaN` and
+  `Infinity` literals. Boolean arguments must be JSON booleans. Nested arrays are rejected with
+  the argument name and element index. Non-object `params` return error `-32602`.
+- The VPIN bucket cap is 10,000,000. A larger value raises `ValueError`.
+- Degenerate input raises `ValueError` or `TypeError` with the argument name, or emits a
+  `UserWarning` that names the cause.
 
 ### Fixed
 
-- `limit_price` returns NaN at the position cap instead of dividing by zero. It averages over
-  signed fills, so orders that cross zero are correct, and it signs short levels correctly.
-- `limit_price` rejects a negative or infinite `w`.
-- `chu_stinchcombe_white` returns NaN when volatility is zero, and no longer returns silent
-  NaN or zero at extreme magnitudes.
-- `grid_search` and `randomized_search` rank NaN candidates below finite ones. A `str` value in
+- `limit_price` returns NaN at the position cap. It averages over signed fills, so orders that
+  cross zero are priced correctly, and it rejects a negative or infinite `w`.
+- `chu_stinchcombe_white` returns NaN when volatility is zero.
+- `grid_search` and `randomized_search` rank NaN candidates below finite ones. A string value in
   a tuning grid raises `TypeError`.
-- `cv_score` passes a pandas `X` to the splitter, so a datetime-indexed `t1` resolves.
-  A generator passed as `cv` works for every candidate. Zero-weight test folds warn.
-- `PurgedKFold` and `get_bins` warn where they used to skip purging or labelling silently.
-- `average_active_signals` drops events whose end is before their start, and a NaN signal is
-  excluded from the average instead of making every later value NaN.
+- `cv_score` passes a pandas `X` to the splitter, so a datetime-indexed `t1` resolves. A
+  generator passed as `cv` works for every candidate. Zero-weight test folds emit a warning.
+- `PurgedKFold` and `get_bins` emit a warning when they skip purging or labelling.
+- `average_active_signals` drops events whose end is before their start, and excludes NaN
+  signals from the average.
 - `NaT` in `t1` raises `ValueError`. An infinite signal is confined to its active span.
-- `sigmoid_bet_size` no longer returns 0 for very large forecasts. `prob_bet_size` rejects
-  probabilities below 1/k. `calibrate_sigmoid_width` and `discretize_signal` reject inputs
-  outside their domain.
-- `sharpe_ratio` returns 0 for all-zero returns, and NaN with a warning for other constant
-  returns. It warns with fewer than two observations. A zero-return trial no longer blocks the
+- `sigmoid_bet_size` handles very large forecasts. `prob_bet_size` rejects probabilities below
+  1/k. `calibrate_sigmoid_width` and `discretize_signal` reject inputs outside their domain.
+- `sharpe_ratio` returns 0 for all-zero returns and NaN with a warning for other constant
+  returns. It warns with fewer than two observations. A zero-return trial does not block the
   deflated Sharpe ratio.
-- `probabilistic_sharpe_ratio` rejects a NaN or infinite `n_obs`, and `sr_hat` must be finite
-  for PSR and minimum track record length.
+- `probabilistic_sharpe_ratio` rejects a NaN or infinite `n_obs`. `sr_hat` must be finite for
+  the probabilistic Sharpe ratio and the minimum track record length.
 - `TrialRecord` rejects strings and bools as returns.
 - `hrp_weights` checks the correlation shape for a single asset. `quasi_diagonalize` returns
   `[0]` for a single row.
 - `PBO` warns when rows are out of time order. Its callable path accepts infinite scores and
   rejects NaN.
-- `frac_diff_ffd` warns when the window is longer than the series, instead of returning all NaN.
-- `time_bars` and tick bars sort unsorted input first. `time_bars` warns about a trailing
-  unclosed interval.
+- `frac_diff_ffd` emits a warning when the window is longer than the series.
+- `time_bars` and tick bars sort unsorted input. `time_bars` warns about a trailing unclosed
+  interval.
 - `get_events` raises `ValueError` when the target and close timezones differ, and warns when a
   vertical barrier falls between bars. `add_vertical_barrier` and `get_events` keep the index
   timezone on `t1`.
 - Timezone-aware `y` and `X` indexes compare as instants.
-- `get_daily_vol` allows leading NaN from a panel, names duplicate timestamps, and rejects
+- `get_daily_vol` accepts leading NaN from a panel, names duplicate timestamps, and rejects
   infinite input. `cusum_filter` sorts a Series input.
-- `CUSUM` raises for non-finite sigma, and names the series magnitude when residuals overflow
-  or underflow. It no longer blames collinear regressors for series at extreme magnitudes.
-- `VPIN` rejects non-finite prices and volume. Its bucket cap raises `ValueError` above the
-  limit, instead of a raw `MemoryError`.
-- Non-integer lags and window sizes raise `ValueError`. Integer arguments stay exact, and
-  oversized ones are reported by name.
-- `mdi_from_matrix` rejects infinite input. A failed `fit` no longer leaves a partial ensemble.
+- `CUSUM` raises for non-finite sigma. When residuals overflow or underflow, the error names the
+  series magnitude.
+- `VPIN` rejects non-finite prices and volume.
+- Non-integer lags and window sizes raise `ValueError`. Integer arguments keep their exact value,
+  and oversized ones are reported by name.
+- `mdi_from_matrix` rejects infinite input. A failed `fit` leaves no partial ensemble.
 - `importance` and `ensemble` raise `ValueError` when the index of a pandas `y` or sample weight
-  differs from `X`'s, instead of matching labels by position.
-- Tuning rejects a `y` of the wrong length, and a scalar or `None` `y`, with a clear error.
-  Sample-weight length mismatches raise `ValueError`.
-- `CPCV` `split()` raises its `min_train_size` error eagerly.
-- The MCP stdio server survives malformed lines, deep JSON nesting and tool-side exceptions.
-  It replies with a parse error for oversized integers, and the string `"false"` is rejected
-  rather than read as `true`.
+  differs from the index of `X`.
+- Tuning rejects a `y` of the wrong length, and a scalar or `None` `y`. Sample-weight length
+  mismatches raise `ValueError`.
+- `CPCV.split()` raises its `min_train_size` error when called.
+- The MCP stdio server keeps running after malformed lines, deeply nested JSON and tool-side
+  exceptions. The string `"false"` is rejected as a boolean argument.
 
 ## [0.1.1] - 2026-10-10
 
@@ -122,13 +102,6 @@ Changes since 0.1.0.
 
 - `probability_of_backtest_overfitting` rejects non-integer and boolean `n_partitions`
   before use, and detects zero-variance columns exactly.
-- The test suite gives each run a fresh numba cache, because a stale cache can keep an
-  old cross-module callee.
-- The proof notes correct the runs-bar Jensen condition, the HRP bisection cost bound and
-  the minTRL check. The minTRL check now uses a tolerance of 1e-9. Each "checked by test"
-  label names a test.
-- The HRP distance docstring (a metric only on standardized series) and the zero-variance
-  note in `TrialRegistry` match the code.
 
 ### Known limitations
 
@@ -143,9 +116,6 @@ Changes since 0.1.0.
   the process pool in `finlab.parallel`.
 - `setuptools` warns about the `license` table and the license classifier in
   `pyproject.toml`. The package still builds and passes `twine check`.
-- numba's cache key covers only the file that defines a function, so a cached caller can
-  keep a stale callee from another module after an edit. `tests/conftest.py` therefore gives
-  every test run a fresh cache directory.
 - `TrialRecord` and `TrialRegistry` compare by identity, not by value.
 - `import finlab.plot` succeeds without plotly; calling a plotting function then raises an
   `ImportError` with the install command.
