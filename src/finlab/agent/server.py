@@ -41,10 +41,6 @@ def handle_message(msg: dict[str, Any]) -> dict[str, Any] | None:
     req_id = msg.get("id")
     is_notification = "id" not in msg
     params = msg.get("params")
-    if params is None:
-        params = {}
-    if not isinstance(params, dict):
-        return None if is_notification else _err(req_id, -32602, "invalid params: expected an object")
 
     if method == "initialize":
         result = {
@@ -60,6 +56,10 @@ def handle_message(msg: dict[str, Any]) -> dict[str, Any] | None:
     if method == "tools/list":
         return None if is_notification else _ok(req_id, {"tools": list_tools()})
     if method == "tools/call":
+        if params is None:
+            params = {}
+        if not isinstance(params, dict):
+            return None if is_notification else _err(req_id, -32602, "invalid params: expected an object")
         name = params.get("name")
         if not isinstance(name, str):
             return None if is_notification else _err(req_id, -32602, "invalid params: missing tool name")

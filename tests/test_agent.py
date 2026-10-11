@@ -321,11 +321,20 @@ def test_onc_max_k_must_be_integer():
     assert not err and out["n_clusters"] <= 2
 
 
-@pytest.mark.parametrize("params", [[], 0, "x", [1]])
-def test_params_that_are_not_an_object_are_invalid_params(params):
-    reply = srv.handle_message({"jsonrpc": "2.0", "id": 11, "method": "ping", "params": params})
+@pytest.mark.parametrize("params", [[], 0, "x", [1], False])
+def test_tools_call_params_that_are_not_an_object_are_invalid_params(params):
+    reply = srv.handle_message({"jsonrpc": "2.0", "id": 11, "method": "tools/call", "params": params})
     assert reply["id"] == 11
     assert reply["error"] == {"code": -32602, "message": "invalid params: expected an object"}
+
+
+@pytest.mark.parametrize("params", [[], 0, "", False, "x", [1]])
+def test_methods_that_ignore_params_accept_any_params(params):
+    ping = srv.handle_message({"jsonrpc": "2.0", "id": 13, "method": "ping", "params": params})
+    assert ping == {"jsonrpc": "2.0", "id": 13, "result": {}}
+    listed = srv.handle_message({"jsonrpc": "2.0", "id": 14, "method": "tools/list", "params": params})
+    assert "error" not in listed
+    assert {t["name"] for t in listed["result"]["tools"]} >= {"sharpe_ratio"}
 
 
 @pytest.mark.parametrize("params", [{}, {"arguments": {}}, {"name": None}, {"name": 5}])
