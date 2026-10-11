@@ -138,7 +138,7 @@ def test_record_rejects_string_and_bool_returns(returns: list[object]) -> None:
 
 
 def test_record_rejects_string_as_params_pair() -> None:
-    # "fa" unpacked into ('f', 'a') used to be accepted as a key and a value.
+    # "fa" unpacks into ('f', 'a'), which is a key and a value, so the string must be rejected.
     with pytest.raises(ValueError, match="params"):
         TrialRecord("a", ["fa", "st"], [0.1, 0.2])  # type: ignore[arg-type]
 

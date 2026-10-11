@@ -445,7 +445,7 @@ def get_bins(events: pd.DataFrame, close: pd.Series, meta: bool = False) -> pd.D
             raise ValueError("meta=True requires a 'side' column in events.")
         ret = ret * ev["side"].to_numpy(dtype=float)
     elif "side" in ev.columns:
-        # Warn only: the label is still sign(raw return), as before.
+        # Warn only: the label is still sign(raw return), and the warning does not change it.
         warnings.warn(
             "get_bins(meta=False) with a 'side' column labels the sign of the raw "
             "return, not the bet's P&L. Pass meta=True to label whether the side "

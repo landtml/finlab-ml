@@ -107,8 +107,8 @@ Two claims from the text, using the snippet's formula:
 - The book states the entropy rates of `11100001` and `01100001` (as given, forward
   order) as 0.96 and 0.84. The snippet gives `0.9682` and `0.8432`. **The second
   matches to rounding. The first is 0.968 by the snippet, which rounds to 0.97,
-  not 0.96.** We tried the expanding-window variants `log2(i)`, `log2(i+1)` (the
-  snippet) and `log2(2i)` in the numerator, and none reproduces both examples. The most likely explanation is a
+  not 0.96.** No expanding-window variant, `log2(i)`, `log2(i+1)` (the snippet) or
+  `log2(2i)`, in the numerator reproduces both examples. The most likely explanation is a
   truncated or typo'd printed value. The test asserts the snippet's value to
   0.001 and checks that it is within 0.01 of the printed 0.96.
 

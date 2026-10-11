@@ -104,7 +104,7 @@ def test_embargo_removes_following_bars():
 
 
 def test_zero_embargo_is_noop_and_does_not_raise():
-    # Pins the latent NameError the reference code hit when step == 0.
+    # Guards the step == 0 path against a NameError.
     X = _frame(120)
     cv = CombinatorialPurgedCV(6, 2, embargo_pct=0.0)
     splits = list(cv.split(X, t1=make_t1(X.index, 5)))
@@ -308,7 +308,7 @@ def test_envelope_purge_equals_bruteforce(n_groups, k, horizon):
 
 
 # --------------------------------------------------------------------------- #
-# Fix 1: t1 in constructor (purges through the sklearn split signature)        #
+# t1 in constructor (purges through the sklearn split signature)               #
 # --------------------------------------------------------------------------- #
 def test_t1_in_constructor_purges_via_sklearn_signature():
     X = _frame(500)
@@ -336,7 +336,7 @@ def test_split_t1_overrides_constructor_t1():
 
 
 # --------------------------------------------------------------------------- #
-# Fix 2: embargo_anchor                                                        #
+# embargo_anchor                                                               #
 # --------------------------------------------------------------------------- #
 def test_embargo_anchor_label_end_removes_at_least_test_end():
     X = _frame(600)
@@ -358,7 +358,7 @@ def test_invalid_embargo_anchor_raises():
 
 
 # --------------------------------------------------------------------------- #
-# Fix 3: input validation (alignment / uniqueness)                             #
+# input validation (alignment / uniqueness)                                    #
 # --------------------------------------------------------------------------- #
 def test_misaligned_t1_raises():
     X = _frame(200)
@@ -568,7 +568,7 @@ def test_last_group_absorbs_the_remainder():
 
 
 # --------------------------------------------------------------------------- #
-# Fix 4: combine() shape hardening                                             #
+# combine() shape hardening                                                    #
 # --------------------------------------------------------------------------- #
 def test_combine_rejects_non_2d():
     X = _frame(120)

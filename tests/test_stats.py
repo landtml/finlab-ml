@@ -153,7 +153,7 @@ def test_min_track_record_length_hand_computation() -> None:
 
 @pytest.mark.parametrize("bad_benchmark", [float("nan"), float("inf")])
 def test_min_track_record_length_rejects_non_finite_benchmark(bad_benchmark: float) -> None:
-    # A NaN benchmark fails every comparison, so it used to return NaN without complaint.
+    # A NaN benchmark fails every comparison, so the call must raise instead of returning NaN.
     with pytest.raises(ValueError, match="sr_benchmark"):
         min_track_record_length(0.5, bad_benchmark, 0.0, 3.0, 0.95)
 
@@ -166,7 +166,7 @@ def test_min_track_record_length_rejects_non_finite_sr_hat(bad_sr_hat: float) ->
 
 @pytest.mark.parametrize("bad_n_obs", [float("nan"), float("inf")])
 def test_probabilistic_sharpe_ratio_rejects_non_finite_n_obs(bad_n_obs: float) -> None:
-    # NaN passed the n_obs < 2 check and inf returned 1.0 with no warning.
+    # NaN must not pass the n_obs < 2 check, and inf must not return 1.0 silently.
     with pytest.raises(ValueError, match="n_obs"):
         probabilistic_sharpe_ratio(0.1, 0.0, bad_n_obs)
 

@@ -583,11 +583,11 @@ def imbalance_bars(
         ``v_t`` is 1, the volume, or price times volume respectively.
     init_T : int, default 100
         Initial expected bar length ``E0[T]``, and the number of leading ticks
-        used to bootstrap ``E0[b_t v_t]``. Fixed.
+        used to bootstrap ``E0[b_t v_t]``. Constant for the whole call.
     span_bars : float, default 20
-        EWMA span for ``E[T]``, in bars. Fixed.
+        EWMA span for ``E[T]``, in bars. Constant for the whole call.
     span_ticks : float, default 1000
-        EWMA span for ``E[b_t v_t]``, in ticks. Fixed.
+        EWMA span for ``E[b_t v_t]``, in ticks. Constant for the whole call.
     b0 : float, default 1.0
         Seed of the tick rule (``b_0``). The book sets it to the terminal value of
         the previous bar. Within one call that is automatic; a fresh call uses ``b0``.

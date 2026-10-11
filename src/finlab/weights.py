@@ -147,7 +147,7 @@ def num_co_events(index: pd.Index | Sequence, t1: pd.Series) -> pd.Series:
     -----
     ``c_t = sum_i 1[t0_i <= t <= t1_i]``. A label is counted at the bar where
     it starts and at the bar where it ends. Computed in O(n + I) with a
-    difference array: ``+1`` at each start, ``-1`` just after each end, then a
+    difference array: ``+1`` at each start, ``-1`` immediately after each end, then a
     running sum.
 
     Scope: bars are discrete. Label times are mapped to bar positions with

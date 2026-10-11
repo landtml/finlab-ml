@@ -34,7 +34,7 @@ Literal readings and deviations
   snippet's ``redundancy`` normalises by ``log2(len(msg))``, which is not the
   alphabet-size normalisation, so we return only the entropy estimate ``h``.
   For an expanding window the book asks for an even length. An odd-length
-  message simply leaves the last symbol unparsed.
+  message leaves the last symbol unparsed.
 * Match length (Snippet 18.3): the snippet tests every ``l``. Matching is
   monotone in ``l`` (a match of length ``l+1`` implies one of length ``l``), so
   our kernel stops at the first failure. The result is the same, and a test

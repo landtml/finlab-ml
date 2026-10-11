@@ -60,7 +60,7 @@ def make_t1(index: pd.Index, horizon: int) -> pd.Series:
 
     Each observation ``index[i]`` is mapped to the timestamp ``horizon`` bars
     later, ``index[i + horizon]``. The final ``horizon`` observations clip to the
-    last available bar (their event simply ends at the end of the sample).
+    last available bar (their event ends at the end of the sample).
 
     Parameters
     ----------
@@ -339,7 +339,7 @@ class CombinatorialPurgedCV(_Base):
         horizons, large embargoes or a short sample can consume the entire
         training set; yielding such a fold silently turns into a ``NaN`` score
         inside sklearn, so it is rejected by default. Pass ``0`` to opt out and
-        emit degenerate folds as before.
+        emit degenerate folds without raising.
 
     Notes
     -----
@@ -528,7 +528,7 @@ class CombinatorialPurgedCV(_Base):
         # Stitch paths with a consume-as-you-go counter: for each path, take the
         # first not-yet-used simulation in which a group is a test fold, then mark
         # it used. Rows never interact (``work[g, sim] = False`` touches only row
-        # ``g``), so each row simply hands out its n_paths simulations one per
+        # ``g``), so each row hands out its n_paths simulations one per
         # path -- the loop cannot run a row dry.
         work = is_test_group.copy()
         path_folds = np.full((N, n_paths), -1, dtype=np.int64)

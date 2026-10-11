@@ -215,7 +215,7 @@ These statements are about AFML and were not checked here.
 * **The ANOVA result.** The text after Figure 4.2 says an ANOVA test on the difference of means gives a
   very small probability. (Paraphrased.) This module does not run that test.
 * **The figure's source run.** The book does not state how many trials produced Figure 4.2. This
-  document does not claim it was the 1E6 run, and makes no claim that the figure is reproduced.
+  analysis here does not claim it was the 1E6 run, and makes no claim that the figure is reproduced.
 
 ## Limits
 
