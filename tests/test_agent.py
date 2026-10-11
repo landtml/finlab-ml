@@ -311,3 +311,11 @@ def test_fracdiff_thres_out_of_range_is_rejected():
     assert err and "'thres'" in out["error"]
     out, err = _call("frac_diff_ffd", {"series": [1, 2, 3], "d": 0.4, "thres": 0})
     assert err and "'thres'" in out["error"]
+
+
+def test_onc_max_k_must_be_integer():
+    corr = [[1.0, 0.9, 0.1, 0.0], [0.9, 1.0, 0.0, 0.1], [0.1, 0.0, 1.0, 0.8], [0.0, 0.1, 0.8, 1.0]]
+    out, err = _call("onc_clusters", {"corr": corr, "max_k": 2.7})
+    assert err and "'max_k' must be an integer" in out["error"]
+    out, err = _call("onc_clusters", {"corr": corr, "max_k": 2})
+    assert not err and out["n_clusters"] <= 2

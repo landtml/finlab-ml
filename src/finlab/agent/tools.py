@@ -344,8 +344,8 @@ def _hrp(args):
 )
 def _onc(args):
     c = _mat(args, "corr")
-    max_k = args.get("max_k")
-    res = onc(c, max_k=None if max_k is None else int(max_k), seed=_int(args, "seed", 0))
+    max_k = None if args.get("max_k") is None else _int(args, "max_k")
+    res = onc(c, max_k=max_k, seed=_int(args, "seed", 0))
     return {
         "labels": [int(x) for x in res.labels],
         "n_clusters": int(res.n_clusters),
