@@ -453,3 +453,12 @@ def test_get_daily_vol_is_independent_of_input_order():
     shuffled = s.iloc[np.random.default_rng(1).permutation(len(s))]
     expected = get_daily_vol(s, 5).reindex(shuffled.index)
     pd.testing.assert_series_equal(get_daily_vol(shuffled, 5), expected)
+
+
+@pytest.mark.parametrize("bad", [np.nan, np.inf, -np.inf])
+def test_get_daily_vol_rejects_non_finite_prices(bad):
+    idx = pd.bdate_range("2024-01-01", periods=30)
+    px = np.linspace(100.0, 110.0, 30)
+    px[12] = bad
+    with pytest.raises(ValueError, match="close"):
+        get_daily_vol(pd.Series(px, index=idx))

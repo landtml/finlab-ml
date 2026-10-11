@@ -92,6 +92,9 @@ def get_daily_vol(close: pd.Series, span: int = 100) -> pd.Series:
     orig_index = close.index
     close = close.sort_index()
     px = close.to_numpy(dtype=float)
+    # The EWM skips NaN returns without an error, so a NaN price must be rejected here.
+    if not np.all(np.isfinite(px)):
+        raise ValueError("close must contain only finite prices.")
     idx = close.index
     prev = idx.searchsorted(idx - pd.Timedelta(days=1), side="left") - 1
     valid = prev >= 0
