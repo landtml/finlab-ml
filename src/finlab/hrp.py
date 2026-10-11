@@ -103,10 +103,21 @@ def quasi_diagonalize(link: np.ndarray) -> list[int]:
     n = int(z.shape[0]) + 1
     if n == 1:
         return [0]
-    if z.shape[0] == 1 and not np.array_equal(np.sort(z[0, :2]), [0.0, 1.0]):
-        # A lone row that does not merge leaves 0 and 1 cannot be walked; it
-        # is treated as one item, whose order is trivially [0].
-        return [0]
+    children = z[:, :2]
+    if not np.all(children == np.floor(children)):
+        raise ValueError("link child ids must be integers.")
+    ids = children.astype(np.int64)
+    # Row i is node n + i, so it may use leaves 0..n-1 and the nodes of rows before it.
+    limit = n + np.arange(n - 1)[:, None]
+    bad_rows = np.flatnonzero(np.any((ids < 0) | (ids >= limit), axis=1))
+    if bad_rows.size > 0:
+        raise ValueError(
+            f"link rows {bad_rows.tolist()} have a child id that is not a leaf or an earlier row."
+        )
+    flat = ids.ravel()
+    if np.unique(flat).size != flat.size:
+        # Each node merges into exactly one parent; a repeated child would drop leaves from the order.
+        raise ValueError("link uses a child id more than once.")
     order: list[int] = []
     stack = [2 * n - 2]  # root cluster id in scipy's numbering
     while stack:
@@ -242,19 +253,21 @@ def hrp_weights(
     if np.any(diag <= 0.0):
         raise ValueError("cov must have a strictly positive diagonal")
 
+    # The shape check runs for every N, so a single asset cannot hide a mismatched corr.
+    if corr is None:
+        sd = np.sqrt(diag)
+        R = C / np.outer(sd, sd)
+    else:
+        if isinstance(corr, pd.DataFrame) and labels is not None:
+            R = np.asarray(corr.loc[labels, labels], dtype=np.float64)
+        else:
+            R = np.asarray(corr, dtype=np.float64)
+        if R.shape != C.shape:
+            raise ValueError("corr and cov must have the same shape")
+
     if n == 1:
         w = np.ones(1)
     else:
-        if corr is None:
-            sd = np.sqrt(diag)
-            R = C / np.outer(sd, sd)
-        else:
-            if isinstance(corr, pd.DataFrame) and labels is not None:
-                R = np.asarray(corr.loc[labels, labels], dtype=np.float64)
-            else:
-                R = np.asarray(corr, dtype=np.float64)
-            if R.shape != C.shape:
-                raise ValueError("corr and cov must have the same shape")
         D = np.asarray(correlation_distance(R), dtype=np.float64)
         np.fill_diagonal(D, 0.0)
         link = sch.linkage(squareform(D, checks=False), method=method)

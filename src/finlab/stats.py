@@ -170,6 +170,9 @@ def probabilistic_sharpe_ratio(
     exactly for any skew, kurtosis and T.
     """
     denom = _psr_denominator(sr_hat, skew, kurtosis)
+    if not math.isfinite(n_obs):
+        # NaN slips past the comparison below, and an infinite sample gives a certain answer.
+        raise ValueError(f"n_obs must be an integer, got {n_obs!r}")
     if n_obs < 2:
         raise ValueError("n_obs must be at least 2")
     z = (sr_hat - sr_benchmark) * math.sqrt(n_obs - 1) / denom

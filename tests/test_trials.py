@@ -128,6 +128,27 @@ def test_record_validation_errors(kwargs: dict[str, object], message: str) -> No
         TrialRecord(**kwargs)  # type: ignore[arg-type]
 
 
+@pytest.mark.parametrize(
+    "returns",
+    [["0.1", "0.2", "0.3"], [True, False, True], [0.1, "0.2"], [0.1, np.True_]],
+)
+def test_record_rejects_string_and_bool_returns(returns: list[object]) -> None:
+    with pytest.raises(ValueError, match="'a'"):
+        TrialRecord("a", {}, returns)  # type: ignore[arg-type]
+
+
+def test_record_rejects_string_as_params_pair() -> None:
+    # "fa" unpacked into ('f', 'a') used to be accepted as a key and a value.
+    with pytest.raises(ValueError, match="params"):
+        TrialRecord("a", ["fa", "st"], [0.1, 0.2])  # type: ignore[arg-type]
+
+
+def test_record_plain_dict_and_returns_still_accepted() -> None:
+    rec = TrialRecord("a", {"k": 1}, [0.1, 0.2])
+    assert rec.params_dict == {"k": 1}
+    np.testing.assert_allclose(rec.returns, [0.1, 0.2])
+
+
 # ---------------------------------------------------------------------------
 # TrialRegistry: registration and the performance matrix
 # ---------------------------------------------------------------------------

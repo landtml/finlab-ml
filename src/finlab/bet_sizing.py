@@ -85,7 +85,8 @@ def prob_bet_size(
     Notes
     -----
     Probabilities of exactly 0 or 1 give ``z = +/- inf`` and bet sizes of exactly
-    ``+/- 1``; probabilities outside ``[0, 1]`` are rejected.
+    ``+/- 1``; probabilities outside ``[0, 1]`` are rejected, and for
+    ``num_classes > 2`` so are probabilities below ``1/num_classes``.
     """
     p = np.asarray(prob, dtype=np.float64)
     if np.any((p < 0) | (p > 1)) or np.any(np.isnan(p)):
@@ -108,7 +109,10 @@ def prob_bet_size(
         else:
             if s is None:
                 raise ValueError("side is required when num_classes > 2.")
-            z = (p - 1.0 / num_classes) / np.sqrt(p * (1.0 - p))
+            if np.any(p < 1.0 / num_classes):
+                # Below the uniform probability the bet would point against the predicted label.
+                raise ValueError(f"probabilities must be at least 1/num_classes = {1.0 / num_classes!r}.")
+            z =(p - 1.0 / num_classes) / np.sqrt(p * (1.0 - p))
             m = s * (2.0 * ndtr(z) - 1.0)
     # Degenerate endpoints: p in {0, 1} gives z = +/- inf; ndtr handles it, but the
     # 0/0 limits of the two-class case at p = 0.5 are exactly 0.
@@ -134,7 +138,8 @@ def sigmoid_bet_size(w: float, x: npt.ArrayLike) -> FloatArray:
     if w <= 0:
         raise ValueError(f"w must be > 0, got {w!r}.")
     x = np.asarray(x, dtype=np.float64)
-    return x / np.sqrt(w + x * x)
+    # hypot avoids the overflow of x * x for very large |x|, where the bet is at its limit.
+    return x / np.hypot(math.sqrt(w), x)
 
 
 def calibrate_sigmoid_width(x: float, m_star: float) -> float:
@@ -145,7 +150,8 @@ def calibrate_sigmoid_width(x: float, m_star: float) -> float:
     Parameters
     ----------
     x : float
-        A nonzero divergence at which the bet size is specified.
+        A positive divergence at which the bet size is specified. A negative
+        divergence is rejected, since the bet sign follows ``x``.
     m_star : float
         Desired bet size in ``(0, 1)``.
 
@@ -156,6 +162,8 @@ def calibrate_sigmoid_width(x: float, m_star: float) -> float:
     """
     if x == 0:
         raise ValueError("x must be nonzero to calibrate the sigmoid width.")
+    if x < 0:
+        raise ValueError(f"x must be positive to calibrate the sigmoid width, got {x!r}.")
     if not 0.0 < abs(m_star) < 1.0:
         raise ValueError(f"|m_star| must be in (0, 1), got {m_star!r}.")
     if not math.isfinite(x):
@@ -195,7 +203,8 @@ def limit_price(
     to ``target``. ``L(f, w, m) = f - m sqrt(w / (1 - m^2))`` inverts the sigmoid in
     the market price. Returns ``nan`` when ``target == current`` (no order) and when
     ``abs(target) == max_position`` (the cap term has no finite limit). Raises
-    ``ValueError`` when ``abs(target)`` or ``abs(current)`` exceeds ``max_position``.
+    ``ValueError`` when ``abs(target)`` or ``abs(current)`` exceeds ``max_position``,
+    or when ``w`` is negative or not finite.
 
     Notes
     -----
@@ -208,6 +217,9 @@ def limit_price(
         raise ValueError(f"target {target!r} exceeds max_position {max_position!r}.")
     if abs(current) > max_position:
         raise ValueError(f"current {current!r} exceeds max_position {max_position!r}.")
+    if w < 0 or not math.isfinite(w):
+        # A negative width has no square root; an infinite one gives an infinite, non-price limit.
+        raise ValueError(f"w must be > 0 and finite, got {w!r}.")
     if target == current:
         return float("nan")
     if abs(target) == max_position:
@@ -266,6 +278,12 @@ def average_active_signals(
     if len(nat_rows) > 0:
         # searchsorted sends NaT past the grid, which would keep the event active forever.
         raise ValueError(f"t1 contains NaT at rows {list(nat_rows)}; every event needs an end time.")
+    before_start = signals.index[t1.to_numpy() < signals.index.to_numpy()]
+    if len(before_start) > 0:
+        # An end before its start would make the event silently disappear from the average.
+        raise ValueError(
+            f"t1 is before the start at rows {list(before_start)}; every event must end at or after it."
+        )
     if index is None:
         index = signals.index
     grid = pd.Index(index).sort_values()
@@ -310,16 +328,13 @@ def average_active_signals(
 def discretize_signal(signal: npt.ArrayLike, step: float) -> FloatArray:
     """Round bet sizes to multiples of ``step`` to limit overtrading [10.5].
 
-    ``m* = round(m / step) * step``. ``step`` must be in ``(0, 1]``.
+    ``m* = round(m / step) * step``. ``step`` must be in ``(0, 1]``, and every
+    signal must be finite and lie in ``[-1, 1]``; otherwise ``ValueError`` is raised.
     """
     if not 0.0 < step <= 1.0:
         raise ValueError(f"step must be in (0, 1], got {step!r}.")
     s = np.asarray(signal, dtype=np.float64)
-    if np.isinf(s).any():
-        # Infinite bet sizes survive rounding as infinite targets; flag them instead of passing them on.
-        warnings.warn(
-            "discretize_signal: non-finite (inf) signal element, output contains inf",
-            UserWarning,
-            stacklevel=2,
-        )
+    if not np.all(np.isfinite(s) & (np.abs(s) <= 1.0)):
+        # Bet sizes live in [-1, 1]; values outside it would pass through as oversized targets.
+        raise ValueError("discretize_signal: signal values must be finite and lie in [-1, 1].")
     return np.round(s / step) * step

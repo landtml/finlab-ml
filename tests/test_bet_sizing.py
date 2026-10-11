@@ -1,5 +1,6 @@
 """Tests for finlab.bet_sizing (AFML ch. 10). Book worked examples are included."""
 import math
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -22,6 +23,28 @@ def test_book_sigmoid_calibration_and_targets():
     assert sigmoid_bet_size(w, 10.0) == pytest.approx(0.95)
     assert target_position(w, 110, 100, 100) == 95
     assert target_position(w, 115, 100, 100) == 97
+
+
+def test_sigmoid_large_divergence_reaches_its_limit_without_overflow():
+    # x * x overflows for |x| above about 1.3e154; the limit must still be reached.
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        assert float(sigmoid_bet_size(1.0, 1e200)) == pytest.approx(1.0)
+        assert float(sigmoid_bet_size(1.0, -1e200)) == pytest.approx(-1.0)
+    assert target_position(1.0, 1e200, 0.0, 10) == 10
+
+
+def test_calibrate_sigmoid_width_rejects_negative_x():
+    # The bet sign follows x, so a negative divergence cannot give a positive m_star.
+    with pytest.raises(ValueError, match="x"):
+        calibrate_sigmoid_width(-10.0, 0.95)
+    assert calibrate_sigmoid_width(10.0, 0.95) == pytest.approx(10.8033, abs=1e-4)
+
+
+@pytest.mark.parametrize("bad_w", [-1.0, np.inf, -np.inf, np.nan])
+def test_limit_price_rejects_invalid_width(bad_w):
+    with pytest.raises(ValueError, match="w must be"):
+        limit_price(3, 0, 10.0, bad_w, 10)
 
 
 def test_book_limit_price():
@@ -218,16 +241,36 @@ def test_average_active_signals_rejects_nat_end_times() -> None:
     assert str(idx[4].date()) in str(info.value)  # the offending row is named
 
 
+def test_average_active_signals_rejects_t1_before_start() -> None:
+    idx = pd.date_range("2020-01-01", periods=5, freq="D")
+    sig = pd.Series([0.5, 1.0, -1.0, 0.25, 0.75], index=idx)
+    t1 = pd.Series(idx[[1, 0, 3, 4, 4]], index=idx)  # event 1 starts day 1, ends day 0
+    with pytest.raises(ValueError, match="before") as info:
+        average_active_signals(sig, t1)
+    assert str(idx[1].date()) in str(info.value)  # the offending row is named
+
+
+def test_average_active_signals_valid_t1_unchanged() -> None:
+    idx = pd.date_range("2020-01-01", periods=5, freq="D")
+    sig = pd.Series([0.5, 1.0, -1.0, 0.25, 0.75], index=idx)
+    t1 = pd.Series(idx[[1, 2, 3, 4, 4]], index=idx)
+    got = average_active_signals(sig, t1).round(4).tolist()
+    assert got == [0.5, 0.75, 0.0, -0.375, 0.5]
+
+
 def test_calibrate_sigmoid_width_warns_on_infinite_x_and_still_returns_inf() -> None:
     with pytest.warns(UserWarning, match="calibrate_sigmoid_width.*non-finite"):
         assert calibrate_sigmoid_width(np.inf, 0.5) == math.inf
 
 
-def test_discretize_signal_warns_on_infinite_element_and_still_returns_inf() -> None:
-    signal = np.array([0.2, np.inf, -0.3])
-    with pytest.warns(UserWarning, match="discretize_signal.*non-finite"):
-        out = discretize_signal(signal, 0.1)
-    assert np.isinf(out[1])
+@pytest.mark.parametrize("bad", [[1.5, -2.2], [0.2, 1.0001], [np.nan, 0.1], [np.inf, 0.1]])
+def test_discretize_signal_rejects_values_outside_unit_interval(bad) -> None:
+    with pytest.raises(ValueError, match="discretize_signal"):
+        discretize_signal(bad, 0.5)
+
+
+def test_discretize_signal_in_range_unchanged_at_edges() -> None:
+    np.testing.assert_allclose(discretize_signal([1.0, -1.0, 0.0], 0.5), [1.0, -1.0, 0.0])
 @pytest.mark.parametrize("bad", [[0.5, -0.5], np.zeros((2, 2))])
 def test_average_active_signals_rejects_non_pandas_input(bad) -> None:
     idx = pd.date_range("2024-01-01", periods=2)
@@ -237,6 +280,15 @@ def test_average_active_signals_rejects_non_pandas_input(bad) -> None:
         average_active_signals(bad, t1)
     with pytest.raises(TypeError, match="t1"):
         average_active_signals(signals, bad)
+
+
+def test_multiclass_probability_below_uniform_rejected():
+    # The predicted label's probability is a maximum, so it cannot be below 1/k.
+    with pytest.raises(ValueError, match="1/num_classes"):
+        prob_bet_size([0.2], side=[1], num_classes=3)
+    with pytest.raises(ValueError, match="1/num_classes"):
+        prob_bet_size([0.0], side=[1], num_classes=3)
+    assert prob_bet_size([1.0 / 3], side=[1], num_classes=3)[0] == pytest.approx(0.0, abs=1e-12)
 
 
 def test_prob_bet_size_applies_side_for_two_classes():

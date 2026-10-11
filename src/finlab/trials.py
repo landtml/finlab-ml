@@ -70,7 +70,7 @@ class TrialRecord:
     def __post_init__(self) -> None:
         object.__setattr__(self, "name", _check_name(self.name))
         object.__setattr__(self, "params", _check_params(self.params))
-        object.__setattr__(self, "returns", _check_returns(self.returns))
+        object.__setattr__(self, "returns", _check_returns(self.returns, self.name))
 
     @property
     def params_dict(self) -> dict[str, ParamValue]:
@@ -288,11 +288,19 @@ def _check_params(params: Any) -> tuple[tuple[str, ParamValue], ...]:
         pairs = list(params.items())
     else:
         try:
-            pairs = [(key, value) for key, value in params]
-        except (TypeError, ValueError) as exc:
+            items = list(params)
+        except TypeError as exc:
             raise ValueError(
                 "params must be a mapping or an iterable of (key, value) pairs"
             ) from exc
+        pairs = []
+        for item in items:
+            # A string of length 2 would unpack into a key and a value, so only tuples and lists count.
+            if not isinstance(item, (tuple, list)) or len(item) != 2:
+                raise ValueError(
+                    f"params must be a mapping or an iterable of (key, value) pairs; got item {item!r}"
+                )
+            pairs.append((item[0], item[1]))
     checked: list[tuple[str, ParamValue]] = []
     seen: set[str] = set()
     for key, value in pairs:
@@ -324,7 +332,17 @@ def _check_param_value(key: str, value: Any) -> ParamValue:
     )
 
 
-def _check_returns(returns: Any) -> np.ndarray:
+def _check_returns(returns: Any, name: str) -> np.ndarray:
+    try:
+        items = list(returns)
+    except TypeError as exc:
+        raise ValueError(f"trial {name!r}: returns must be a sequence of real numbers") from exc
+    for item in items:
+        # np.array would turn "0.1" into 0.1 and True into 1.0; neither is a return.
+        if isinstance(item, (str, bytes, bool, np.bool_)):
+            raise ValueError(
+                f"trial {name!r}: returns must be real numbers, got {type(item).__name__} {item!r}"
+            )
     try:
         arr = np.array(returns, dtype=np.float64)
     except (TypeError, ValueError) as exc:
