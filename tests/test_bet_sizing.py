@@ -218,6 +218,23 @@ def test_average_active_signals_rejects_nat_end_times() -> None:
     assert str(idx[4].date()) in str(info.value)  # the offending row is named
 
 
+def test_average_active_signals_rejects_t1_before_start() -> None:
+    idx = pd.date_range("2020-01-01", periods=5, freq="D")
+    sig = pd.Series([0.5, 1.0, -1.0, 0.25, 0.75], index=idx)
+    t1 = pd.Series(idx[[1, 0, 3, 4, 4]], index=idx)  # event 1 starts day 1, ends day 0
+    with pytest.raises(ValueError, match="before") as info:
+        average_active_signals(sig, t1)
+    assert str(idx[1].date()) in str(info.value)  # the offending row is named
+
+
+def test_average_active_signals_valid_t1_unchanged() -> None:
+    idx = pd.date_range("2020-01-01", periods=5, freq="D")
+    sig = pd.Series([0.5, 1.0, -1.0, 0.25, 0.75], index=idx)
+    t1 = pd.Series(idx[[1, 2, 3, 4, 4]], index=idx)
+    got = average_active_signals(sig, t1).round(4).tolist()
+    assert got == [0.5, 0.75, 0.0, -0.375, 0.5]
+
+
 def test_calibrate_sigmoid_width_warns_on_infinite_x_and_still_returns_inf() -> None:
     with pytest.warns(UserWarning, match="calibrate_sigmoid_width.*non-finite"):
         assert calibrate_sigmoid_width(np.inf, 0.5) == math.inf

@@ -266,6 +266,12 @@ def average_active_signals(
     if len(nat_rows) > 0:
         # searchsorted sends NaT past the grid, which would keep the event active forever.
         raise ValueError(f"t1 contains NaT at rows {list(nat_rows)}; every event needs an end time.")
+    before_start = signals.index[t1.to_numpy() < signals.index.to_numpy()]
+    if len(before_start) > 0:
+        # An end before its start would make the event silently disappear from the average.
+        raise ValueError(
+            f"t1 is before the start at rows {list(before_start)}; every event must end at or after it."
+        )
     if index is None:
         index = signals.index
     grid = pd.Index(index).sort_values()
