@@ -151,6 +151,13 @@ def test_min_track_record_length_hand_computation() -> None:
     assert hand == pytest.approx(13.1749455434, abs=1e-9)
 
 
+@pytest.mark.parametrize("bad_benchmark", [float("nan"), float("inf")])
+def test_min_track_record_length_rejects_non_finite_benchmark(bad_benchmark: float) -> None:
+    # A NaN benchmark fails every comparison, so it used to return NaN without complaint.
+    with pytest.raises(ValueError, match="sr_benchmark"):
+        min_track_record_length(0.5, bad_benchmark, 0.0, 3.0, 0.95)
+
+
 def test_min_track_record_length_round_trip_gives_target_psr() -> None:
     n_min = min_track_record_length(0.2, 0.05, -0.3, 4.5, 0.9)
     n_int = math.ceil(n_min)

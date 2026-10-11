@@ -422,6 +422,8 @@ def min_track_record_length(
     """
     if not 0.0 < prob < 1.0:
         raise ValueError("prob must lie in (0, 1)")
+    if not math.isfinite(sr_benchmark):
+        raise ValueError(f"sr_benchmark must be finite, got {sr_benchmark!r}")
     if sr_hat <= sr_benchmark:
         raise ValueError("minTRL requires sr_hat > sr_benchmark")
     denom_sq = _psr_denominator(sr_hat, skew, kurt) ** 2
