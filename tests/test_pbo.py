@@ -82,6 +82,25 @@ def test_callable_returning_nan_for_a_column_raises_named_error() -> None:
     assert "split" in str(info.value) and "trial" in str(info.value)
 
 
+@pytest.mark.parametrize(("constant", "pbo"), [(0.5, 0.0), (-0.5, 0.6285714285714286)])
+def test_callable_mirroring_default_zero_variance_convention_matches_default(constant: float, pbo: float) -> None:
+    rng = np.random.default_rng(1)
+    M = rng.normal(0.0, 0.01, size=(64, 8))
+    M[:, 2] = constant
+
+    def sharpe(sub: np.ndarray) -> np.ndarray:
+        sd = sub.std(axis=0, ddof=1)
+        mu = sub.mean(axis=0)
+        ratio = mu / sd
+        return np.where(sd == 0, np.where(mu == 0, 0.0, np.sign(mu) * np.inf), ratio)
+
+    default = probability_of_backtest_overfitting(M, n_partitions=8)
+    generic = probability_of_backtest_overfitting(M, n_partitions=8, performance=sharpe)
+    assert default.pbo == pytest.approx(pbo, abs=1e-12)
+    assert generic.pbo == default.pbo
+    assert np.isfinite(generic.logits).all()
+
+
 def test_dataframe_input_equals_ndarray() -> None:
     rng = np.random.default_rng(12)
     M = rng.normal(size=(32, 4))

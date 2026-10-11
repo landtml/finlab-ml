@@ -111,8 +111,10 @@ def probability_of_backtest_overfitting(
         integral float such as 8.0 is accepted), divide T, and satisfy T / S >= 2.
     performance : callable, optional
         ``performance(sub)`` takes a (rows, N) ndarray and returns a length-N
-        array of trial scores (higher is better). Defaults to the per-column
-        Sharpe ratio, which uses the numba kernel.
+        array of trial scores (higher is better). ``+inf`` and ``-inf`` are
+        allowed as the zero-variance convention of the default; NaN raises
+        ``ValueError``. Defaults to the per-column Sharpe ratio, which uses the
+        numba kernel.
 
     Returns
     -------
@@ -292,11 +294,12 @@ def _cscv_callable_logits(
         if train_sr.shape != (N,) or test_sr.shape != (N,):
             raise ValueError("performance must return one score per column")
         for label, scores in (("training", train_sr), ("test", test_sr)):
-            bad = np.flatnonzero(~np.isfinite(scores))
+            # +/-inf is the zero-variance convention of the default path; only NaN has no rank.
+            bad = np.flatnonzero(np.isnan(scores))
             if bad.size:
                 raise ValueError(
-                    f"performance callable returned non-finite scores for trial column(s) "
-                    f"{bad.tolist()} on the {label} data of split {c}; every trial needs a finite score"
+                    f"performance callable returned non-finite (NaN) scores for trial column(s) "
+                    f"{bad.tolist()} on the {label} data of split {c}; every trial needs a score that is not NaN"
                 )
         best = int(np.argmax(train_sr))
         rank = int(np.sum(test_sr <= test_sr[best]))
