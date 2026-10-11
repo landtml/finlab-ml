@@ -273,3 +273,12 @@ def test_non_standard_constant_id_is_parse_error_and_reply_is_strict_json(token)
     reply = _strict_loads(out.getvalue().splitlines()[0])
     assert reply["error"]["code"] == -32700
     assert reply["id"] is None
+
+
+def test_string_boolean_is_rejected_not_truthy():
+    out, err = _call("sharpe_ratio", {"returns": [1, 2, 3], "annualize": "false"})
+    assert err and "'annualize' must be a boolean" in out["error"]
+    out, err = _call("cusum_filter", {"series": [1, 2, 3], "threshold": 1, "is_returns": "false"})
+    assert err and "'is_returns' must be a boolean" in out["error"]
+    out, err = _call("sharpe_ratio", {"returns": [1, 2], "annualize": False})
+    assert not err and out["sharpe"] == pytest.approx(sharpe_ratio(np.array([1.0, 2.0]), annualize=False))

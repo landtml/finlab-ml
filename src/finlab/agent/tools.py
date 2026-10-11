@@ -102,6 +102,15 @@ def _int(args: dict[str, Any], key: str, default: int | None = None) -> int:
     return int(v)
 
 
+def _bool(args: dict[str, Any], key: str, default: bool) -> bool:
+    if key not in args:
+        return default
+    v = args[key]
+    if not isinstance(v, bool):
+        raise ToolError(f"'{key}' must be a boolean")
+    return v
+
+
 def _clean(x: float) -> float | None:
     return None if x is None or not math.isfinite(x) else float(x)
 
@@ -121,7 +130,7 @@ def _clean(x: float) -> float | None:
 )
 def _sharpe(args):
     r = _vec(args, "returns")
-    sr = sharpe_ratio(r, _num(args, "periods_per_year", 252), annualize=bool(args.get("annualize", True)))
+    sr = sharpe_ratio(r, _num(args, "periods_per_year", 252), annualize=_bool(args, "annualize", True))
     return {"sharpe": _clean(float(sr))}
 
 
@@ -235,7 +244,7 @@ def _fracdiff(args):
 )
 def _cusum(args):
     s = _vec(args, "series")
-    idx = cusum_filter(s, _num(args, "threshold"), is_returns=bool(args.get("is_returns", False)))
+    idx = cusum_filter(s, _num(args, "threshold"), is_returns=_bool(args, "is_returns", False))
     return {"event_positions": [int(i) for i in np.asarray(idx)]}
 
 
