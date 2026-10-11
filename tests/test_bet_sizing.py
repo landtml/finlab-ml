@@ -51,12 +51,20 @@ def test_limit_price_at_cap_is_nan(current, target):
     [
         (0, 97, 115.0, calibrate_sigmoid_width(10.0, 0.95), 112.36573855883363),
         (0, 99, 105.0, 2.0, 103.71886638294875),
-        (0, -99, 105.0, 2.0, 103.71886638294875),
+        (0, -99, 105.0, 2.0, 106.28113361705125),  # mirror of (0, 99) about the forecast
         (-30, 50, 105.0, 2.0, 104.38670427147159),
     ],
 )
 def test_limit_price_below_cap_unchanged(current, target, forecast, w, expected):
     assert limit_price(target, current, forecast, w, 100) == pytest.approx(expected, rel=1e-14)
+
+
+def test_limit_price_short_target_is_mirror_of_long():
+    # A short order fills at prices below the forecast's mirror image: its limit sits above it.
+    long_price = limit_price(3, 0, 10.0, 1.0, 10)
+    short_price = limit_price(-3, 0, 10.0, 1.0, 10)
+    assert short_price > 10.0
+    assert short_price == pytest.approx(2 * 10.0 - long_price)
 
 
 def test_two_class_probability_mapping():

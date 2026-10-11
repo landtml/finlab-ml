@@ -210,9 +210,11 @@ def limit_price(
     hi = abs(target)
     if hi < lo:
         return float("nan")
+    # Levels carry the sign of the position being traded; a flat target takes the current side.
+    side = 1 if (target > 0 or (target == 0 and current > 0)) else -1
     total = 0.0
     for j in range(lo, hi + 1):
-        m = j / max_position
+        m = side * j / max_position
         total += forecast - m * math.sqrt(w / (1.0 - m * m))
     return total / (hi - lo + 1)
 
