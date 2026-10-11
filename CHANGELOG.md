@@ -7,7 +7,7 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [0.1.2] - 2026-10-10
 
-Changes since 0.1.1. The library code is unchanged; this release changes how releases are published.
+Changes since 0.1.1: a QA pass over the library, and a change to how releases are published.
 
 ### Changed
 
@@ -16,6 +16,78 @@ Changes since 0.1.1. The library code is unchanged; this release changes how rel
   The release notes come from `.github/releases/vX.Y.Z.md`, or from this changelog
   section when that file is absent.
 - `RELEASING.md` describes the release pull request and the steps that follow it.
+- Degenerate or invalid input now raises a `ValueError` or `TypeError` that names the
+  argument, or emits a `UserWarning` that names the cause. Valid-input results are unchanged,
+  except where listed under Fixed.
+- `prob_bet_size` applies `side` when it is passed with two classes. Omitting `side` keeps
+  the long bet, as before.
+- `discretize_signal` raises on infinite input; it used to warn.
+- `quasi_diagonalize` raises `ValueError` for an invalid or cyclic linkage matrix, and for a
+  single-row link.
+- The MCP server rejects oversized integer literals, `NaN` and `Infinity` literals, and
+  non-boolean values for boolean arguments. Nested arrays are rejected with the argument name
+  and element index. Non-object `params` return error `-32602`.
+- The VPIN bucket cap is 10,000,000.
+
+### Added
+
+- `tools/check_attribution.py` and a CI job that rejects AI attribution in new commit messages
+  and pull request bodies.
+- `tools/prune_branches.py` and a branch-cleanup workflow.
+- The release workflow repairs a tag that has no sdist or wheel asset.
+
+### Fixed
+
+- `limit_price` returns NaN at the position cap instead of dividing by zero. It averages over
+  signed fills, so orders that cross zero are correct, and it signs short levels correctly.
+- `limit_price` rejects a negative or infinite `w`.
+- `chu_stinchcombe_white` returns NaN when volatility is zero, and no longer returns silent
+  NaN or zero at extreme magnitudes.
+- `grid_search` and `randomized_search` rank NaN candidates below finite ones. A `str` value in
+  a tuning grid raises `TypeError`.
+- `cv_score` passes a pandas `X` to the splitter, so a datetime-indexed `t1` resolves.
+  A generator passed as `cv` works for every candidate. Zero-weight test folds warn.
+- `PurgedKFold` and `get_bins` warn where they used to skip purging or labelling silently.
+- `average_active_signals` drops events whose end is before their start, and a NaN signal is
+  excluded from the average instead of making every later value NaN.
+- `NaT` in `t1` raises `ValueError`. An infinite signal is confined to its active span.
+- `sigmoid_bet_size` no longer returns 0 for very large forecasts. `prob_bet_size` rejects
+  probabilities below 1/k. `calibrate_sigmoid_width` and `discretize_signal` reject inputs
+  outside their domain.
+- `sharpe_ratio` returns 0 for all-zero returns, and NaN with a warning for other constant
+  returns. It warns with fewer than two observations. A zero-return trial no longer blocks the
+  deflated Sharpe ratio.
+- `probabilistic_sharpe_ratio` rejects a NaN or infinite `n_obs`, and `sr_hat` must be finite
+  for PSR and minimum track record length.
+- `TrialRecord` rejects strings and bools as returns.
+- `hrp_weights` checks the correlation shape for a single asset. `quasi_diagonalize` returns
+  `[0]` for a single row.
+- `PBO` warns when rows are out of time order. Its callable path accepts infinite scores and
+  rejects NaN.
+- `frac_diff_ffd` warns when the window is longer than the series, instead of returning all NaN.
+- `time_bars` and tick bars sort unsorted input first. `time_bars` warns about a trailing
+  unclosed interval.
+- `get_events` raises `ValueError` when the target and close timezones differ, and warns when a
+  vertical barrier falls between bars. `add_vertical_barrier` and `get_events` keep the index
+  timezone on `t1`.
+- Timezone-aware `y` and `X` indexes compare as instants.
+- `get_daily_vol` allows leading NaN from a panel, names duplicate timestamps, and rejects
+  infinite input. `cusum_filter` sorts a Series input.
+- `CUSUM` raises for non-finite sigma, and names the series magnitude when residuals overflow
+  or underflow. It no longer blames collinear regressors for series at extreme magnitudes.
+- `VPIN` rejects non-finite prices and volume. Its bucket cap raises `ValueError` above the
+  limit, instead of a raw `MemoryError`.
+- Non-integer lags and window sizes raise `ValueError`. Integer arguments stay exact, and
+  oversized ones are reported by name.
+- `mdi_from_matrix` rejects infinite input. A failed `fit` no longer leaves a partial ensemble.
+- `importance` and `ensemble` raise `ValueError` when the index of a pandas `y` or sample weight
+  differs from `X`'s, instead of matching labels by position.
+- Tuning rejects a `y` of the wrong length, and a scalar or `None` `y`, with a clear error.
+  Sample-weight length mismatches raise `ValueError`.
+- `CPCV` `split()` raises its `min_train_size` error eagerly.
+- The MCP stdio server survives malformed lines, deep JSON nesting and tool-side exceptions.
+  It replies with a parse error for oversized integers, and the string `"false"` is rejected
+  rather than read as `true`.
 
 ## [0.1.1] - 2026-10-10
 
