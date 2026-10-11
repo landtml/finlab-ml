@@ -482,3 +482,12 @@ def test_vpin_rejects_bucket_count_above_ten_million() -> None:
     v = np.full(200, 5.5e7)  # 1.1e10 shares / 1,000 = 1.1e7 buckets
     with pytest.raises(ValueError, match=r"1\.1e\+07 .*exceeds 10,000,000"):
         vpin(prices, v, bucket_volume=1000.0, n_window=5)
+
+
+@pytest.mark.parametrize("bucket_volume", [float("nan"), float("inf"), 0.0, -1.0])
+def test_vpin_rejects_nonfinite_or_nonpositive_bucket_volume(bucket_volume: float) -> None:
+    rng = np.random.default_rng(0)
+    p = 100 + np.cumsum(rng.normal(0, 0.1, 50))
+    v = rng.uniform(1, 2, 50)
+    with pytest.raises(ValueError, match="bucket_volume"):
+        vpin(p, v, bucket_volume=bucket_volume, n_window=2)

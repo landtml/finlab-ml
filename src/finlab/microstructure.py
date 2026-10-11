@@ -636,8 +636,8 @@ def vpin(
     for name, arr in (("prices", p), ("volume", v)):
         if not np.all(np.isfinite(arr)):
             raise ValueError(f"{name} must contain only finite values.")
-    if bucket_volume <= 0.0:
-        raise ValueError("bucket_volume must be positive")
+    if not (math.isfinite(bucket_volume) and bucket_volume > 0.0):
+        raise ValueError("bucket_volume must be positive and finite")
     if not isinstance(n_window, numbers.Integral):
         raise ValueError("n_window must be an integer")
     if n_window < 1:
