@@ -34,6 +34,13 @@ def test_sigmoid_large_divergence_reaches_its_limit_without_overflow():
     assert target_position(1.0, 1e200, 0.0, 10) == 10
 
 
+def test_calibrate_sigmoid_width_rejects_negative_x():
+    # The bet sign follows x, so a negative divergence cannot give a positive m_star.
+    with pytest.raises(ValueError, match="x"):
+        calibrate_sigmoid_width(-10.0, 0.95)
+    assert calibrate_sigmoid_width(10.0, 0.95) == pytest.approx(10.8033, abs=1e-4)
+
+
 def test_book_limit_price():
     # AFML 10.6: order of size 97 from flat with f=115, p=100 is priced below 112.3657.
     w = calibrate_sigmoid_width(10.0, 0.95)

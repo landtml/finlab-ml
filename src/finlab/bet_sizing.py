@@ -150,7 +150,8 @@ def calibrate_sigmoid_width(x: float, m_star: float) -> float:
     Parameters
     ----------
     x : float
-        A nonzero divergence at which the bet size is specified.
+        A positive divergence at which the bet size is specified. A negative
+        divergence is rejected, since the bet sign follows ``x``.
     m_star : float
         Desired bet size in ``(0, 1)``.
 
@@ -161,6 +162,8 @@ def calibrate_sigmoid_width(x: float, m_star: float) -> float:
     """
     if x == 0:
         raise ValueError("x must be nonzero to calibrate the sigmoid width.")
+    if x < 0:
+        raise ValueError(f"x must be positive to calibrate the sigmoid width, got {x!r}.")
     if not 0.0 < abs(m_star) < 1.0:
         raise ValueError(f"|m_star| must be in (0, 1), got {m_star!r}.")
     if not math.isfinite(x):
