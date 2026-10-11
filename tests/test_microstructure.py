@@ -446,3 +446,11 @@ def test_amihud_rejects_non_finite_inputs(method, bad) -> None:
         amihud_illiquidity(bad_returns, dollar, method=method)
     with pytest.raises(ValueError, match="dollar_volume"):
         amihud_illiquidity(returns, bad_dollar, method=method)
+
+
+def test_vpin_rejects_bucket_count_above_limit() -> None:
+    prices = np.linspace(100.0, 101.0, 300)
+    v = np.ones(300)
+    with pytest.raises(ValueError, match="bucket"):
+        vpin(prices, v, bucket_volume=1e-9, n_window=5)
+

@@ -639,8 +639,14 @@ def vpin(
         raise ValueError("bucket_volume must be positive")
     if n_window < 1:
         raise ValueError("n_window must be >= 1")
-    buy_frac = bulk_volume_classification(p, v, sigma=sigma)
     total = float(v.sum())
+    n_buckets = total / bucket_volume
+    if n_buckets > 1_000_000:
+        raise ValueError(
+            f"bucket count {n_buckets:.3g} (total volume / bucket_volume) exceeds 1,000,000; "
+            "bucket_volume may be in the wrong units."
+        )
+    buy_frac = bulk_volume_classification(p, v, sigma=sigma)
     max_buckets = int(math.floor(total / bucket_volume)) + 2
     vb, vs, nb = _fill_buckets(v, buy_frac, float(bucket_volume), max_buckets)
     nb = min(nb, max_buckets)
