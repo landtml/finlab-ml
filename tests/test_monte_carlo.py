@@ -389,6 +389,39 @@ def test_bootstrap_uniqueness_mc_num_threads_does_not_change_result():
 
 
 # ---------------------------------------------------------------------------
+# Zero draws
+# ---------------------------------------------------------------------------
+
+
+def test_bootstrap_uniqueness_mc_zero_iter_raises_value_error():
+    with pytest.raises(ValueError, match="n_iter"):
+        bootstrap_uniqueness_mc(n_iter=0, seed=0)
+
+
+def test_trial_uniqueness_empty_std_draws_raises_value_error():
+    starts = np.array([0, 2], dtype=np.int64)
+    ends = np.array([1, 2], dtype=np.int64)
+    with pytest.raises(ValueError, match="std_draws"):
+        _trial_uniqueness(
+            3, starts, ends, np.array([], dtype=np.int64), np.array([], dtype=np.float64)
+        )
+
+
+def test_trial_uniqueness_empty_uniforms_raises_value_error():
+    starts = np.array([0, 2], dtype=np.int64)
+    ends = np.array([1, 2], dtype=np.int64)
+    std = np.array([0, 1], dtype=np.int64)
+    with pytest.raises(ValueError, match="uniforms"):
+        _trial_uniqueness(3, starts, ends, std, np.array([], dtype=np.float64))
+
+
+def test_sample_average_uniqueness_empty_draws_raises_value_error():
+    m = np.ones((5, 2))
+    with pytest.raises(ValueError, match="draws must not be empty"):
+        sample_average_uniqueness(m, np.array([], dtype=np.int64))
+
+
+# ---------------------------------------------------------------------------
 # Statistical and slow checks
 # ---------------------------------------------------------------------------
 
