@@ -319,3 +319,18 @@ def test_onc_max_k_must_be_integer():
     assert err and "'max_k' must be an integer" in out["error"]
     out, err = _call("onc_clusters", {"corr": corr, "max_k": 2})
     assert not err and out["n_clusters"] <= 2
+
+
+@pytest.mark.parametrize("params", [[], 0, "x", [1]])
+def test_params_that_are_not_an_object_are_invalid_params(params):
+    reply = srv.handle_message({"jsonrpc": "2.0", "id": 11, "method": "ping", "params": params})
+    assert reply["id"] == 11
+    assert reply["error"] == {"code": -32602, "message": "invalid params: expected an object"}
+
+
+@pytest.mark.parametrize("params", [{}, {"arguments": {}}, {"name": None}, {"name": 5}])
+def test_tools_call_without_string_name_says_missing_tool_name(params):
+    reply = srv.handle_message({"jsonrpc": "2.0", "id": 12, "method": "tools/call", "params": params})
+    assert reply["id"] == 12
+    assert reply["error"]["code"] == -32602
+    assert "missing tool name" in reply["error"]["message"]
