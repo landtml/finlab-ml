@@ -201,6 +201,10 @@ def limit_price(
     """
     if max_position < 1:
         raise ValueError(f"max_position must be >= 1, got {max_position!r}.")
+    if abs(target) > max_position:
+        raise ValueError(f"target {target!r} exceeds max_position {max_position!r}.")
+    if abs(current) > max_position:
+        raise ValueError(f"current {current!r} exceeds max_position {max_position!r}.")
     if target == current:
         return float("nan")
     if abs(target) == max_position:

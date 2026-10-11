@@ -78,6 +78,12 @@ def test_limit_price_reduction_prices_the_levels_crossed(reduce_args, fill_args)
     assert reduced == pytest.approx(limit_price(*fill_args, 10.0, 1.0, 10), rel=1e-14)
 
 
+@pytest.mark.parametrize(("target", "current", "max_position"), [(101, 0, 100), (-101, 0, 100), (2, 5, 3)])
+def test_limit_price_rejects_positions_beyond_max_position(target, current, max_position):
+    with pytest.raises(ValueError, match="max_position"):
+        limit_price(target, current, 105.0, 2.0, max_position)
+
+
 def test_two_class_probability_mapping():
     m = prob_bet_size([0.5, 0.9, 0.1, 1.0, 0.0])
     assert m[0] == 0.0
