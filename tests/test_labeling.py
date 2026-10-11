@@ -462,3 +462,24 @@ def test_get_daily_vol_rejects_non_finite_prices(bad):
     px[12] = bad
     with pytest.raises(ValueError, match="close"):
         get_daily_vol(pd.Series(px, index=idx))
+
+
+def test_get_daily_vol_allows_leading_nan_before_first_price():
+    # A column padded with NaN before listing: the NaN prefix is skipped, not rejected.
+    rng = np.random.default_rng(0)
+    idx = pd.bdate_range("2020-01-01", periods=300)
+    c = pd.Series(100 * np.exp(np.cumsum(rng.normal(0, 0.01, 300))), index=idx)
+    c.iloc[:20] = np.nan
+    vol = get_daily_vol(c)
+    assert np.all(np.isfinite(vol.iloc[-200:].to_numpy()))
+    assert np.isfinite(vol.iloc[-1])
+
+
+def test_get_daily_vol_interior_nan_after_listing_still_raises():
+    rng = np.random.default_rng(0)
+    idx = pd.bdate_range("2020-01-01", periods=300)
+    c = pd.Series(100 * np.exp(np.cumsum(rng.normal(0, 0.01, 300))), index=idx)
+    c.iloc[:20] = np.nan
+    c.iloc[150] = np.nan
+    with pytest.raises(ValueError, match="finite"):
+        get_daily_vol(c)
