@@ -57,6 +57,9 @@ class TrialRecord:
         Per-period returns: at least two finite values. Stored as a read-only
         1-D float64 copy, so later changes to the input do not reach the record.
 
+    Two records are equal when their names, their parameters (including each
+    value's type) and their returns are equal. Equal records have equal hashes.
+
     Raises
     ------
     ValueError
@@ -76,6 +79,21 @@ class TrialRecord:
     def params_dict(self) -> dict[str, ParamValue]:
         """Parameters as a new dict. Changing it does not change the record."""
         return dict(cast("tuple[tuple[str, ParamValue], ...]", self.params))
+
+    def _key(self) -> tuple[str, tuple[tuple[str, str, ParamValue], ...], bytes]:
+        # Python treats 1, 1.0 and True as equal, but they are different parameter
+        # values for a researcher, so the type name is part of the key.
+        pairs = cast("tuple[tuple[str, ParamValue], ...]", self.params)
+        params = tuple((key, type(value).__name__, value) for key, value in pairs)
+        return (self.name, params, _returns_key(self.returns))
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, TrialRecord):
+            return NotImplemented
+        return self._key() == other._key()
+
+    def __hash__(self) -> int:
+        return hash(self._key())
 
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-compatible dict with ``"format": 1``."""
@@ -103,11 +121,20 @@ class TrialRegistry:
 
     Trials are kept in registration order. :attr:`n_trials` is the N used by
     :meth:`pbo` and :meth:`deflated_sharpe`.
+
+    Two registries are equal when they hold equal records in the same order,
+    because the order sets the matrix columns and the tie-break in
+    :meth:`deflated_sharpe`. A registry is mutable, so it is not hashable.
     """
 
     def __init__(self) -> None:
         self._records: list[TrialRecord] = []
         self._names: set[str] = set()
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, TrialRegistry):
+            return NotImplemented
+        return self._records == other._records
 
     @property
     def n_trials(self) -> int:
@@ -272,6 +299,14 @@ class TrialRegistry:
     def from_json(cls, text: str) -> TrialRegistry:
         """Parse JSON text produced by :meth:`to_json`."""
         return cls.from_dict(json.loads(text))
+
+
+def _returns_key(returns: np.ndarray) -> bytes:
+    # Adding 0.0 turns -0.0 into 0.0, which equals it, so both must share a byte string.
+    # IEEE comparison makes NaN unequal to itself, which would make a record unequal to
+    # itself, so every NaN maps to one canonical NaN before the bytes are taken.
+    canonical = np.where(np.isnan(returns), np.nan, returns + 0.0)
+    return canonical.tobytes()
 
 
 def _check_name(name: Any) -> str:
