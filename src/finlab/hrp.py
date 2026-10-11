@@ -93,7 +93,7 @@ def quasi_diagonalize(link: np.ndarray) -> list[int]:
     This is the procedure of Snippet 16.2 without its pandas index tricks.
     Replacing each merged cluster by its two constituents, left first,
     preserves the order of the clustering, so the result is the same
-    sequence. Scope: the output is an ordering only. It only reorders assets, with no change of
+    sequence. Scope: the output is an ordering only. It reorders assets with no change of
     basis, and the covariance is re-indexed by it with no other change.
     """
     z = np.asarray(link)
