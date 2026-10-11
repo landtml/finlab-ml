@@ -127,7 +127,7 @@ the ranks follow from the g values. With N = 2, lambda = -log 2 for rank 1 and
 
 - Values x_A = (1, 2, 3, 4) and x_B = (1, 4, 2, 3). Logits in
   `itertools.combinations` order are (+, +, -, -, +, +) and PBO = 1/3.
-  `test_hand_computed_T8_N2_S4_logits_and_pbo`.
+  `test_hand_computed_logits_and_pbo`.
 - Values x_A = (1, 2, 3, 4) and x_B = (5, 6, 3, 4). Blocks 2 and 3 are equal, so the
   test set {2, 3} of split {0, 1} is an exact out-of-sample tie. B is selected, the
   tie counts for it, and the logit is +log 2. Split {2, 3} is an exact in-sample tie,
@@ -166,7 +166,7 @@ finite. `test_all_equal_returns_give_finite_pbo_and_logits`,
 | Pure-noise PBO mean, sd and percentiles at N = 60, 10, 2 (seeds 0 to 59) | Checked by test (`test_pbo_pure_noise_simulation_seeds_0_to_59`) |
 | One real edge gives PBO near 0 | Checked by test (`test_true_edge_gives_pbo_near_zero`); bound sketched only |
 | Fast kernel equals naive loop | Checked by test (`test_fast_cscv_matches_naive_loop`) |
-| Hand-computed logits and PBO at T = 8, N = 2, S = 4, and the out-of-sample tie rule | Checked by test (`test_hand_computed_T8_N2_S4_logits_and_pbo`, `test_hand_computed_out_of_sample_tie_counts_for_selected_trial`) |
+| Hand-computed logits and PBO at T = 8, N = 2, S = 4, and the out-of-sample tie rule | Checked by test (`test_hand_computed_logits_and_pbo`, `test_hand_computed_out_of_sample_tie_counts_for_selected_trial`) |
 | Closed forms (a) identical columns, (b) dominant column, (c) mirror construction | Checked by test (`test_closed_form_*`); (c) shown for N = 2, S = 4 only |
 | Zero variance gives Sharpe 0 or +/-inf (exact test); all-equal matrices give PBO = 0 | Checked by test (`test_zero_variance_sharpe_is_exactly_inf_not_rounding_dependent`, `test_all_equal_returns_give_finite_pbo_and_logits`) |
 | CSCV procedure and PBO definition | Claimed from book (AFML 11.6; Bailey et al. 2017) |

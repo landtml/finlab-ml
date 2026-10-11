@@ -51,3 +51,31 @@ def test_number_of_folds_matches_n_splits(n_splits):
     # Each observation is in exactly one test fold: the folds tile the timeline.
     all_test = np.concatenate([te for _, te in folds])
     assert np.array_equal(np.sort(all_test), np.arange(len(X)))
+
+
+def test_refuses_a_fold_with_no_training_observation_by_name():
+    # A long horizon must not leave a fold with 0 training rows; the empty set
+    # was yielded silently. CPCV refuses the same split by name.
+    idx = pd.RangeIndex(12)
+    X = pd.DataFrame({"f": np.zeros(12)}, index=idx)
+    t1 = make_t1(idx, 6)
+    cv = PurgedKFold(n_splits=2, t1=t1)
+    with pytest.raises(ValueError, match="training"):
+        list(cv.split(X))
+
+
+def test_t1_ending_before_its_start_is_refused_by_both_splitters():
+    from finlab.cv import CombinatorialPurgedCV
+
+    X = _frame(60)
+    t1 = make_t1(X.index, 3)
+    bad = t1.copy()
+    bad.iloc[20] = X.index[15]
+    for cv in (PurgedKFold(n_splits=4, t1=bad), CombinatorialPurgedCV(n_groups=4, n_test_groups=2, t1=bad)):
+        with pytest.raises(ValueError, match="precedes the event start"):
+            list(cv.split(X))
+    # An end equal to the start is a one-bar label and stays valid.
+    ok = t1.copy()
+    ok.iloc[20] = X.index[20]
+    assert len(list(PurgedKFold(n_splits=4, t1=ok).split(X))) == 4
+    assert len(list(CombinatorialPurgedCV(n_groups=4, n_test_groups=2, t1=ok).split(X))) > 0

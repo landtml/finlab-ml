@@ -93,14 +93,14 @@ def test_nan_first_candidate_loses_to_finite_later_candidate():
     assert res.best_score == pytest.approx(1.0)
 
 
-def test_all_nan_grid_returns_first_candidate_without_raising():
+def test_all_nan_grid_raises_instead_of_returning_first_candidate():
+    # An all-NaN grid used to return the first grid point as best_params with a NaN score. There is
+    # no highest-scoring candidate in that case, so the search now raises ValueError.
     X, y = _data()
     cv = PurgedKFold(n_splits=3)
-    res = grid_search(Threshold, {"threshold": [100.0, 200.0]}, X, y, cv,
-                      scoring=_nan_when_all_zero)
-    assert res.results["mean_score"].isna().all()
-    assert res.best_params == {"threshold": 100.0}
-    assert np.isnan(res.best_score)
+    with pytest.raises(ValueError, match="finite"):
+        grid_search(Threshold, {"threshold": [100.0, 200.0]}, X, y, cv,
+                    scoring=_nan_when_all_zero)
 
 
 def test_all_finite_grid_ranking_unchanged():
@@ -222,3 +222,254 @@ def test_y_none_raises_value_error_naming_y(call):
             grid_search(Threshold, {"threshold": [0.0]}, X, None, PurgedKFold(3))
         else:
             cv_score(Threshold, {"threshold": 0.0}, X, None, PurgedKFold(3))
+
+
+def test_grid_search_rejects_parameter_named_like_a_result_column() -> None:
+    # A parameter called mean_score was overwritten by the score in the table.
+    from finlab.tuning import grid_search
+
+    class C:
+        def __init__(self, mean_score=0):
+            self.m = mean_score
+
+        def fit(self, X, y, sample_weight=None):
+            return self
+
+        def predict(self, X):
+            return np.zeros(len(X), int)
+
+    X = np.arange(60.0).reshape(30, 2)
+    y = np.array([0] * 20 + [1] * 10)
+    folds = [(np.arange(10, 30), np.arange(0, 10)), (np.arange(0, 20), np.arange(20, 30))]
+    with pytest.raises(ValueError, match="mean_score"):
+        grid_search(lambda mean_score: C(mean_score), {"mean_score": [5]}, X, y, folds)
+
+
+def test_grid_search_rejects_y_with_mismatched_index() -> None:
+    # A reversed y was used by position, so the selected threshold changed.
+    x, labels = _data()
+    X = pd.DataFrame(x, index=pd.date_range("2020-01-01", periods=len(x)))
+    y = pd.Series(labels, index=X.index)
+    with pytest.raises(ValueError, match="index"):
+        grid_search(Threshold, {"threshold": [0.0, 0.5]}, X, y.iloc[::-1], PurgedKFold(n_splits=5))
+
+
+def test_grid_search_rejects_sample_weight_with_mismatched_index() -> None:
+    x, labels = _data()
+    X = pd.DataFrame(x, index=pd.date_range("2020-01-01", periods=len(x)))
+    y = pd.Series(labels, index=X.index)
+    w = pd.Series(np.ones(len(x)), index=X.index[::-1])
+    with pytest.raises(ValueError, match="index"):
+        grid_search(Threshold, {"threshold": [0.0, 0.5]}, X, y, PurgedKFold(n_splits=5), sample_weight=w)
+
+
+def test_cv_score_accepts_unlabelled_y_by_position() -> None:
+    # A pandas y whose index differs from a labelled X was refused, even when y has no labels (a
+    # default RangeIndex). The sibling rule in ensemble matches such an index by position, so tuning
+    # does too. A reversed or otherwise labelled index is still refused.
+    class Majority:
+        def fit(self, X, y, sample_weight=None):
+            self.v = np.bincount(np.asarray(y).ravel()).argmax()
+            return self
+
+        def predict(self, X):
+            return np.full(len(X), self.v)
+
+    from finlab.tuning import cv_score
+
+    Xd = pd.DataFrame(np.arange(12.0).reshape(6, 2), index=pd.date_range("2020", periods=6))
+    folds = [(np.arange(0, 3), np.arange(3, 6))]
+    got = cv_score(Majority, {}, Xd, pd.Series([0, 1, 1, 0, 1, 1]), folds)
+    assert got[0] == pytest.approx(2 / 3)
+    with pytest.raises(ValueError, match="index"):
+        cv_score(Majority, {}, Xd, pd.Series([0, 1, 1, 0, 1, 1], index=Xd.index[::-1]), folds)
+
+
+def test_cv_score_one_column_dataframe_label_matches_series() -> None:
+    # A (n, 1) label stayed 2-D, so the accuracy compared every row's label with every prediction and
+    # a perfect model scored 26/36. A one-column label is a 1-D label.
+    from finlab.tuning import cv_score
+
+    class Echo:
+        def fit(self, X, y, sample_weight=None):
+            return self
+
+        def predict(self, X):
+            return (np.asarray(X)[:, 0] > 0).astype(int)
+
+    X = pd.DataFrame(np.array([[-1, 0], [1, 0], [-1, 0], [-1, 0], [-1, 0], [-1, 0]], float))
+    y = pd.Series([0, 1, 0, 0, 0, 0])
+    folds = [(np.array([], int), np.arange(6))]
+    assert cv_score(Echo, {}, X, y, folds) == pytest.approx((1.0, 0.0))
+    assert cv_score(Echo, {}, X, pd.DataFrame({"a": y}), folds) == pytest.approx((1.0, 0.0))
+
+
+def test_unlabelled_y_does_not_match_a_shifted_integer_index_by_position() -> None:
+    # Any default RangeIndex y used to be exempt, so 0..59 was matched by position to X's labels
+    # 5..64. An integer X index names the rows, so the exemption does not apply to it. A date-labelled
+    # X still matches an unlabelled y by position.
+    class Majority:
+        def fit(self, X, y, sample_weight=None):
+            self.v = np.bincount(np.asarray(y).ravel()).argmax()
+            return self
+
+        def predict(self, X):
+            return np.full(len(X), self.v)
+
+    from finlab.tuning import cv_score
+
+    X = pd.DataFrame(np.arange(120.0).reshape(60, 2), index=pd.RangeIndex(5, 65))
+    y = pd.Series(np.repeat([0, 1], 30), index=pd.RangeIndex(0, 60))
+    folds = [(np.arange(0, 40), np.arange(40, 60))]
+    with pytest.raises(ValueError, match="y index does not match"):
+        cv_score(Majority, {}, X, y, folds)
+
+
+def test_randomized_search_refuses_an_empty_value_list() -> None:
+    # An empty list reached rng.integers(0) and failed with "high <= 0".
+    from finlab.tuning import randomized_search
+
+    class Thr:
+        def __init__(self, t=0.5):
+            self.t = t
+
+        def fit(self, X, y, sample_weight=None):
+            self.classes_ = np.unique(y)
+            return self
+
+        def predict(self, X):
+            return np.zeros(len(X), dtype=int)
+
+    X = np.random.default_rng(0).normal(size=(30, 2))
+    y = np.zeros(30, dtype=int)
+    with pytest.raises(ValueError, match="must not be empty"):
+        randomized_search(Thr, {"t": []}, 2, X, y, [(np.arange(20), np.arange(20, 30))])
+
+
+def test_tuning_refuses_a_two_column_label_by_name() -> None:
+    # Only a one-column y was squeezed, so a two-column y gave a numpy broadcast error. It is refused
+    # by name, as the one-column and 0-d cases are.
+    class Majority:
+        def fit(self, X, y, sample_weight=None):
+            self.v = 0
+            return self
+
+        def predict(self, X):
+            return np.zeros(len(X), dtype=int)
+
+    from finlab.tuning import cv_score
+
+    X = np.random.default_rng(0).normal(size=(20, 2))
+    y2 = np.c_[np.arange(20) % 2, np.arange(20) % 2]
+    folds = [(np.arange(0, 10), np.arange(10, 20))]
+    with pytest.raises(ValueError, match="one column"):
+        cv_score(Majority, {}, X, y2, folds)
+
+
+def test_unlabelled_int64_index_matches_date_x_by_position_as_rangeindex() -> None:
+    # An Int64 Index 0..n-1 was refused against a date-indexed X, while a RangeIndex 0..n-1 was
+    # matched by position. The two are the same unlabelled index.
+    from finlab.tuning import _matches_by_position
+
+    dates = pd.date_range("2021-01-01", periods=60)
+    assert _matches_by_position(pd.RangeIndex(60), dates, 60)
+    assert _matches_by_position(pd.Index(np.arange(60), dtype="int64"), dates, 60)
+    # An integer X index still names its rows, so a shifted 0..n-1 index is not matched.
+    assert not _matches_by_position(pd.Index(np.arange(60), dtype="int64"), pd.RangeIndex(5, 65), 60)
+
+
+class _ColumnThreshold(Threshold):
+    def predict(self, X):
+        return super().predict(X).reshape(-1, 1)
+
+
+class _WideThreshold(Threshold):
+    def predict(self, X):
+        return np.stack([super().predict(X)] * 2, axis=1)
+
+
+def test_cv_score_squeezes_a_column_vector_prediction():
+    X, y = _data()
+    cv = list(PurgedKFold(n_splits=3).split(X))
+    assert cv_score(_ColumnThreshold, {"threshold": 0.5}, X, y, cv) == cv_score(
+        Threshold, {"threshold": 0.5}, X, y, cv
+    )
+    with pytest.raises(ValueError, match=r"prediction.*shape \(\d+, 2\)"):
+        cv_score(_WideThreshold, {"threshold": 0.5}, X, y, cv)
+
+
+def test_nan_sample_weight_is_refused_by_name():
+    X, y = _data()
+    w = np.ones(len(y))
+    w[3] = np.nan
+    cv = PurgedKFold(n_splits=3)
+    with pytest.raises(ValueError, match="NaN"):
+        grid_search(Threshold, {"threshold": [0.0, 0.5]}, X, y, cv, sample_weight=w)
+    with pytest.raises(ValueError, match="NaN"):
+        cv_score(Threshold, {"threshold": 0.5}, X, y, cv, sample_weight=w)
+
+
+def test_grid_search_accepts_sample_weight_over_the_same_instants_in_another_zone() -> None:
+    x, labels = _data()
+    utc = pd.date_range("2020-01-01", periods=len(x), tz="UTC")
+    X = pd.DataFrame(x, index=utc)
+    y = pd.Series(labels, index=utc)
+    cv = PurgedKFold(n_splits=5)
+    w = np.ones(len(x))
+    res = grid_search(Threshold, {"threshold": [0.0, 0.5]}, X, y, cv,
+                      sample_weight=pd.Series(w, index=utc.tz_convert("Asia/Taipei")))
+    assert res.best_params == {"threshold": 0.5}
+    shifted = pd.Series(w, index=(utc + pd.Timedelta(days=1)).tz_convert("Asia/Taipei"))
+    with pytest.raises(ValueError, match="sample_weight index"):
+        grid_search(Threshold, {"threshold": [0.0, 0.5]}, X, y, cv, sample_weight=shifted)
+
+
+def _per_class_scorer(y_true, y_pred, sample_weight=None):
+    # One value per class, as f1_score(average=None) returns.
+    return np.array([0.25, 0.75])
+
+
+def test_grid_search_refuses_non_scalar_scorer_output():
+    X, y = _data()
+    with pytest.raises(ValueError, match="one number per fold"):
+        grid_search(Threshold, {"threshold": [0.0, 0.5]}, X, y, PurgedKFold(3),
+                    scoring=_per_class_scorer)
+
+
+def test_cv_score_accepts_numpy_scalar_scorer_output():
+    X, y = _data()
+
+    def half(y_true, y_pred, sample_weight=None):
+        return np.float32(0.5)
+
+    mean, std = cv_score(Threshold, {"threshold": 0.0}, X, y, PurgedKFold(3), scoring=half)
+    assert mean == pytest.approx(0.5)
+    assert std == pytest.approx(0.0)
+
+
+class _FitWithoutSampleWeight:
+    """Base whose fit takes no sample_weight keyword, as KNeighborsClassifier does."""
+
+    def __init__(self, threshold=0.0):
+        self.threshold = threshold
+
+    def fit(self, X, y):
+        return self
+
+    def predict(self, X):
+        return (X[:, 0] > self.threshold).astype(int)
+
+
+def test_grid_search_fits_base_without_sample_weight_keyword_when_no_weights():
+    X, y = _data()
+    res = grid_search(_FitWithoutSampleWeight, {"threshold": [0.0, 0.5]}, X, y, PurgedKFold(3))
+    assert res.best_params == {"threshold": 0.5}
+
+
+def test_cv_score_fits_kneighbors_base_when_no_weights():
+    pytest.importorskip("sklearn")
+    from sklearn.neighbors import KNeighborsClassifier
+
+    X, y = _data()
+    mean, _ = cv_score(lambda: KNeighborsClassifier(n_neighbors=3), {}, X, y, PurgedKFold(3))
+    assert 0.0 <= mean <= 1.0

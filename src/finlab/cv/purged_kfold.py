@@ -69,7 +69,8 @@ class PurgedKFold:
     def _iter(self, n: int, end_pos: npt.NDArray[np.int_]):
         labels = _make_group_labels(n, self.n_splits)
         start_pos = np.arange(n)
-        embargo = int(np.ceil(self.embargo_pct * n)) if self.embargo_pct else 0
+        # round() drops float noise such as 0.07 * 100 = 7.000000000000001, which ceil took to 8.
+        embargo = int(np.ceil(round(self.embargo_pct * n, 9))) if self.embargo_pct else 0
         all_idx = np.arange(n)
         for k in range(self.n_splits):
             test_mask = labels == k
@@ -77,4 +78,11 @@ class PurgedKFold:
             blocks = [(int(test_pos[0]), int(test_pos[-1]))]
             train_mask = _train_mask(start_pos, end_pos, blocks, embargo, "label_end")
             train_mask &= ~test_mask
+            if not train_mask.any():
+                # An empty training set reached the model silently. CPCV refuses it by name too.
+                raise ValueError(
+                    f"fold {k} retains 0 training observations after purge and embargo; "
+                    f"n_samples={n}, n_splits={self.n_splits}. Lengthen the sample, shorten the "
+                    "label horizon, reduce embargo_pct or n_splits."
+                )
             yield all_idx[train_mask], test_pos

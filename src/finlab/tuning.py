@@ -32,13 +32,16 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 
+from ._checks import _same_index, tz_mismatch_message
+from .importance import _prediction_vector
+
 __all__ = ["cv_score", "grid_search", "randomized_search", "SearchResult"]
 
 Scorer = Callable[[npt.NDArray, npt.NDArray, "npt.NDArray | None"], float]
 
 
 def _accuracy(y_true: npt.NDArray, y_pred: npt.NDArray, sample_weight=None) -> float:
-    hit = (np.asarray(y_true) == np.asarray(y_pred)).astype(float)
+    hit = (np.asarray(y_true) == _prediction_vector(y_pred, len(y_true))).astype(float)
     if sample_weight is None:
         return float(hit.mean())
     w = np.asarray(sample_weight, dtype=float)
@@ -64,9 +67,60 @@ class SearchResult:
     results: pd.DataFrame
 
 
+def _unlabelled(index: pd.Index, n: int) -> bool:
+    """True for an unlabelled 0..n-1 index, which carries no labels to compare.
+
+    The test is on the values and the integer dtype, not the class: an Int64 Index 0..n-1 is the same
+    unlabelled index as a RangeIndex.
+    """
+    return pd.api.types.is_integer_dtype(index) and index.equals(pd.RangeIndex(n))
+
+
+def _matches_by_position(index: pd.Index, x_index: pd.Index, n: int) -> bool:
+    """True when an unlabelled ``index`` may be matched to X by position.
+
+    That holds for a default RangeIndex on y or weights against a non-integer X index, such as dates
+    An integer X index names its rows, so an unlabelled 0..n-1 index must match it exactly:
+    a shifted RangeIndex X is refused.
+    """
+    return _unlabelled(index, n) and not pd.api.types.is_integer_dtype(x_index)
+
+
 def _as_arrays(X, y, sample_weight):
     Xa = X.to_numpy() if isinstance(X, (pd.DataFrame, pd.Series)) else np.asarray(X)
     ya = y.to_numpy() if isinstance(y, (pd.DataFrame, pd.Series)) else np.asarray(y)
+    if ya.ndim == 2 and ya.shape[1] == 1:
+        # A one-column label is a 1-D label. Kept 2-D, every row's label was compared with
+        # every prediction by broadcasting, which changed the selected parameters.
+        ya = ya[:, 0]
+    if ya.ndim == 2:
+        # A multi-column label gave a numpy broadcast error; it is refused by name.
+        raise ValueError(f"y must be one column (1-D labels), got shape {ya.shape}.")
+    # Labels and weights are used by position in the CV loop, so a pandas y or weight
+    # whose index differs from X.index would silently change the selected parameters.
+    if isinstance(X, (pd.DataFrame, pd.Series)):
+        # A default 0..n-1 RangeIndex carries no labels, so it is matched by position when X is labelled
+        # by dates or other non-integer labels. Integer labels, including a shifted RangeIndex,
+        # must match X.index. ensemble refuses an unlabelled t1 against a labelled X.
+        n_rows = len(Xa)
+        if (
+            isinstance(y, (pd.DataFrame, pd.Series))
+            and not _same_index(y.index, X.index)
+            and not _matches_by_position(y.index, X.index, n_rows)
+        ):
+            raise ValueError(
+                tz_mismatch_message(y.index, X.index, "y", "X.index")
+                or "y index does not match X.index; align y to X before calling."
+            )
+        if (
+            isinstance(sample_weight, (pd.DataFrame, pd.Series))
+            and not _same_index(sample_weight.index, X.index)
+            and not _matches_by_position(sample_weight.index, X.index, n_rows)
+        ):
+            raise ValueError(
+                tz_mismatch_message(sample_weight.index, X.index, "sample_weight", "X.index")
+                or "sample_weight index does not match X.index; align sample_weight to X before calling."
+            )
     # None or a scalar has no rows to compare, so reject it before the shape check.
     if ya.ndim == 0:
         raise ValueError(f"y must be array-like with one label per row, got {y!r}.")
@@ -83,6 +137,9 @@ def _as_arrays(X, y, sample_weight):
                 f"sample_weight has shape {sample_weight.shape} but X has {Xa.shape[0]} rows; "
                 f"expected length {Xa.shape[0]}."
             )
+        if np.isnan(sample_weight).any():
+            # A NaN weight on a test row made every score NaN, and the search error did not say why.
+            raise ValueError("sample_weight contains NaN; drop or fill those rows before calling.")
     return Xa, ya, sample_weight
 
 
@@ -96,6 +153,28 @@ def _materialize_splits(cv, X) -> list[tuple[npt.NDArray, npt.NDArray]]:
         split_input = X if isinstance(X, (pd.DataFrame, pd.Series)) else np.asarray(X)
         return list(cv.split(split_input))
     return list(cv)
+
+
+def _fold_score(value: Any, fold: int) -> float:
+    """One fold's score as a float. The scorer must return one number per fold.
+
+    NaN is allowed: the built-in accuracy gives NaN for a zero-weight test fold.
+    """
+    if isinstance(value, (str, bytes)):
+        raise ValueError(f"the scorer must return one number per fold; fold {fold} returned {type(value).__name__}")
+    try:
+        arr = np.asarray(value, dtype=float)
+    except (TypeError, ValueError):
+        raise ValueError(
+            f"the scorer must return one number per fold; fold {fold} returned {type(value).__name__}"
+        ) from None
+    if arr.ndim != 0:
+        raise ValueError(
+            f"the scorer must return one number per fold; fold {fold} returned an array of shape {arr.shape}"
+        )
+    if np.isinf(arr):
+        raise ValueError(f"the scorer must return one number per fold; fold {fold} returned {float(arr)}")
+    return float(arr)
 
 
 def cv_score(
@@ -130,7 +209,11 @@ def cv_score(
     for fold, (train_idx, test_idx) in enumerate(_materialize_splits(cv, X)):
         model = model_factory(**params)
         w_tr = None if w is None else w[train_idx]
-        model.fit(Xa[train_idx], ya[train_idx], sample_weight=w_tr)
+        if w_tr is None:
+            # Some bases (KNeighborsClassifier) take no sample_weight keyword at all.
+            model.fit(Xa[train_idx], ya[train_idx])
+        else:
+            model.fit(Xa[train_idx], ya[train_idx], sample_weight=w_tr)
         pred = model.predict(Xa[test_idx])
         w_te = None if w is None else w[test_idx]
         if w_te is not None and not np.any(w_te):
@@ -139,7 +222,7 @@ def cv_score(
                 UserWarning,
                 stacklevel=2,
             )
-        scores.append(score_fn(ya[test_idx], pred, w_te))
+        scores.append(_fold_score(score_fn(ya[test_idx], pred, w_te), fold))
     arr = np.asarray(scores, dtype=float)
     if arr.size == 0:
         raise ValueError("the cross-validator yielded no splits.")
@@ -174,12 +257,19 @@ def _search(
     rows = []
     best: tuple[float, dict[str, Any]] | None = None
     for params in candidates:
+        clash = sorted({"mean_score", "std_score"} & set(params))
+        if clash:
+            # The result columns would overwrite this parameter's value in the table.
+            raise ValueError(f"parameter name {clash[0]!r} collides with a result column; rename it.")
         mean, std = cv_score(model_factory, params, X, y, splits, sample_weight, scoring)
         rows.append({**params, "mean_score": mean, "std_score": std})
         if best is None or _improves(mean, best[0]):
             best = (mean, params)
     if best is None:
         raise ValueError("the parameter space is empty.")
+    if np.isnan(best[0]):
+        # Every candidate scored NaN, so there is no "highest mean-scoring" candidate to return.
+        raise ValueError("no candidate has a finite mean score; check the scoring and the folds.")
     frame = pd.DataFrame(rows)
     return SearchResult(best_params=dict(best[1]), best_score=best[0], results=frame)
 
@@ -233,6 +323,10 @@ def randomized_search(
     if n_iter < 1:
         raise ValueError(f"n_iter must be >= 1, got {n_iter!r}.")
     _check_value_lists(param_distributions)
+    for key, values in param_distributions.items():
+        if len(values) == 0:
+            # rng.integers(0) would fail with "high <= 0", so an empty list is refused here.
+            raise ValueError(f"param_distributions[{key!r}] must not be empty.")
     rng = np.random.default_rng(seed)
     keys = list(param_distributions)
 

@@ -33,6 +33,7 @@ Design notes
 
 from __future__ import annotations
 
+import datetime
 import itertools
 import math
 import warnings
@@ -43,7 +44,7 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 
-from .._checks import _require_type
+from .._checks import _require_type, as_datetime_index, index_tz
 
 # No scikit-learn dependency: the splitter duck-types the sklearn cross-validator
 # protocol (``split``, ``get_n_splits``), so sklearn helpers still accept it.
@@ -75,14 +76,17 @@ def make_t1(index: pd.Index, horizon: int) -> pd.Series:
         ``index``-aligned series whose values are the event-end timestamps.
     """
     _require_type(index, "index", pd.Index)
-    if horizon < 1:
-        raise ValueError(f"horizon must be >= 1, got {horizon!r}.")
+    # A fractional horizon was truncated when used as an index offset. Require an integer.
+    if not math.isfinite(float(horizon)) or int(horizon) != horizon or horizon < 1:
+        raise ValueError(f"horizon must be an integer >= 1, got {horizon!r}.")
     if not index.is_monotonic_increasing:
         raise ValueError("index must be sorted ascending.")
     if not index.is_unique:
         raise ValueError("index must be unique.")
     n = len(index)
-    end_pos = np.minimum(np.arange(n) + horizon, n - 1)
+    # Clamp the horizon before adding it: a huge horizon would overflow int64 and wrap negative.
+    # Any horizon >= n already maps every observation to the last bar, so the result is unchanged.
+    end_pos = np.minimum(np.arange(n) + min(horizon, n), n - 1)
     return pd.Series(index[end_pos], index=index, name="t1")
 
 
@@ -136,6 +140,12 @@ def _end_positions(index: pd.Index, t1: pd.Series | None) -> npt.NDArray[np.int_
         one being split (silent misalignment is a leakage hazard, so it is
         rejected outright).
     """
+    if t1 is not None and pd.api.types.is_integer_dtype(index) and not pd.api.types.is_integer_dtype(t1.index):
+        # A date-labelled t1 cannot be compared with the integer positions of a NumPy X.
+        raise ValueError(
+            "t1 is indexed by dates or other labels, but X has no index to align it with; "
+            "pass a DataFrame or Series X with the same index as t1."
+        )
     n = len(index)
     if t1 is None:
         # Warn only: the default (no purging, one-bar events) is unchanged.
@@ -161,6 +171,35 @@ def _end_positions(index: pd.Index, t1: pd.Series | None) -> npt.NDArray[np.int_
     if t1.index.has_duplicates:
         raise ValueError("t1.index must be unique for purge/embargo.")
 
+    positional = pd.api.types.is_integer_dtype(t1) and pd.api.types.is_integer_dtype(t1.index)
+    if not positional and not (_is_datetime_like(t1) and _is_datetime_like(t1.index)):
+        # Strings and mixed integer/timestamp t1 reached the comparisons below as a raw pandas
+        # TypeError. Integer t1 on an integer index is the supported positional mode.
+        raise ValueError(
+            "t1 values and index must be timestamps (datetime64); got values of dtype "
+            f"{t1.dtype} and an index of dtype {t1.index.dtype}. Convert with pd.to_datetime first."
+        )
+
+    # Check the index kinds before any comparison below; a mismatch there is a raw pandas TypeError.
+    x_is_int = pd.api.types.is_integer_dtype(index)
+    if not x_is_int and not _is_datetime_like(index):
+        raise ValueError(
+            "X.index must hold timestamps (pass a DatetimeIndex, for example via pd.to_datetime "
+            f"or read_csv parse_dates); got an index of dtype {index.dtype}."
+        )
+    if positional != x_is_int:
+        raise ValueError(
+            "X.index and t1 must be indexed on the same timestamps as X; got X.index dtype "
+            f"{index.dtype} and t1.index dtype {t1.index.dtype}. Integer-positional t1 needs an "
+            "integer X.index."
+        )
+    if not positional and (index_tz(index) is None) != (index_tz(t1.index) is None):
+        raise ValueError(
+            "X.index and t1 must be indexed on the same timestamps as X; got X.index tz="
+            f"{index_tz(index)!r} and t1.index tz={index_tz(t1.index)!r}. Both must be timezone-aware "
+            "or both naive; align them with tz_localize()/tz_convert() before splitting."
+        )
+
     # A t1 built for a *denser* sample is the dangerous case. Purging happens in
     # positional space, so if X was resampled out of the grid t1 was built on,
     # every label horizon silently shrinks (a 21-bar label over a halved index
@@ -183,25 +222,46 @@ def _end_positions(index: pd.Index, t1: pd.Series | None) -> npt.NDArray[np.int_
 
     aligned = t1.reindex(index)
     if aligned.isna().any():
+        if index.isin(t1.index).all():
+            # Every label is present, so the NaT sits in the values (get_events leaves it for unresolved events).
+            raise ValueError(
+                "t1 contains NaT, meaning unresolved event ends; drop those rows from t1 and X "
+                "before splitting, as get_bins does."
+            )
         raise ValueError(
             "t1 must provide an event-end time for every observation in X.index; "
             "found unaligned/missing entries after reindexing onto X.index."
         )
+    # Object values (of Timestamps or datetimes, in one zone or several) become a DatetimeIndex so their
+    # zone is visible; mixed aware zones are compared on UTC, which names the same instants.
+    aligned = pd.Series(as_datetime_index(pd.Index(aligned)), index=index)
     # searchsorted raises an opaque "Cannot compare tz-naive and tz-aware" from
     # deep inside pandas; a mismatch here is a data-prep error worth naming.
-    index_tz = getattr(index, "tz", None)
-    t1_tz = getattr(getattr(aligned, "dt", None), "tz", None)
-    if (index_tz is None) != (t1_tz is None):
+    x_tz, t1_tz = index_tz(index), index_tz(pd.Index(aligned))
+    if (x_tz is None) != (t1_tz is None):
         raise ValueError(
             f"X.index and t1 must both be timezone-aware or both naive; got "
-            f"X.index tz={index_tz!r} and t1 tz={t1_tz!r}. Align them with "
+            f"X.index tz={x_tz!r} and t1 tz={t1_tz!r}. Align them with "
             f"tz_localize()/tz_convert() before splitting."
         )
+
+    # The clamp below would turn an end-before-start label into a one-bar label and skip its purge.
+    early = aligned.values < index.values
+    if early.any():
+        shown = ", ".join(f"{a} -> {b}" for a, b in zip(index[early][:3], aligned[early].to_numpy()[:3]))
+        raise ValueError(f"t1 precedes the event start for {int(early.sum())} rows; first: {shown}.")
 
     pos = index.searchsorted(aligned.to_numpy(), side="left")
     end_pos = np.clip(pos, 0, n - 1).astype(np.int64)
     # An event end cannot precede its own start position.
     return np.maximum(end_pos, np.arange(n))
+
+
+def _is_datetime_like(obj: pd.Series | pd.Index) -> bool:
+    if pd.api.types.is_datetime64_any_dtype(obj):
+        return True
+    # Object values of datetime.datetime (pd.Timestamp included) are timestamps; strings and dates are not.
+    return obj.dtype == object and len(obj) > 0 and all(isinstance(v, datetime.datetime) for v in obj)
 
 
 def _contiguous_blocks(group_labels: npt.NDArray[np.int_], groups: tuple[int, ...]
@@ -419,7 +479,7 @@ class CombinatorialPurgedCV(_Base):
             )
 
     def _embargo_size(self, n_samples: int) -> int:
-        return math.ceil(self.embargo_pct * n_samples) if self.embargo_pct else 0
+        return math.ceil(round(self.embargo_pct * n_samples, 9)) if self.embargo_pct else 0
 
     # -- the splits -------------------------------------------------------- #
     def split(

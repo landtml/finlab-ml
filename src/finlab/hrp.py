@@ -29,6 +29,7 @@ import pandas as pd
 import scipy.cluster.hierarchy as sch
 from scipy.spatial.distance import squareform
 
+from ._checks import _require_real_values
 from ._jit import jit
 
 __all__ = ["correlation_distance", "quasi_diagonalize", "hrp_weights"]
@@ -61,12 +62,25 @@ def correlation_distance(corr: MatrixLike) -> MatrixLike:
     this repository. The correlations are clipped to ``[-1, 1]`` first, so
     floating-point noise in an estimated matrix does not produce NaN.
 
-    Scope: square input only; no symmetry check is performed beyond the
-    shape test.
+    Scope: square input with finite entries in [-1, 1] (up to float noise).
+    Symmetry is checked by :func:`hrp_weights`, not here.
     """
-    arr = np.asarray(corr, dtype=np.float64)
+    raw = np.asarray(corr)
+    _require_real_values("corr", raw)
+    arr = np.asarray(raw, dtype=np.float64)
     if arr.ndim != 2 or arr.shape[0] != arr.shape[1]:
         raise ValueError(f"corr must be square, got shape {arr.shape}")
+    # The distance is defined for a correlation matrix, whose diagonal is 1. A non-unit diagonal
+    # gave nonzero self-distances in the public output (hrp_weights zeroed them, so it hid this).
+    # The tolerance is 1e-6, as in hrp_weights, so a float32-stored corr is accepted.
+    if np.all(np.isfinite(arr)) and not np.allclose(np.diag(arr), 1.0, rtol=0.0, atol=1e-6):
+        raise ValueError("corr must have a unit diagonal")
+    # +inf must not map to distance 0, -2 must not be clipped silently, and NaN must not pass through.
+    # The clip now only absorbs float noise just outside [-1, 1].
+    if not np.all(np.isfinite(arr)):
+        raise ValueError("corr must contain only finite values")
+    if np.any(np.abs(arr) > 1.0 + 1e-6):
+        raise ValueError("corr entries must lie in [-1, 1]")
     rho = np.clip(arr, -1.0, 1.0)
     dist = np.sqrt(0.5 * (1.0 - rho))
     if isinstance(corr, pd.DataFrame):
@@ -173,7 +187,8 @@ def _recursive_bisection(cov: np.ndarray) -> np.ndarray:
         v2 = _cluster_variance(cov, m, e)
         tot = v1 + v2
         if tot > 0.0:
-            alpha = 1.0 - v1 / tot  # split factor in [0, 1]
+            # A tiny negative eigenvalue can make v1 negative and push alpha past 1.
+            alpha = min(max(1.0 - v1 / tot, 0.0), 1.0)  # split factor in [0, 1]
         else:
             alpha = 0.5
         for i in range(s, m):
@@ -238,10 +253,11 @@ def hrp_weights(
         raise ValueError(f"method must be one of {_ALLOWED_METHODS}, got {method!r}")
     if isinstance(cov, pd.DataFrame):
         labels = cov.index
-        C = np.asarray(cov, dtype=np.float64)
     else:
         labels = None
-        C = np.asarray(cov, dtype=np.float64)
+    raw_cov = np.asarray(cov)
+    _require_real_values("cov", raw_cov)
+    C = np.asarray(raw_cov, dtype=np.float64)
     if C.ndim != 2 or C.shape[0] != C.shape[1]:
         raise ValueError(f"cov must be square, got shape {C.shape}")
     n = C.shape[0]
@@ -252,6 +268,19 @@ def hrp_weights(
         raise ValueError("cov contains non-finite values")
     if np.any(diag <= 0.0):
         raise ValueError("cov must have a strictly positive diagonal")
+    # A non-PSD matrix gives negative weights, which break the long-only contract. The tolerance
+    # admits float noise on the zero eigenvalues of a singular covariance, and the rounding of a
+    # covariance stored in float32 (about 6e-8 relative); 1e-6 covers that and still refuses
+    # a real negative eigenvalue or asymmetry. PSD is tested on the correlation-normalized
+    # matrix, so the answer does not depend on the units of the assets.
+    scale = float(np.max(np.abs(C)))
+    if not np.allclose(C, C.T, rtol=1e-6, atol=1e-12 * scale):
+        raise ValueError("cov must be symmetric")
+    sd_c = np.sqrt(diag)
+    Z = 0.5 * (C + C.T) / np.outer(sd_c, sd_c)
+    lam_min = float(np.linalg.eigvalsh(0.5 * (Z + Z.T))[0])
+    if lam_min < -1e-6:
+        raise ValueError(f"cov must be positive semidefinite; its smallest eigenvalue is {lam_min!r}.")
 
     # The shape check runs for every N, so a single asset cannot hide a mismatched corr.
     if corr is None:
@@ -259,11 +288,29 @@ def hrp_weights(
         R = C / np.outer(sd, sd)
     else:
         if isinstance(corr, pd.DataFrame) and labels is not None:
+            # A label missing from corr gave a KeyError from pandas; name the labels instead.
+            missing = [lab for lab in labels if lab not in corr.index or lab not in corr.columns]
+            if missing:
+                raise ValueError(f"corr is missing labels of cov: {missing[:5]!r}.")
             R = np.asarray(corr.loc[labels, labels], dtype=np.float64)
         else:
-            R = np.asarray(corr, dtype=np.float64)
+            raw_corr = np.asarray(corr)
+            _require_real_values("corr", raw_corr)
+            R = np.asarray(raw_corr, dtype=np.float64)
         if R.shape != C.shape:
             raise ValueError("corr and cov must have the same shape")
+        if not np.all(np.isfinite(R)):
+            raise ValueError("corr must contain only finite values")
+        # Symmetry is checked on the full matrix, not only the upper triangle, so an asymmetric corr is refused.
+        # The tolerances are 1e-6, as for cov: a corr stored in float32 is valid.
+        if not np.allclose(R, R.T, rtol=1e-6, atol=1e-6):
+            raise ValueError("corr must be symmetric")
+        # The range check also runs here, because correlation_distance is skipped when N == 1.
+        if np.any(np.abs(R) > 1.0 + 1e-6):
+            raise ValueError("corr entries must lie in [-1, 1]")
+        # The unit diagonal is checked here for every N, as correlation_distance does for N > 1.
+        if not np.allclose(np.diag(R), 1.0, rtol=0.0, atol=1e-6):
+            raise ValueError("corr must have a unit diagonal")
 
     if n == 1:
         w = np.ones(1)

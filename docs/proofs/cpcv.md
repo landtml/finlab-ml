@@ -145,7 +145,7 @@ Two **independent** leakage oracles were run and agreed everywhere:
 * **equiv**: library purge output compared element-for-element to a from-scratch
   per-observation brute-force purge (embargo-free).
 
-Reproduce with `python tools/verify_leakage.py` (needs yfinance and network access). Recorded result of a live-data run made outside this repository, not by finlab:
+Reproduce with `python tools/verify_leakage.py` (needs yfinance and network access). Recorded result of a live-data run, printed by `tools/verify_leakage.py`:
 
 Configuration grid behind the numbers below: `(N,k)` in `(6,2) (8,2) (10,3)
 (8,3)`; horizons `1, 5, 21, 63` bars; `embargo_pct` in `0.0, 0.02`;
@@ -154,7 +154,7 @@ JNJ PG MSFT AAPL`, each verified over its full history and a recent window.
 
 ```
 ======================================================================
-PURGEDCV LEAKAGE VERIFICATION CERTIFICATE
+FINLAB LEAKAGE VERIFICATION CERTIFICATE
 ======================================================================
   datasets verified      : 20 tickers
   calendar span          : 1927-12-30 -> 2026-05-19
@@ -171,8 +171,8 @@ PURGEDCV LEAKAGE VERIFICATION CERTIFICATE
 ======================================================================
 ```
 
-This is the output `python tools/verify_leakage.py` printed (see
-[tools/verify_leakage.py](../../tools/verify_leakage.py)), not a paraphrase. The purge and embargo arithmetic it checks is the arithmetic the theorems describe.
+The block is the certificate that `python tools/verify_leakage.py` prints on live data (see
+[tools/verify_leakage.py](../../tools/verify_leakage.py)); the tool's `data source` line is not reproduced here. The purge and embargo arithmetic it checks is the arithmetic the theorems describe.
 
 Unit suite: `tests/test_cpcv.py` collects 102 items (`pytest --collect-only -q tests/test_cpcv.py`; incl. the live-yfinance integration test,
 which skips offline), covering counts, no-leakage, embargo, disjointness, the

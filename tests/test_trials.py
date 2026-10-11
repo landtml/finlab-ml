@@ -560,3 +560,18 @@ def test_round_trips_compare_equal() -> None:
     assert TrialRegistry.from_dict(reg.to_dict()) == reg
     rec = reg.records[0]
     assert TrialRecord.from_dict(rec.to_dict()) == rec
+
+
+def test_record_one_column_frame_gives_the_shape_message() -> None:
+    # A one-column DataFrame must not be iterated by column
+    # name, so the column label 'r' was refused as a string return. The shape message is the right one.
+    import pandas as pd
+
+    with pytest.raises(ValueError, match="1-D"):
+        TrialRecord("a", {}, pd.DataFrame({"r": [0.1, 0.2]}))
+    # A string item in a sequence is still refused by name.
+    with pytest.raises(ValueError, match="real numbers"):
+        TrialRecord("a", {}, ["0.1", 0.2])
+    # A one-dimensional Series of floats is still accepted.
+    rec = TrialRecord("a", {}, pd.Series([0.1, 0.2, 0.3]))
+    assert rec.returns.tolist() == [0.1, 0.2, 0.3]

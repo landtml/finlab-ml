@@ -63,6 +63,7 @@ from __future__ import annotations
 
 import math
 import numbers
+import warnings
 from typing import Any
 
 import numpy as np
@@ -83,14 +84,43 @@ __all__ = [
 _MAX_WORD_CODE = 2**62
 
 
+_NAN_MESSAGE = "message contains NaN or infinite values; remove or encode them first."
+_NAT_MESSAGE = "message contains missing values (NaT or NA); remove or encode them first."
+
+
+def _refuse_missing(values: Any) -> None:
+    """Refuse a message holding NaN, None, NaT, NA or an infinite entry, before string coercion.
+
+    A list that mixes strings with NaN is turned into the strings "nan" by ``np.asarray``, so the
+    check must look at the original entries. Float arrays are checked with ``isfinite``, and every
+    other non-string input is checked element by element.
+    """
+    if isinstance(values, np.ndarray):
+        if values.dtype.kind in "biuUS":
+            return
+        if values.dtype.kind in "fc":
+            if not np.all(np.isfinite(values)):
+                raise ValueError(_NAN_MESSAGE)
+            return
+        if values.dtype.kind in "mM":
+            if np.any(np.isnat(values)):
+                raise ValueError(_NAT_MESSAGE)
+            return
+    for v in np.asarray(values, dtype=object).reshape(-1):
+        if v is None or (isinstance(v, (float, np.floating)) and not math.isfinite(v)):
+            raise ValueError(_NAN_MESSAGE)
+        if v is pd.NaT or v is pd.NA or (isinstance(v, (np.timedelta64, np.datetime64)) and np.isnat(v)):
+            raise ValueError(_NAT_MESSAGE)
+
+
 def _as_codes(message: Any) -> tuple[np.ndarray, int]:
     """Map a message to dense int64 codes in ``0..K-1``. Returns ``(codes, K)``."""
     if isinstance(message, str):
         arr = np.array(list(message))
-    elif isinstance(message, (pd.Series, pd.Index)):
-        arr = np.asarray(message.to_numpy())
     else:
-        arr = np.asarray(message)
+        raw = message.to_numpy() if isinstance(message, (pd.Series, pd.Index)) else message
+        _refuse_missing(raw)
+        arr = np.asarray(raw)
     if arr.ndim != 1:
         raise ValueError(f"message must be 1-D, got shape {arr.shape}.")
     if arr.shape[0] == 0:
@@ -153,6 +183,9 @@ def plug_in_entropy(message: Any, word_length: int = 1) -> float:
         the word code would overflow 64 bits (``K ** w >= 2**62``).
     """
     codes, k = _as_codes(message)
+    if isinstance(word_length, (bool, np.bool_)) or not math.isfinite(word_length) or word_length != int(word_length):
+        # int() truncated 2.5 to 2 silently; finiteness is checked first so int() never sees inf or NaN.
+        raise ValueError(f"word_length must be an integer, got {word_length!r}.")
     if word_length < 1:
         raise ValueError("word_length must be >= 1.")
     if codes.shape[0] < word_length:
@@ -322,8 +355,13 @@ def kontoyiannis_entropy(message: Any, window: int | None = None) -> float:
     if window is None:
         first, last, win = 1, n_total // 2, 0
     else:
-        if window < 1:
-            raise ValueError("window must be >= 1.")
+        if isinstance(window, (bool, np.bool_)):
+            # bool is an Integral, so window=True would otherwise be read as 1.
+            raise ValueError(f"window must be an integer >= 1, got {window!r}.")
+        if not math.isfinite(window) or window < 1 or int(window) != window:
+            # Finiteness first: int(inf) raises OverflowError instead of this message.
+            # A fractional window would be silently truncated, so it must be an integer.
+            raise ValueError("window must be an integer >= 1.")
         win = min(int(window), n_total // 2)
         if win < 1:
             raise ValueError("message is too short for the requested window.")
@@ -377,6 +415,10 @@ def encode_binary(returns: Any) -> Any:
     return _maybe_series(codes, kept_index)
 
 
+# Upper bound on n_bins for encode_quantile: its bin edges are allocated up front.
+_MAX_QUANTILE_BINS = 1_000_000
+
+
 def encode_quantile(returns: Any, n_bins: int, reference: Any = None) -> Any:
     """Quantile encoding of returns (AFML 18.5.2).
 
@@ -404,20 +446,52 @@ def encode_quantile(returns: Any, n_bins: int, reference: Any = None) -> Any:
     n_bins = int(n_bins)
     if n_bins < 2:
         raise ValueError("n_bins must be >= 2.")
+    if n_bins > _MAX_QUANTILE_BINS:
+        # The edges are allocated up front; 1e9 bins would need about 7 GiB.
+        raise ValueError(f"n_bins must be <= {_MAX_QUANTILE_BINS}, got {n_bins}.")
     arr, index = _returns_array(returns)
     ref = arr if reference is None else _returns_array(reference)[0]
     if ref.shape[0] == 0:
         raise ValueError("reference is empty.")
     edges = np.quantile(ref, np.arange(1, n_bins) / n_bins)
+    _warn_split_ties(ref, n_bins)
     codes = np.searchsorted(edges, arr, side="right").astype(np.int64)
     return _maybe_series(codes, index)
+
+
+def _warn_split_ties(ref: np.ndarray, n_bins: int) -> None:
+    """Warn when a tied value in the reference covers ranks in more than one bin.
+
+    A tie is one value at several ranks. Ranks are binned by position, but the
+    edge rule sends the whole tie to one code, so the bins between are left empty.
+    """
+    n = ref.shape[0]
+    # On sorted input, return_index gives each tie's first rank.
+    values, first, counts = np.unique(np.sort(ref), return_index=True, return_counts=True)
+    last = first + counts - 1
+    # Integer form of "some edge rank k*n/n_bins lies strictly inside the tie's ranks".
+    lo = (first.astype(np.int64) * n_bins) // n
+    hi = (last.astype(np.int64) * n_bins) // n
+    split = counts > 1
+    split &= lo != hi
+    if not split.any():
+        return
+    k = int(np.flatnonzero(split)[np.argmax(counts[split])])
+    warnings.warn(
+        f"{int(split.sum())} tied value(s) in the reference straddle a bin edge. The largest "
+        f"tie is {float(values[k])!r} ({int(counts[k])} of {n} values), which spans bins "
+        f"{int(lo[k])} to {int(hi[k])} of {n_bins}. The tie is split: the bins between are "
+        "empty, and equal values are not guaranteed the same code across references.",
+        UserWarning,
+        stacklevel=3,
+    )
 
 
 def encode_sigma(returns: Any, sigma: float) -> Any:
     """Sigma encoding of returns (AFML 18.5.3).
 
-    Code ``k`` covers ``[min + k*sigma, min + (k+1)*sigma)``, with
-    ``ceil((max - min) / sigma)`` codes in total.
+    Code ``k`` covers ``[min + k*sigma, min + (k+1)*sigma)``. The codes run
+    ``0..floor((max - min) / sigma)``, so the maximum always has its own code.
 
     Parameters
     ----------
@@ -429,13 +503,32 @@ def encode_sigma(returns: Any, sigma: float) -> Any:
     Returns
     -------
     np.ndarray of int64 or pd.Series
-        Codes ``0..K-1`` with ``K = max(1, ceil((max - min) / sigma))``.
+        Codes ``0..K-1`` with ``K = floor((max - min) / sigma) + 1``.
     """
-    if not sigma > 0:
-        raise ValueError("sigma must be > 0.")
+    if not (math.isfinite(sigma) and sigma > 0):
+        # An infinite sigma would give one bin and code 0 for every return.
+        raise ValueError("sigma must be > 0 and finite.")
     arr, index = _returns_array(returns)
+    if arr.size == 0:
+        # An empty array is refused before arr.min(), which would raise numpy's zero-size error.
+        raise ValueError("returns is empty")
     lo = float(arr.min())
-    k_codes = max(1, math.ceil((float(arr.max()) - lo) / sigma))
-    codes = np.floor((arr - lo) / sigma).astype(np.int64)
+    span = (float(arr.max()) - lo) / sigma
+    if not math.isfinite(span) or span >= 2.0**53:
+        # Past 2**53 the float codes are not exact, and past the int64 range the cast wraps and
+        # merges distinct returns onto one symbol. Refuse rather than return wrong codes.
+        raise ValueError(
+            f"encode_sigma: (max - min) / sigma = {span!r} is too large; the code alphabet "
+            "exceeds the exact range (2**53). Use a larger sigma."
+        )
+    # The maximum sits at min + span * sigma, which is the lower edge of code floor(span) when span is
+    # an integer. Codes 0..floor(span) are therefore needed; ceil(span) folded the maximum into the
+    # code below. For a non-integer span floor(span) + 1 equals ceil(span).
+    # On a decimal grid the float quotient can sit one ulp below an integer (0.3 / 0.1 is
+    # 2.9999999999999996), so the floors take a 1e-9 tolerance in code units. Values one sigma apart
+    # then get distinct codes, and the maximum code is kept.
+    tol = 1e-9
+    k_codes = math.floor(span + tol) + 1
+    codes = np.floor((arr - lo) / sigma + tol).astype(np.int64)
     codes = np.clip(codes, 0, k_codes - 1)
     return _maybe_series(codes, index)

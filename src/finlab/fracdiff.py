@@ -180,7 +180,14 @@ def _apply_per_column(
     NaNs are forward-filled before ``fn`` (the book's ``fillna(method='ffill')``), and
     the output is set back to NaN wherever the original value was NaN.
     """
+    # Values are differenced in array order, so a non-ascending index would give the window of the
+    # reversed series under the wrong labels. Refused rather than sorted.
+    if isinstance(series, (pd.Series, pd.DataFrame)) and not series.index.is_monotonic_increasing:
+        raise ValueError("series index must be sorted in ascending order (oldest first).")
     if isinstance(series, pd.DataFrame):
+        if series.columns.has_duplicates:
+            # Per-column results are keyed by name, so a repeated name cannot be kept apart.
+            raise ValueError("DataFrame column names must be unique.")
         cols = {}
         for name in series.columns:
             cols[name] = _apply_one(series[name], fn)
@@ -197,6 +204,10 @@ def _apply_per_column(
 
 def _apply_one(values: ArrayLike | pd.Series, fn: Callable[[NDArray[np.float64]], NDArray[np.float64]]) -> NDArray[np.float64]:
     raw = np.asarray(values, dtype=np.float64).reshape(-1)
+    if np.isinf(raw).any():
+        # An inf would spread into every window that contained it, with no warning.
+        # NaN is forward-filled on purpose, so only infinity is rejected.
+        raise ValueError("series must not contain inf; NaN is forward-filled, but inf is not.")
     filled = pd.Series(raw).ffill().to_numpy(dtype=np.float64)
     out = fn(np.ascontiguousarray(filled))
     out[np.isnan(raw)] = np.nan
@@ -272,6 +283,9 @@ def get_weights_ffd(d: float, thres: float = 1e-5) -> NDArray[np.float64]:
     Two numba passes, O(width).
     """
     d = _check_d(d)
+    if d <= -1.0:
+        # For d <= -1 the weights do not decay, so no finite width is ever reached.
+        raise ValueError(f"d must be > -1 for a fixed-width window (the weights do not decay), got {d!r}.")
     thres = _check_thres(thres, strict=True)
     n = _ffd_width(d, thres, _MAX_WIDTH)
     if n >= _MAX_WIDTH:
@@ -365,8 +379,16 @@ def frac_diff(
     """
     thres = _check_thres(thres, strict=False)
     d = _check_d(d)
+    if d <= -1.0:
+        # The docstring accepts any real d, so the values are returned.
+        # For d <= -1 the weights do not decay, so most of the output is NaN; say so instead of refusing.
+        warnings.warn(
+            f"frac_diff: d={d!r} <= -1, the weights do not decay, so most of the output is NaN.",
+            UserWarning,
+            stacklevel=2,
+        )
 
-    def run(x: NDArray[np.float64]) -> NDArray[np.float64]:
+    def run_from_first_value(x: NDArray[np.float64]) -> NDArray[np.float64]:
         n = x.shape[0]
         if n == 0:
             return np.empty(0, dtype=np.float64)
@@ -377,6 +399,17 @@ def frac_diff(
         ok = np.flatnonzero(lam <= thres)
         first = int(ok[0]) if ok.size else n
         return _expanding_apply(x, w, first)
+
+    def run(x: NDArray[np.float64]) -> NDArray[np.float64]:
+        # Forward-fill cannot fill a leading NaN, and an expanding sum would carry it forward to
+        # every later output. Difference the series from its first finite value and leave the
+        # leading positions NaN.
+        finite = np.flatnonzero(~np.isnan(x))
+        if finite.size == 0 or finite[0] == 0:
+            return run_from_first_value(x)
+        out = np.full(x.shape[0], np.nan)
+        out[finite[0]:] = run_from_first_value(x[finite[0]:])
+        return out
 
     return _apply_per_column(series, run)
 
@@ -458,7 +491,16 @@ def find_min_d(
     if not 0.0 < adf_pvalue < 1.0:
         raise ValueError(f"adf_pvalue must be in (0, 1), got {adf_pvalue!r}.")
     grid = np.linspace(0.0, 1.0, 11) if d_grid is None else np.sort(np.asarray(d_grid, dtype=np.float64).reshape(-1))
-    raw = np.asarray(series, dtype=np.float64).reshape(-1)
+    if isinstance(series, (pd.Series, pd.DataFrame)) and not series.index.is_monotonic_increasing:
+        # Same rule as frac_diff_ffd: values are differenced in array order, so a descending
+        # index would be read as reversed time. Refused here too.
+        raise ValueError("series index must be sorted in ascending order (oldest first).")
+    raw = np.asarray(series, dtype=np.float64)
+    if raw.ndim == 2 and raw.shape[1] == 1:
+        raw = raw[:, 0]
+    if raw.ndim != 1:
+        # A multi-column input must not be flattened into one series. find_min_d returns one result, so refuse it.
+        raise ValueError(f"find_min_d takes one series (1-D or one column), got shape {raw.shape}.")
     for d in grid:
         fd = np.asarray(frac_diff_ffd(raw, float(d), thres=thres), dtype=np.float64)
         valid = np.isfinite(fd)

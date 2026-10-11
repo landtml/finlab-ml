@@ -303,3 +303,118 @@ def test_frac_diff_ffd_no_warning_when_window_fits():
 def test_get_weights_rejects_bad_size(size):
     with pytest.raises(ValueError, match="size must be a positive integer"):
         get_weights(0.5, size)
+
+
+def test_frac_diff_leading_nan_does_not_poison_the_output() -> None:
+    # One leading NaN must not make the whole expanding output NaN, with no warning.
+    # The output must equal the output of the series without that NaN, shifted by one position.
+    tail = np.arange(1.0, 10.0)
+    lead = np.concatenate([[np.nan], tail])
+    want = frac_diff(tail, 0.5)
+    got = frac_diff(lead, 0.5)
+    assert np.isnan(got[0])
+    np.testing.assert_allclose(got[1:], want, rtol=0, atol=1e-12, equal_nan=True)
+    assert got[8] == pytest.approx(3.14208984, abs=1e-8)
+    assert got[9] == pytest.approx(3.33847046, abs=1e-8)
+
+
+def test_frac_diff_all_nan_still_all_nan() -> None:
+    out = frac_diff(np.full(5, np.nan), 0.5)
+    assert np.isnan(out).all()
+
+
+def test_frac_diff_ffd_rejects_infinite_values() -> None:
+    # An inf must not leak into a whole window of outputs with no warning.
+    x = np.array([1.0, 2, np.inf, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+    with pytest.raises(ValueError, match="inf"):
+        frac_diff_ffd(x, 0.5, thres=1e-1)
+
+
+def test_frac_diff_rejects_infinite_values() -> None:
+    with pytest.raises(ValueError, match="inf"):
+        frac_diff(np.array([1.0, np.inf, 2.0, 3.0]), 0.5, thres=2)
+
+
+def test_frac_diff_ffd_still_forward_fills_nan() -> None:
+    x = np.array([1.0, 2.0, np.nan, 4.0, 5.0, 6.0, 7.0, 8.0])
+    out = frac_diff_ffd(x, 0.5, thres=1e-1)
+    assert np.isnan(out[2])
+
+
+
+def test_frac_diff_ffd_rejects_d_at_or_below_minus_one() -> None:
+    # For d <= -1 the weights never decay, so the window hit the safety cap
+    # with a RuntimeError, and the docstring promised termination.
+    with pytest.raises(ValueError, match="d must be > -1"):
+        frac_diff_ffd(np.arange(10.0), -1.0)
+
+
+def test_frac_diff_warns_at_d_at_or_below_minus_one() -> None:
+    # Refusing d <= -1 broke the docstring's "any real value" and removed the output. d <= -1
+    # returns the expanding-window values, with a warning that most of them are NaN.
+    # frac_diff_ffd keeps its refusal.
+    from finlab.fracdiff import frac_diff
+
+    rw = np.cumsum(np.random.default_rng(5).standard_normal(80)) + 10
+    for d in (-1.0, -1.5):
+        with pytest.warns(UserWarning, match="do not decay"):
+            out = frac_diff(rw, d, 0.01)
+        assert out.shape == rw.shape
+    assert np.isfinite(frac_diff(rw, -0.5, 0.01)).sum() > 1
+
+
+def test_find_min_d_refuses_descending_index() -> None:
+    # A descending index must be refused by find_min_d as well as frac_diff_ffd. Without the check,
+    # which differenced the reversed values under the reversed labels (d = 0.4 against 0.3 sorted).
+    from finlab import fracdiff as fd
+
+    def adf_p(x):
+        return 0.01  # every grid value passes, so the first d decides the result
+
+    y = np.cumsum(np.random.default_rng(0).standard_normal(200))
+    s = pd.Series(y[::-1].copy(), index=pd.RangeIndex(200)[::-1])
+    with pytest.raises(ValueError, match="sorted in ascending order"):
+        fd.find_min_d(s, adf_test=adf_p, thres=1e-2)
+    fd.find_min_d(s.sort_index(), adf_test=adf_p, thres=1e-2)
+
+
+def test_frac_diff_names_duplicate_column_labels() -> None:
+    # Duplicate column names must be named by the check, not fail inside pandas with a length message.
+    from finlab import fracdiff as fd
+
+    with pytest.raises(ValueError, match="column names must be unique"):
+        fd.frac_diff(pd.DataFrame(np.ones((5, 2)), columns=["a", "a"]), 0.4)
+
+
+def test_find_min_d_refuses_a_multi_column_input_by_name() -> None:
+    # A 2-D input must be refused: it was flattened into one series and the ADF ran on all the
+    # columns joined end to end. find_min_d returns one result, so it refuses more than one column.
+    rng = np.random.default_rng(3)
+    w = np.cumsum(rng.normal(size=40))
+    w2 = np.cumsum(rng.normal(size=40)) + 500
+    seen = []
+
+    def spy_adf(x):
+        seen.append(len(x))
+        return 0.0
+
+    with pytest.raises(ValueError, match="one series"):
+        find_min_d(np.column_stack([w, w2]), adf_test=spy_adf, d_grid=[0.0])
+    assert seen == []
+    # One column (n, 1) is the same series as a 1-D input.
+    one = find_min_d(w.reshape(-1, 1), adf_test=spy_adf, d_grid=[0.0])
+    assert one == find_min_d(w, adf_test=spy_adf, d_grid=[0.0])
+
+
+def test_find_min_d_refuses_descending_index_on_one_column_frame() -> None:
+    from finlab import fracdiff as fd
+
+    def adf_p(x):
+        return 0.01
+
+    y = np.cumsum(np.random.default_rng(0).standard_normal(200))
+    index = pd.date_range("2020-01-01", periods=200, freq="D")[::-1]
+    frame = pd.DataFrame({"x": y[::-1].copy()}, index=index)
+    with pytest.raises(ValueError, match="series index must be sorted in ascending order \\(oldest first\\)"):
+        fd.find_min_d(frame, adf_test=adf_p, thres=1e-2)
+    fd.find_min_d(frame.sort_index(), adf_test=adf_p, thres=1e-2)

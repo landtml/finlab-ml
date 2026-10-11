@@ -134,6 +134,14 @@ def probability_of_backtest_overfitting(
     Values near 0.5 mean the in-sample winner is out-of-sample median in about
     half of the splits, which is what pure-noise trials produce (see
     ``docs/proofs/pbo.md``).
+
+    The matrix must hold per-period returns, not cumulative equity. Equity
+    curves (``np.cumsum`` of the returns) are trending and highly autocorrelated,
+    and PBO on them is near 0 even for pure-noise trials. As a guard, a
+    ``UserWarning`` names the problem when every column of the matrix has
+    lag-1 autocorrelation above 0.9 and there are at least 8 rows. The check is
+    conservative: short or weakly trending equity curves are not flagged. The
+    numbers are computed as given; use ``np.diff`` of the curve or the returns.
     """
     S = _partition_count(n_partitions)
     if isinstance(performance_matrix, (pd.DataFrame, pd.Series)) and not (
@@ -147,6 +155,14 @@ def probability_of_backtest_overfitting(
             stacklevel=2,
         )
     mat = _validate(performance_matrix, S)
+    if _looks_like_equity_curves(mat):
+        warnings.warn(
+            "performance_matrix looks like cumulative equity curves (every column has lag-1 "
+            "autocorrelation above 0.9). PBO needs per-period returns: pass np.diff(curve) "
+            "or the returns themselves. The result is computed from the matrix as given.",
+            UserWarning,
+            stacklevel=2,
+        )
     T, N = mat.shape
     L = T // S
     k = S // 2
@@ -160,6 +176,32 @@ def probability_of_backtest_overfitting(
 
     pbo = float(np.mean(logits <= 0.0))
     return PBOResult(pbo=pbo, logits=logits, n_combinations=int(combos.shape[0]))
+
+
+_EQUITY_LAG1_THRESHOLD = 0.9
+_EQUITY_MIN_ROWS = 8
+
+
+def _looks_like_equity_curves(mat: np.ndarray) -> bool:
+    """True when every column of ``mat`` is strongly autocorrelated at lag 1.
+
+    Per-period returns of pure noise have lag-1 autocorrelation near 0, while a
+    cumulative sum of them is near 1. A matrix with a constant column has no
+    defined autocorrelation for that column and makes the check return False.
+    """
+    T = mat.shape[0]
+    if T < _EQUITY_MIN_ROWS:
+        return False
+    if np.any(mat.max(axis=0) == mat.min(axis=0)):
+        # Exact constants: the mean is not exact in floating point, so the
+        # residuals would give a spurious autocorrelation near 1.
+        return False
+    x = mat - mat.mean(axis=0)
+    den = np.sum(x * x, axis=0)
+    if np.any(den <= 0.0):
+        return False
+    rho = np.sum(x[1:] * x[:-1], axis=0) / den
+    return bool(np.all(rho > _EQUITY_LAG1_THRESHOLD))
 
 
 def _partition_count(n_partitions: object) -> int:

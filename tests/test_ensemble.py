@@ -171,3 +171,453 @@ def test_pandas_y_shifted_instants_across_timezones_is_rejected():
     bag = SequentialBootstrapBagging(NearestCentroid, n_estimators=2)
     with pytest.raises(ValueError, match="index"):
         bag.fit(Xdf, y_shifted, t1=t1)
+
+
+class _ProbaNoClasses:
+    """Duck-typed estimator: predict_proba columns follow the bag's labels, no classes_ attribute."""
+
+    def fit(self, X, y, sample_weight=None):
+        self.c = np.unique(y)
+        self.p = np.array([np.mean(y == c) for c in self.c])
+        return self
+
+    def predict(self, X):
+        return np.repeat(self.c[np.argmax(self.p)], len(X))
+
+    def predict_proba(self, X):
+        return np.tile(self.p, (len(X), 1))
+
+
+class _ProbaWithClasses(_ProbaNoClasses):
+    def fit(self, X, y, sample_weight=None):
+        super().fit(X, y, sample_weight)
+        self.classes_ = self.c
+        return self
+
+
+def test_bags_missing_a_class_without_classes_attr_fail_at_fit_with_a_named_error() -> None:
+    # A bag that missed class 2 returned 2 columns and predict_proba failed with a raw broadcast error
+    # far from the cause. The mismatch is now named at fit time.
+    from finlab.ensemble import SequentialBootstrapBagging
+
+    X = np.arange(40.0).reshape(-1, 1)
+    y = np.array([0] * 38 + [1, 2])
+    with pytest.raises(ValueError, match="classes_"):
+        SequentialBootstrapBagging(_ProbaNoClasses, n_estimators=10, sequential=False).fit(X, y)
+
+
+def test_bags_with_classes_attr_missing_a_class_still_predict() -> None:
+    from finlab.ensemble import SequentialBootstrapBagging
+
+    X = np.arange(40.0).reshape(-1, 1)
+    y = np.array([0] * 38 + [1, 2])
+    m = SequentialBootstrapBagging(_ProbaWithClasses, n_estimators=10, sequential=False).fit(X, y)
+    p = m.predict_proba(X)
+    assert p.shape == (40, 3)
+    np.testing.assert_allclose(p.sum(axis=1), 1.0)
+
+
+def test_sequential_bagging_rejects_t1_with_mismatched_index() -> None:
+    # t1 was only length-checked, so its own labels drove the uniqueness weights.
+    from finlab.cv import make_t1
+    from finlab.ensemble import SequentialBootstrapBagging
+
+    class Majority:
+        def fit(self, X, y, sample_weight=None):
+            self.label = pd.Series(y).mode()[0]
+            return self
+
+        def predict(self, X):
+            return [self.label] * len(X)
+
+    idx = pd.date_range("2020-01-01", periods=40, freq="D")
+    X = pd.DataFrame({"a": range(40)}, index=idx)
+    y = pd.Series([0, 1] * 20, index=idx)
+    t1 = pd.Series(make_t1(idx, 3).to_numpy(), index=pd.date_range("2000", periods=40))
+    with pytest.raises(ValueError, match="t1 index"):
+        SequentialBootstrapBagging(Majority, n_estimators=1, seed=1).fit(X, y, t1=t1)
+
+
+class _Majority:
+    def fit(self, X, y, sample_weight=None):
+        return self
+
+    def predict(self, X):
+        return np.zeros(len(X), int)
+
+
+def test_ensemble_refuses_fractional_max_samples() -> None:
+    # max_samples=2.7 was truncated to 2 with no message. The integer rule of make_t1 applies here
+    # too: an integral value such as 2.0 is accepted, 2.7 is refused.
+    from finlab.ensemble import SequentialBootstrapBagging
+
+    idx = pd.date_range("2020", periods=12)
+    X = np.arange(24.0).reshape(12, 2)
+    y = np.arange(12) % 2
+    t1 = pd.Series(idx + pd.Timedelta(days=2), index=idx)
+    with pytest.raises(ValueError, match="max_samples must be an integer"):
+        SequentialBootstrapBagging(_Majority, n_estimators=1, max_samples=2.7).fit(X, y, t1=t1)
+    m = SequentialBootstrapBagging(_Majority, n_estimators=1, max_samples=2.0).fit(X, y, t1=t1)
+    assert m.draws_[0].shape[0] == 2
+
+
+
+def test_ensemble_refuses_t1_that_is_not_a_series() -> None:
+    # An ndarray t1 reached t1.index and failed with an AttributeError.
+    from finlab.ensemble import SequentialBootstrapBagging
+
+    idx = pd.date_range("2020", periods=12)
+    with pytest.raises(ValueError, match="t1 must be a pandas Series"):
+        SequentialBootstrapBagging(_Majority, n_estimators=1).fit(
+            np.arange(24.0).reshape(12, 2), np.arange(12) % 2, t1=idx.values
+        )
+
+
+def test_sequential_bagging_checks_t1_against_a_shifted_range_index() -> None:
+    # The t1 check skipped any pd.RangeIndex on X, so a RangeIndex starting at 5 accepted t1 labelled by
+    # dates. Only the default 0..n-1 index is unlabelled.
+    from finlab.ensemble import SequentialBootstrapBagging
+
+    class Const:
+        def fit(self, X, y, sample_weight=None):
+            self.classes_ = np.unique(y)
+            return self
+
+        def predict(self, X):
+            return np.zeros(len(X), dtype=int)
+
+    ix = pd.date_range("2021-01-01", periods=60, freq="D")
+    X = pd.DataFrame(np.random.default_rng(0).normal(size=(60, 2)), index=pd.RangeIndex(5, 65))
+    t1 = pd.Series(ix + pd.Timedelta(days=3), index=ix)
+    with pytest.raises(ValueError, match="t1 index does not match"):
+        SequentialBootstrapBagging(Const, 1, seed=1).fit(X, pd.Series(0, index=X.index), t1=t1)
+
+
+def test_sequential_bagging_refuses_string_max_samples() -> None:
+    # max_samples='7' was read as 7 through float(), while make_t1 refuses strings.
+    from finlab.ensemble import SequentialBootstrapBagging
+
+    class Const:
+        def fit(self, X, y, sample_weight=None):
+            self.classes_ = np.unique(y)
+            return self
+
+        def predict(self, X):
+            return np.zeros(len(X), dtype=int)
+
+    ix = pd.date_range("2021-01-01", periods=8, freq="D")
+    X = pd.DataFrame(np.random.default_rng(0).normal(size=(8, 2)), index=ix)
+    t1 = pd.Series(ix + pd.Timedelta(days=3), index=ix)
+    with pytest.raises(ValueError, match="max_samples must be an integer"):
+        SequentialBootstrapBagging(Const, 1, seed=0, max_samples="7").fit(X, pd.Series(0, index=ix), t1=t1)
+
+
+def test_sequential_bagging_refuses_nat_end_times() -> None:
+    # A NaT end time in t1 was read as "spans to the end of the grid", so the event took about six
+    # bars instead of four. It is refused, as average_active_signals refuses it.
+    from finlab.ensemble import SequentialBootstrapBagging
+
+    class Const:
+        def fit(self, X, y, sample_weight=None):
+            self.classes_ = np.unique(y)
+            return self
+
+        def predict(self, X):
+            return np.zeros(len(X), dtype=int)
+
+    ix = pd.date_range("2021-01-01", periods=8, freq="D")
+    X = pd.DataFrame(np.random.default_rng(0).normal(size=(8, 2)), index=ix)
+    t1 = pd.Series(ix + pd.Timedelta(days=3), index=ix)
+    t1.iloc[2] = pd.NaT
+    with pytest.raises(ValueError, match="NaT"):
+        SequentialBootstrapBagging(Const, 1, seed=0).fit(X, pd.Series(0, index=ix), t1=t1)
+
+
+class _ConstLabel:
+    def fit(self, X, y, sample_weight=None):
+        self.classes_ = np.unique(y)
+        return self
+
+    def predict(self, X):
+        return np.zeros(len(X), dtype=int)
+
+
+def test_sequential_bagging_refuses_series_x_with_shifted_y_index() -> None:
+    # The y and sample_weight index checks ran only for a DataFrame X, so a Series X with y shifted by
+    # one day was used by position. Tuning and importance refuse it.
+    from finlab.ensemble import SequentialBootstrapBagging
+
+    ix = pd.date_range("2021-01-01", periods=40)
+    xs = pd.Series(np.random.default_rng(0).normal(size=40), index=ix)
+    ysh = pd.Series(np.arange(40) % 2, index=ix + pd.Timedelta(days=1))
+    with pytest.raises(ValueError, match="y index does not match"):
+        SequentialBootstrapBagging(_ConstLabel, n_estimators=2, sequential=False).fit(xs, ysh)
+    # Aligned labels on a Series X still fit.
+    yal = pd.Series(np.arange(40) % 2, index=ix)
+    SequentialBootstrapBagging(_ConstLabel, n_estimators=2, sequential=False).fit(xs, yal)
+
+
+def test_sequential_bagging_refuses_labelled_range_t1_against_default_x() -> None:
+    # The t1 check was skipped for any default X, so t1 labelled 5..44 was matched to rows 0..39 by
+    # position. A labelled t1 is checked against X, as a labelled X is.
+    from finlab.ensemble import SequentialBootstrapBagging
+
+    X = pd.DataFrame(np.random.default_rng(0).normal(size=(40, 2)))
+    y = pd.Series(np.arange(40) % 2)
+    t1 = pd.Series(np.minimum(np.arange(40) + 3, 39) + 5, index=pd.RangeIndex(5, 45))
+    with pytest.raises(ValueError, match="t1 index does not match"):
+        SequentialBootstrapBagging(_ConstLabel, n_estimators=2, seed=0).fit(X, y, t1=t1)
+    # A date-labelled t1 against a default X is still matched by position.
+    ix = pd.date_range("2021-01-01", periods=40)
+    t1_dates = pd.Series(ix[np.minimum(np.arange(40) + 3, 39)], index=ix)
+    SequentialBootstrapBagging(_ConstLabel, n_estimators=2, seed=0).fit(X, y, t1=t1_dates)
+
+
+def test_nat_t1_refusal_is_documented_for_get_events_and_bagging() -> None:
+    # get_events leaves t1 NaT for unresolved events, and bagging refuses NaT. The refusal is
+    # documented on both functions, so a caller knows to drop those events first.
+    from finlab.ensemble import SequentialBootstrapBagging
+    from finlab.labeling import get_events
+
+    assert "NaT" in (SequentialBootstrapBagging.fit.__doc__ or "") + (SequentialBootstrapBagging.__doc__ or "")
+    assert "NaT" in (get_events.__doc__ or "")
+
+
+def test_bagging_accepts_unlabelled_y_against_date_x_as_tuning_does() -> None:
+    # Tuning matches an unlabelled y to a date-indexed X by position, and the ensemble used to refuse
+    # it. The ensemble now agrees; a reversed labelled y is still refused.
+    from finlab.ensemble import SequentialBootstrapBagging
+
+    ix = pd.date_range("2021-01-01", periods=40)
+    X = pd.DataFrame(np.random.default_rng(0).normal(size=(40, 2)), index=ix)
+    yu = pd.Series(np.arange(40) % 2)
+    SequentialBootstrapBagging(_ConstLabel, n_estimators=2, sequential=False).fit(X, yu)
+    with pytest.raises(ValueError, match="y index does not match"):
+        SequentialBootstrapBagging(_ConstLabel, n_estimators=2, sequential=False).fit(
+            X, pd.Series(np.arange(40) % 2, index=ix[::-1])
+        )
+
+
+def test_t1_int64_index_labels_follow_the_value_rule() -> None:
+    # An Int64 Index with labels 0..n-1 is the same unlabelled index as a RangeIndex, so it is matched
+    # by position to a default X. Labels 5..44 are named and refused for both index classes, instead
+    # of the class deciding the answer.
+    from finlab.ensemble import SequentialBootstrapBagging
+
+    X = pd.DataFrame(np.random.default_rng(0).normal(size=(40, 2)))
+    y = pd.Series(np.arange(40) % 2)
+    t1_plain = pd.Series(np.minimum(np.arange(40) + 3, 39), index=pd.Index(np.arange(40), dtype="int64"))
+    SequentialBootstrapBagging(_ConstLabel, n_estimators=2, seed=0).fit(X, y, t1=t1_plain)
+    shifted = pd.Index(np.arange(5, 45), dtype="int64")
+    t1_shift = pd.Series(np.minimum(np.arange(40) + 3, 39) + 5, index=shifted)
+    with pytest.raises(ValueError, match="t1 index does not match"):
+        SequentialBootstrapBagging(_ConstLabel, n_estimators=2, seed=0).fit(X, y, t1=t1_shift)
+    t1_range = pd.Series(np.minimum(np.arange(40) + 3, 39) + 5, index=pd.RangeIndex(5, 45))
+    with pytest.raises(ValueError, match="t1 index does not match"):
+        SequentialBootstrapBagging(_ConstLabel, n_estimators=2, seed=0).fit(X, y, t1=t1_range)
+
+
+def test_predict_aligns_reordered_columns_by_name() -> None:
+    X, y, t1 = _data(200, seed=1)
+    df = pd.DataFrame(np.column_stack([X, X[:, 0] - X[:, 1]]), columns=list("abc"), index=t1.index)
+    bag = SequentialBootstrapBagging(NearestCentroid, n_estimators=5, seed=3).fit(df, y, t1=t1)
+    flipped = df[["c", "b", "a"]]
+    np.testing.assert_array_equal(bag.predict(flipped), bag.predict(df))
+    np.testing.assert_allclose(bag.predict_proba(flipped), bag.predict_proba(df))
+    np.testing.assert_array_equal(bag.predict(df.to_numpy()), bag.predict(df))
+    with pytest.raises(ValueError, match="missing.*'c'"):
+        bag.predict(df[["a", "b"]])
+    with pytest.raises(ValueError, match="extra.*'z'"):
+        bag.predict_proba(df.rename(columns={"c": "z"}))
+
+
+def _fit_bag(X, y, t1):
+    return SequentialBootstrapBagging(NearestCentroid, n_estimators=2, seed=0).fit(X, y, t1=t1)
+
+
+def test_t1_with_a_default_index_is_refused_by_name() -> None:
+    X, y, t1 = _data(60, seed=3)
+    with pytest.raises(ValueError, match="indexed by event start times"):
+        _fit_bag(X, y, t1.reset_index(drop=True))
+    with pytest.raises(ValueError, match="indexed by event start times"):
+        _fit_bag(pd.DataFrame(X), y, t1.reset_index(drop=True))
+
+
+def test_t1_ending_before_its_start_is_refused_and_equal_is_allowed() -> None:
+    X, y, t1 = _data(60, seed=3)
+    bad = t1.copy()
+    bad.iloc[5] = bad.index[5] - pd.Timedelta(days=3)
+    with pytest.raises(ValueError, match="precedes.*2020-01-06"):
+        _fit_bag(X, y, bad)
+    same = t1.copy()
+    same.iloc[5] = same.index[5]
+    _fit_bag(X, y, same)
+
+
+def test_duplicate_or_unsorted_event_starts_name_the_start_times() -> None:
+    X, y, t1 = _data(60, seed=3)
+    dup = t1.copy()
+    dup.index = dup.index[:5].append(dup.index[4:5]).append(dup.index[6:])
+    with pytest.raises(ValueError, match="duplicate or unsorted.*sequential=False"):
+        _fit_bag(X, y, dup)
+    shuffled = t1.iloc[::-1]
+    with pytest.raises(ValueError, match="duplicate or unsorted.*sequential=False"):
+        _fit_bag(X[::-1], y[::-1], shuffled)
+
+
+def _named(X):
+    return pd.DataFrame(X, columns=["a", "b"])
+
+
+def test_refused_refit_keeps_the_earlier_column_names() -> None:
+    # columns_ used to be set before the row-count check, so a refused refit left the new names behind.
+    X, y, _ = _data(100, seed=4)
+    bag = SequentialBootstrapBagging(NearestCentroid, n_estimators=3, seed=1, sequential=False)
+    bag.fit(_named(X), y)
+    before = bag.predict_proba(_named(X))
+    with pytest.raises(ValueError):
+        bag.fit(pd.DataFrame(X, columns=["c", "d"]), y[:-1])
+    np.testing.assert_allclose(bag.predict_proba(_named(X)), before)
+    with pytest.raises(ValueError, match="do not match"):
+        bag.predict_proba(pd.DataFrame(X, columns=["c", "d"]))
+
+
+def test_named_frame_after_numpy_fit_warns_and_keeps_positional_values() -> None:
+    X, y, _ = _data(100, seed=5)
+    bag = SequentialBootstrapBagging(NearestCentroid, n_estimators=3, seed=1, sequential=False).fit(X, y)
+    expected = bag.predict_proba(X)
+    with pytest.warns(UserWarning, match="fitted without them"):
+        got = bag.predict_proba(_named(X))
+    np.testing.assert_allclose(got, expected)
+
+
+def test_sample_weight_same_instants_in_another_timezone_is_accepted():
+    X, y, _ = _data(200, seed=1)
+    utc = pd.date_range("2020-01-01", periods=200, freq="D", tz="UTC")
+    Xdf = pd.DataFrame(X, index=utc)
+    bag = SequentialBootstrapBagging(NearestCentroid, n_estimators=2, seed=2, sequential=False)
+    w = np.ones(200)
+    bag.fit(Xdf, y, sample_weight=pd.Series(w, index=utc.tz_convert("Asia/Taipei")))
+    assert len(bag.estimators_) == 2
+    shifted = pd.Series(w, index=(utc + pd.Timedelta(days=1)).tz_convert("Asia/Taipei"))
+    with pytest.raises(ValueError, match="sample_weight index"):
+        bag.fit(Xdf, y, sample_weight=shifted)
+
+
+def test_bagging_refuses_continuous_target():
+    X, _, t1 = _data(120, seed=7)
+    y = 3.0 + 2.0 * X[:, 0] + 0.1 * np.sin(np.arange(120))
+    bag = SequentialBootstrapBagging(NearestCentroid, n_estimators=3, seed=1)
+    with pytest.raises(ValueError, match="classification labels only"):
+        bag.fit(X, y, t1=t1)
+    assert not hasattr(bag, "classes_")
+    assert not hasattr(bag, "estimators_")
+
+
+def test_bagging_accepts_integer_valued_float_labels():
+    X, y, t1 = _data(120, seed=8)
+    bag = SequentialBootstrapBagging(NearestCentroid, n_estimators=3, seed=1).fit(X, y.astype(float), t1=t1)
+    np.testing.assert_array_equal(bag.classes_, np.array([0.0, 1.0]))
+    assert set(np.unique(bag.predict(X))) <= {0.0, 1.0}
+
+
+class _NoSampleWeightArg:
+    """Base whose fit has no sample_weight parameter, as KNeighborsClassifier does."""
+
+    def fit(self, X, y):
+        self.classes_ = np.unique(y)
+        self.n_fit_ = len(y)
+        return self
+
+    def predict(self, X):
+        return np.full(len(X), self.classes_[0])
+
+
+def test_bagging_base_without_sample_weight_fits_without_weights():
+    X, y, t1 = _data(120, seed=9)
+    bag = SequentialBootstrapBagging(_NoSampleWeightArg, n_estimators=3, seed=1, sequential=False)
+    bag.fit(X, y)
+    assert [e.n_fit_ for e in bag.estimators_] == [120, 120, 120]
+
+
+def test_bagging_kneighbors_base_fits_without_weights():
+    pytest.importorskip("sklearn")
+    from sklearn.neighbors import KNeighborsClassifier
+
+    X, y, t1 = _data(120, seed=10)
+    bag = SequentialBootstrapBagging(lambda: KNeighborsClassifier(n_neighbors=3), n_estimators=3, seed=1)
+    bag.fit(X, y, t1=t1)
+    assert (bag.predict(X) == y).mean() > 0.85
+
+
+class _RecordingBase:
+    """Records the feature arrays it is fitted and predicted on."""
+
+    def fit(self, X, y, sample_weight=None):
+        self.fit_X_ = X
+        self.classes_ = np.unique(y)
+        return self
+
+    def predict(self, X):
+        self.predict_X_ = X
+        return np.full(len(X), self.classes_[0])
+
+
+@pytest.mark.parametrize("dtype", ["Float64", "Int64"])
+def test_bagging_nullable_features_with_na_act_as_nan(dtype):
+    n = 60
+    rng = np.random.default_rng(3)
+    X = pd.DataFrame({"a": pd.array(np.arange(n), dtype=dtype), "b": rng.normal(size=n)})
+    X.loc[5, "a"] = pd.NA
+    y = np.arange(n) % 2
+    bags = []
+
+    def factory():
+        est = _RecordingBase()
+        bags.append(est)
+        return est
+
+    bag = SequentialBootstrapBagging(factory, n_estimators=2, seed=1, sequential=False).fit(X, y)
+    for est in bags:
+        assert est.fit_X_.dtype.kind == "f"
+    bag.predict(X)
+    assert bags[0].predict_X_.dtype.kind == "f"
+    assert np.isnan(bags[0].predict_X_[5, 0])
+    assert np.isnan(bags[0].predict_X_).sum() == 1
+
+
+def test_bagging_refuses_none_label_by_name():
+    X, _, t1 = _data(60, seed=11)
+    y = np.array([0, 1, None, 1] * 15, dtype=object)
+    calls = []
+
+    def factory():
+        calls.append(1)
+        return NearestCentroid()
+
+    bag = SequentialBootstrapBagging(factory, n_estimators=2, seed=1)
+    with pytest.raises(ValueError, match="None"):
+        bag.fit(X, y, t1=t1)
+    assert calls == []
+    assert not hasattr(bag, "classes_")
+
+
+class _NaNRowBase(NearestCentroid):
+    """Nearest-centroid base whose probabilities are NaN for rows marked by a first value above 1e5."""
+
+    def predict_proba(self, X):
+        marked = X[:, 0] > 1e5
+        out = np.full((len(X), len(self.classes_)), np.nan)
+        out[~marked] = super().predict_proba(X[~marked])
+        return out
+
+
+def test_predict_refuses_rows_with_non_finite_base_probabilities() -> None:
+    X, y, _ = _data(n=120)
+    m = SequentialBootstrapBagging(_NaNRowBase, n_estimators=5, sequential=False).fit(X, y)
+    Xt = X[:4].copy()
+    Xt[2, 0] = 1e6
+    assert np.isnan(m.predict_proba(Xt)[2]).all()
+    with pytest.raises(ValueError, match="non-finite probabilities for 1 of 4 rows"):
+        m.predict(Xt)
+    assert m.predict(X[:4]).shape == (4,)

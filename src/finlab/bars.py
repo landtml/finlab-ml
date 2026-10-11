@@ -45,6 +45,7 @@ order-book data, and the auction-outlier filtering the book discusses in 2.3.1.2
 
 from __future__ import annotations
 
+import math
 import warnings
 from typing import Literal
 
@@ -52,6 +53,7 @@ import numpy as np
 import pandas as pd
 from numpy.typing import ArrayLike, NDArray
 
+from finlab._checks import _same_index
 from finlab._jit import jit
 
 __all__ = [
@@ -292,6 +294,28 @@ def _cusum_events(y: NDArray[np.float64], h: float) -> NDArray[np.int64]:
 # --------------------------------------------------------------------------- #
 
 
+def _refuse_ambiguous_naive_index(index: pd.Index) -> None:
+    """Refuse a naive DatetimeIndex whose repeated label is not adjacent in arrival order.
+
+    A wall-clock label that recurs apart (a fall-back hour) may stand for two instants,
+    so a stable sort would merge them. A repeat that is adjacent is one run of ties.
+    """
+    if not isinstance(index, pd.DatetimeIndex) or index.tz is not None:
+        return
+    codes = np.asarray(pd.factorize(index)[0])
+    uniq, first, counts = np.unique(codes, return_index=True, return_counts=True)
+    _, rev_first = np.unique(codes[::-1], return_index=True)
+    last = codes.shape[0] - 1 - rev_first
+    bad = (counts > 1) & (last - first + 1 != counts)
+    if np.any(bad):
+        label = index[first[bad][0]]
+        raise ValueError(
+            f"naive (timezone-less) index repeats the label {label} at non-adjacent positions; "
+            "it may stand for two instants, such as a DST fall-back hour. Give the index a "
+            "timezone (for example tz_localize with the vendor's DST flag) before calling."
+        )
+
+
 def _as_arrays(
     prices: ArrayLike | pd.Series,
     volumes: ArrayLike | pd.Series | None,
@@ -323,7 +347,8 @@ def _as_arrays(
         v = np.full(p.shape[0], np.nan)
     else:
         if isinstance(volumes, pd.Series) and isinstance(prices, pd.Series):
-            if not volumes.index.equals(prices.index):
+            # Same instants at another unit or zone name the same ticks, so compare as _same_index does.
+            if not _same_index(volumes.index, prices.index):
                 raise ValueError("prices and volumes Series must share the same index.")
         v = np.asarray(volumes, dtype=np.float64).reshape(-1)
         if v.shape[0] != p.shape[0]:
@@ -336,6 +361,7 @@ def _as_arrays(
     # Bars are formed in arrival order, so an unsorted Series must be put in time
     # order first; a stable sort keeps the arrival order of duplicate timestamps.
     if isinstance(prices, pd.Series) and not index.is_monotonic_increasing:
+        _refuse_ambiguous_naive_index(index)
         order = index.argsort(kind="stable")
         index = index[order]
         p = np.ascontiguousarray(p[order])
@@ -344,13 +370,20 @@ def _as_arrays(
 
 
 def _check_threshold(threshold: float) -> float:
+    if isinstance(threshold, (bool, np.bool_)):
+        # bool is read as 1.0 by np.isfinite and float(), so True would pass as a threshold.
+        raise ValueError(f"threshold must be a positive finite number, got {threshold!r}.")
     if not np.isfinite(threshold) or threshold <= 0:
         raise ValueError(f"threshold must be a positive finite number, got {threshold!r}.")
     return float(threshold)
 
 
 def _check_init_T(init_T: int) -> int:
-    if int(init_T) != init_T or init_T < 1:
+    if isinstance(init_T, (bool, np.bool_)):
+        # bool is an Integral, so init_T=True would be read as 1.
+        raise ValueError(f"init_T must be a positive integer, got {init_T!r}.")
+    if not math.isfinite(init_T) or int(init_T) != init_T or init_T < 1:
+        # Finiteness first: int(inf) raises OverflowError, which bypasses the message below.
         raise ValueError(f"init_T must be a positive integer, got {init_T!r}.")
     return int(init_T)
 
@@ -370,6 +403,19 @@ def _magnitude(p: NDArray[np.float64], v: NDArray[np.float64], kind: str) -> NDA
     return p * v
 
 
+def _check_dollar_product(p: NDArray[np.float64], v: NDArray[np.float64], kind: str) -> None:
+    """Refuse a dollar product that overflowed for some tick.
+
+    An infinite per-tick dollar value made imbalance and run bars close no bar, so they returned an
+    empty frame. dollar_bars refuses the same input with this message.
+    """
+    if kind == "dollar":
+        with np.errstate(over="ignore"):
+            dollars = p * v
+        if np.isinf(dollars).any():
+            raise ValueError("price * volume overflows float64 for some tick; the dollar value is not representable.")
+
+
 def _check_kind(kind: str) -> None:
     if kind not in _KINDS:
         raise ValueError(f"kind must be one of {_KINDS}, got {kind!r}.")
@@ -380,13 +426,29 @@ def _bars_frame(
     p: NDArray[np.float64],
     v: NDArray[np.float64],
     ends: NDArray[np.int64],
+    check_dollar: bool = True,
 ) -> pd.DataFrame:
-    """Build the OHLCV frame indexed by the bar-close label."""
+    """Build the OHLCV frame indexed by the bar-close label.
+
+    ``check_dollar=False`` is for volume-only bars: their dollar column is an output they never use,
+    so its overflow is not a reason to refuse.
+    """
     ohlcv = _ohlcv(p, v, ends)
+    _check_bar_sums(ohlcv[:, 4], ohlcv[:, 5] if check_dollar else None)
     out = pd.DataFrame(ohlcv, columns=list(OHLCV_COLUMNS))
     out["ticks"] = out["ticks"].astype(np.int64)
     out.index = index[ends]
     return out
+
+
+def _check_bar_sums(volume: NDArray[np.float64], dollar: NDArray[np.float64] | None) -> None:
+    """Refuse a bar whose volume or dollar sum overflowed to inf.
+
+    Only inf is tested: NaN is the "no volume given" value and is valid for kinds that do not
+    use volume. ``dollar=None`` skips the dollar column.
+    """
+    if np.isinf(volume).any() or (dollar is not None and np.isinf(dollar).any()):
+        raise ValueError("a bar's volume or dollar value overflows float64; the sum is not representable.")
 
 
 # --------------------------------------------------------------------------- #
@@ -425,6 +487,23 @@ def time_bars(
     -----
     Uses pandas ``resample`` (vectorised, with no numba loop).
     """
+    if (
+        isinstance(prices, pd.Series)
+        and prices.index.dtype == object
+        and len(prices) > 0
+        and all(isinstance(t, pd.Timestamp) for t in prices.index)
+    ):
+        # An object index of one zone is a DatetimeIndex; pandas refuses only several zones in it.
+        # as_datetime_index is not used here, since it would put several zones in UTC and accept them.
+        try:
+            single_zone = pd.DatetimeIndex(prices.index)
+        except ValueError:
+            # Concatenating zones leaves an object Index, which the type check below blamed on the index type.
+            raise ValueError(
+                "time_bars: the index has mixed timezones; convert every timestamp to one zone with "
+                "tz_convert (for example tz_convert('UTC')) before calling."
+            ) from None
+        prices = prices.set_axis(single_zone)
     if not isinstance(prices, pd.Series) or not isinstance(prices.index, pd.DatetimeIndex):
         raise TypeError("time_bars needs a pd.Series indexed by a DatetimeIndex.")
     index, p, v = _as_arrays(prices, volumes, need_volume=False)
@@ -432,6 +511,10 @@ def time_bars(
         {"price": p, "volume": v, "dollar": p * v},
         index=index,
     )
+    offset = pd.tseries.frequencies.to_offset(freq)
+    if isinstance(offset, pd.offsets.Tick) and offset.nanos <= 0:
+        # A zero-length bar would make pandas raise ZeroDivisionError inside the resample.
+        raise ValueError(f"Invalid frequency: {freq!r}; the bar length must be positive.")
     rs = df.resample(freq, closed="right", label="right")
     out = pd.DataFrame(
         {
@@ -445,6 +528,7 @@ def time_bars(
         }
     )
     out = out[out["ticks"] > 0].copy()
+    _check_bar_sums(out["volume"].to_numpy(dtype=float), out["dollar_value"].to_numpy(dtype=float))
     out["ticks"] = out["ticks"].astype(np.int64)
     # The module contract drops an incomplete trailing bar, but whether the last
     # interval is complete cannot be known from the ticks alone, so it is kept
@@ -484,6 +568,10 @@ def tick_bars(
     -----
     Numba kernel :func:`_cum_boundaries`, O(n).
     """
+    # A tick count is an integer. A fraction would be silently rounded up to a bar size.
+    if isinstance(threshold, (bool, np.bool_)) or not math.isfinite(threshold) or int(threshold) != threshold or threshold < 1:
+        # bool is refused: True would be read as one tick per bar.
+        raise ValueError(f"threshold must be a positive integer, got {threshold!r}.")
     thr = _check_threshold(threshold)
     index, p, v = _as_arrays(prices, volumes, need_volume=False)
     ends = _cum_boundaries(np.ones(p.shape[0], dtype=np.float64), thr)
@@ -518,7 +606,7 @@ def volume_bars(
     thr = _check_threshold(threshold)
     index, p, v = _as_arrays(prices, volumes, need_volume=True)
     ends = _cum_boundaries(v, thr)
-    return _bars_frame(index, p, v, ends)
+    return _bars_frame(index, p, v, ends, check_dollar=False)
 
 
 def dollar_bars(
@@ -548,7 +636,12 @@ def dollar_bars(
     """
     thr = _check_threshold(threshold)
     index, p, v = _as_arrays(prices, volumes, need_volume=True)
-    ends = _cum_boundaries(p * v, thr)
+    with np.errstate(over="ignore"):
+        dollars = p * v
+    if not np.all(np.isfinite(dollars)):
+        # An inf dollar value would close every bar and appear in the output.
+        raise ValueError("price * volume overflows float64 for some tick; the dollar value is not representable.")
+    ends = _cum_boundaries(dollars, thr)
     return _bars_frame(index, p, v, ends)
 
 
@@ -614,10 +707,11 @@ def imbalance_bars(
     a_bars = _alpha(span_bars, "span_bars")
     a_ticks = _alpha(span_ticks, "span_ticks")
     index, p, v = _as_arrays(prices, volumes, need_volume=kind != "tick")
+    _check_dollar_product(p, v, kind)
     b = _tick_rule(p, float(b0))
     s = np.ascontiguousarray(b * _magnitude(p, v, kind))
     ends = _imbalance_ends(s, int(init_T), a_bars, a_ticks)
-    return _bars_frame(index, p, v, ends)
+    return _bars_frame(index, p, v, ends, check_dollar=kind != "volume")
 
 
 def run_bars(
@@ -675,12 +769,13 @@ def run_bars(
     a_bars = _alpha(span_bars, "span_bars")
     a_ticks = _alpha(span_ticks, "span_ticks")
     index, p, v = _as_arrays(prices, volumes, need_volume=kind != "tick")
+    _check_dollar_product(p, v, kind)
     b = _tick_rule(p, float(b0))
     mag = _magnitude(p, v, kind)
     buy = np.ascontiguousarray(np.where(b > 0.0, mag, 0.0))
     sell = np.ascontiguousarray(np.where(b < 0.0, mag, 0.0))
     ends = _runs_ends(buy, sell, int(init_T), a_bars, a_ticks)
-    return _bars_frame(index, p, v, ends)
+    return _bars_frame(index, p, v, ends, check_dollar=kind != "volume")
 
 
 # --------------------------------------------------------------------------- #
@@ -731,18 +826,27 @@ def cusum_filter(
     return standard deviation, as in Chapter 5, exercise 6(a) of the book) if needed.
     """
     h = _check_threshold(threshold)
+    if isinstance(series, pd.DataFrame) and series.shape[1] == 1:
+        # A one-column frame is a labelled series, so it returns labels as a Series does.
+        series = series.iloc[:, 0]
     if isinstance(series, pd.Series):
         index: pd.Index | None = pd.Index(series.index)
         x = series.to_numpy(dtype=np.float64)
         # The filter runs in arrival order, so an unsorted Series is put in time order
         # first, as _as_arrays does for the bar kinds. A stable sort keeps duplicates.
         if not index.is_monotonic_increasing:
+            _refuse_ambiguous_naive_index(index)
             order = index.argsort(kind="stable")
             index = index[order]
             x = np.ascontiguousarray(x[order])
     else:
         index = None
-        x = np.asarray(series, dtype=np.float64).reshape(-1)
+        x = np.asarray(series, dtype=np.float64)
+        if x.ndim >= 2 and int(np.prod(x.shape[1:])) > 1:
+            # Flattening a multi-column input would return positions into the flattened array. A single
+            # row with several columns is refused too: only the column count decides.
+            raise ValueError(f"series must be one-dimensional or one column, got shape {x.shape}.")
+        x = x.reshape(-1)
     if not np.all(np.isfinite(x)):
         raise ValueError("series must be finite.")
     if is_returns:

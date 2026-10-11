@@ -8,6 +8,7 @@ cannot exhaust memory. Output holds only the answer, and the input is never echo
 from __future__ import annotations
 
 import math
+import warnings
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -30,6 +31,23 @@ from ..stats import (
 from ..structural_breaks import sadf
 
 MAX_ELEMENTS = 5_000_000  # guard: refuse inputs larger than this many numbers
+MAX_CPCV_SPLITS = 100_000  # guard: CPCV materializes every split, so cap C(n_groups, n_test_groups)
+# Each split holds about n_samples indices, so memory scales with n_samples * splits.
+# Capping the splits alone let 100000 samples with 4950 splits reach about 3.9 GB.
+MAX_CPCV_WORK = 20_000_000  # guard: cap n_samples * C(n_groups, n_test_groups)
+
+
+def _binomial_exceeds(n: int, k: int, cap: int) -> bool:
+    """Return True when C(n, k) > cap, without computing the full binomial coefficient."""
+    if k < 0 or k > n:
+        return False  # not a valid split count; the CV constructor reports it
+    k = min(k, n - k)
+    count = 1
+    for i in range(k):
+        count = count * (n - i) // (i + 1)  # exact at every step
+        if count > cap:
+            return True
+    return False
 
 
 class ToolError(ValueError):
@@ -89,7 +107,11 @@ def _mat(args: dict[str, Any], key: str) -> np.ndarray:
         for j, x in enumerate(row):
             if isinstance(x, bool) or not isinstance(x, (int, float)):
                 raise ToolError(f"'{key}' element ({i}, {j}) must be a number, got {type(x).__name__}")
-    arr = np.asarray(v, dtype=np.float64)
+    try:
+        arr = np.asarray(v, dtype=np.float64)
+    except ValueError:
+        # A ragged list gives numpy's inhomogeneous-shape error; name the rule instead.
+        raise ToolError(f"'{key}' must be a rectangular matrix with at most {MAX_ELEMENTS} entries") from None
     if arr.ndim != 2 or arr.size > MAX_ELEMENTS:
         raise ToolError(f"'{key}' must be a rectangular matrix with at most {MAX_ELEMENTS} entries")
     if not np.all(np.isfinite(arr)):
@@ -149,6 +171,9 @@ def _symbols(args: dict[str, Any]) -> list[Any]:
     for i, x in enumerate(msg):
         if isinstance(x, bool):
             raise ToolError(f"'message' element {i} must be a string or integer, got bool")
+        if isinstance(x, float) and math.isfinite(x) and not x.is_integer():
+            # The schema allows strings and integers only; a fractional float is not a symbol.
+            raise ToolError(f"'message' element {i} must be a string or integer, got {x!r}")
     return msg
 
 
@@ -177,9 +202,9 @@ def _sharpe(args):
 
 @_tool(
     "probabilistic_sharpe_ratio",
-    "Probability that the true Sharpe ratio exceeds a benchmark, given sample size, skew and kurtosis.",
+    "Probability that the true Sharpe ratio exceeds a benchmark, given sample size, skew and kurtosis. sr_hat is per period; pass sharpe_ratio with annualize=false.",
     {
-        "sr_hat": {"type": "number"},
+        "sr_hat": {"type": "number", "description": "sr_hat is per period; pass sharpe_ratio with annualize=false."},
         "sr_benchmark": {"type": "number", "default": 0},
         "n_obs": {"type": "integer"},
         "skew": {"type": "number", "default": 0},
@@ -197,9 +222,9 @@ def _psr(args):
 
 @_tool(
     "deflated_sharpe_ratio",
-    "Probability the Sharpe ratio is genuine after correcting for n_trials tried strategies.",
+    "Probability the Sharpe ratio is genuine after correcting for n_trials tried strategies. sr_hat is per period; pass sharpe_ratio with annualize=false.",
     {
-        "sr_hat": {"type": "number"},
+        "sr_hat": {"type": "number", "description": "sr_hat is per period; pass sharpe_ratio with annualize=false."},
         "n_trials": {"type": "integer"},
         "var_sr": {"type": "number", "description": "variance of Sharpe ratios across trials"},
         "n_obs": {"type": "integer"},
@@ -322,7 +347,7 @@ def _kont(args):
 
 @_tool(
     "plug_in_entropy",
-    "Plug-in (maximum-likelihood) entropy of a symbol sequence, in bits per word.",
+    "Plug-in (maximum-likelihood) entropy of a symbol sequence, in bits per symbol (the word entropy divided by word_length).",
     {
         "message": {"type": "array", "items": {"type": ["string", "integer"]}},
         "word_length": {"type": "integer", "default": 1},
@@ -394,7 +419,7 @@ def _bet(args):
 
 @_tool(
     "cpcv_split_summary",
-    "Combinatorial purged CV geometry for a sample: number of splits, paths, and training sizes after purge and embargo. Does not return indices.",
+    "Combinatorial purged CV geometry for a sample: number of splits, paths, and training sizes after purge and embargo. Does not return indices. Refused when n_samples x number of splits exceeds 20,000,000 (the work bound).",
     {
         "n_samples": {"type": "integer"},
         "n_groups": {"type": "integer"},
@@ -415,11 +440,25 @@ def _cpcv(args):
         raise ToolError(f"'horizon' must be >= 0, got {horizon}")
     import pandas as pd
 
+    n_groups = _int(args, "n_groups")
+    n_test_groups = _int(args, "n_test_groups")
+    if _binomial_exceeds(n_groups, n_test_groups, MAX_CPCV_SPLITS):
+        raise ToolError(
+            f"C({n_groups}, {n_test_groups}) splits exceeds the limit of {MAX_CPCV_SPLITS}; "
+            "use fewer groups or fewer test groups"
+        )
+    if 0 <= n_test_groups <= n_groups:
+        work = n * math.comb(n_groups, n_test_groups)
+        if work > MAX_CPCV_WORK:
+            raise ToolError(
+                f"n_samples x splits = {work} exceeds the limit of {MAX_CPCV_WORK}; "
+                "use fewer samples or fewer splits"
+            )
     index = pd.RangeIndex(n)
     t1 = make_t1(index, horizon) if horizon >= 1 else None
     cv = CombinatorialPurgedCV(
-        n_groups=_int(args, "n_groups"),
-        n_test_groups=_int(args, "n_test_groups"),
+        n_groups=n_groups,
+        n_test_groups=n_test_groups,
         embargo_pct=_num(args, "embargo_pct", 0),
         t1=t1,
         min_train_size=0,
@@ -455,9 +494,25 @@ def call_tool(name: str, arguments: dict[str, Any] | None) -> tuple[dict[str, An
         arguments = {}
     if not isinstance(arguments, dict):
         return {"error": "arguments must be a JSON object"}, True
+    declared = tool.schema.get("properties", {})
+    unknown = sorted(str(k) for k in arguments if k not in declared)
+    if unknown:
+        # An undeclared key would otherwise be ignored and the default used, silently.
+        return {
+            "error": f"unknown argument(s) {', '.join(repr(k) for k in unknown)} for tool '{name}'; "
+            f"declared arguments: {', '.join(sorted(declared))}"
+        }, True
     try:
-        return tool.handler(arguments), False
+        # Library warnings would otherwise go only to stderr, which the client never sees.
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            result = tool.handler(arguments)
     except ToolError as exc:
         return {"error": str(exc)}, True
     except Exception as exc:  # any tool failure is an isError result, not a dead server
         return {"error": f"{type(exc).__name__}: {exc}"}, True
+    messages = list(dict.fromkeys(str(w.message) for w in caught))
+    if messages:
+        # Added only when there is something to say, so a clean reply keeps its shape.
+        result = {**result, "warnings": messages}
+    return result, False

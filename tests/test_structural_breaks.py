@@ -323,17 +323,19 @@ def _magnitude_message(exc_info):
     assert "collinear" not in text and "reproduce" not in text
 
 
-def test_cusum_large_magnitude_series_names_magnitude_not_collinearity():
-    with pytest.raises(ValueError) as exc_info:
-        cusum_test(np.linspace(1, 2, 50) * 1e160)
-    _magnitude_message(exc_info)
+def test_cusum_large_magnitude_series_is_scale_invariant():
+    # The CUSUM statistic is a ratio to sigma, so it does not depend on scale and the large side is
+    # rescaled first: a 1e160 series gives the same statistic as the unit-scale series.
+    base = cusum_test(np.linspace(1, 2, 50)).statistic
+    np.testing.assert_allclose(cusum_test(np.linspace(1, 2, 50) * 1e160).statistic, base, rtol=1e-9)
 
 
-def test_cusum_underflowing_series_names_magnitude_not_exact_fit():
+def test_cusum_underflowing_series_matches_unit_scale():
+    # A 1e-200 series is rescaled before the statistic is computed, so the statistic is a ratio to
+    # sigma and matches scale 1, as adf_stat does.
     rng = np.random.default_rng(7)
-    with pytest.raises(ValueError) as exc_info:
-        cusum_test(rng.normal(size=60) * 1e-200)
-    _magnitude_message(exc_info)
+    y = rng.normal(size=60)
+    np.testing.assert_allclose(cusum_test(y * 1e-200).statistic, cusum_test(y).statistic, rtol=1e-9)
 
 
 def test_cusum_constant_series_keeps_no_variation_message():
@@ -391,10 +393,12 @@ def _csw_walk() -> np.ndarray:
     return np.cumsum(np.random.default_rng(1).normal(size=300))
 
 
-@pytest.mark.parametrize("scale", [1e-170, 1e170])
-def test_csw_extreme_magnitude_raises(scale):
-    with pytest.raises(ValueError, match="magnitude"):
-        chu_stinchcombe_white(_csw_walk() * scale)
+@pytest.mark.parametrize("scale", [1e-170, 1e-200])
+def test_csw_small_scale_matches_unit_scale(scale):
+    # The chu statistic is scale-invariant, so a 1e-170 series is rescaled and gives the unit-scale
+    # value, not a refusal.
+    base = chu_stinchcombe_white(_csw_walk()).statistic
+    np.testing.assert_allclose(chu_stinchcombe_white(_csw_walk() * scale).statistic, base, rtol=1e-9)
 
 
 def test_csw_ordinary_scale_output_is_finite_and_unchanged():
@@ -434,3 +438,237 @@ def test_sadf_nan_min_length_names_min_length():
     y = np.cumsum(np.random.default_rng(2).normal(size=100))
     with pytest.raises(ValueError, match="min_length"):
         sadf(y, min_length=float("nan"))
+
+
+def test_csw_critical_value_rejects_b_that_makes_the_root_negative() -> None:
+    # b = -10 made every critical value NaN, so the test never rejected.
+    from finlab.structural_breaks import csw_critical_value
+
+    with pytest.raises(ValueError, match="b"):
+        csw_critical_value(np.array([1, 5, 20]), b=-10.0)
+    with pytest.raises(ValueError, match="b"):
+        chu_stinchcombe_white(np.cumsum(np.ones(60)), b=-10.0)
+
+
+def test_csw_critical_value_valid_b_unchanged() -> None:
+    from finlab.structural_breaks import csw_critical_value
+
+    np.testing.assert_allclose(
+        csw_critical_value(np.array([1, 2]), b=4.6), np.sqrt(4.6 + np.log([1.0, 2.0]))
+    )
+
+
+def test_adf_stat_constant_series_reports_no_variation() -> None:
+    # A constant series must be reported as having no variation, not as too few observations, and
+    # constant='nc' must not silently return 0.0.
+    from finlab.structural_breaks import adf_stat
+
+    for constant in ("c", "nc"):
+        with pytest.raises(ValueError, match="no variation"):
+            adf_stat(np.ones(50), lag=0, constant=constant)
+
+
+def _random_walk_levels(seed: int = 0, n: int = 200) -> np.ndarray:
+    rng = np.random.default_rng(seed)
+    return np.cumsum(rng.normal(size=n)) + 10.0
+
+
+def test_adf_stat_is_scale_invariant_at_extreme_scale() -> None:
+    # The Gram matrix overflowed at 1e160, and the error blamed the series length.
+    from finlab.structural_breaks import adf_stat
+
+    x = _random_walk_levels()
+    base = adf_stat(x, lag=1)
+    assert adf_stat(x * 1e160, lag=1) == pytest.approx(base, rel=1e-8)
+    assert adf_stat(x * 1e-160, lag=1) == pytest.approx(base, rel=1e-8)
+    assert adf_stat(x * 1e200, lag=1) == pytest.approx(base, rel=1e-8)
+
+
+def test_sadf_is_scale_invariant_at_extreme_scale() -> None:
+    # Every output was NaN at 1e200 and no error was raised.
+    from finlab.structural_breaks import sadf
+
+    x = _random_walk_levels()
+    base = np.asarray(sadf(x, min_length=20))
+    for factor in (1e200, 1e-200):
+        got = np.asarray(sadf(x * factor, min_length=20))
+        np.testing.assert_array_equal(np.isnan(got), np.isnan(base))
+        np.testing.assert_allclose(got, base, rtol=1e-8, equal_nan=True)
+
+
+
+def test_sadf_rejects_constant_series_like_adf_stat() -> None:
+    # sadf returned NaN silently where adf_stat raises.
+    from finlab.structural_breaks import sadf
+
+    with pytest.raises(ValueError, match="constant"):
+        sadf(np.ones(40), min_length=10)
+
+
+def test_csw_critical_value_nan_lag_is_named_as_lag() -> None:
+    # A NaN lag passed the lag >= 1 check (NaN compares false), then failed the b check, so the error
+    # blamed b. A non-finite lag is now reported as a lag.
+    from finlab.structural_breaks import csw_critical_value
+
+    with pytest.raises(ValueError, match="t - n must be finite"):
+        csw_critical_value(np.nan)
+    with pytest.raises(ValueError, match="b must satisfy"):
+        csw_critical_value(np.array([1, 5]), b=np.nan)
+
+
+def test_structural_breaks_reject_a_descending_index() -> None:
+    # Values were read in array order, so a descending DatetimeIndex gave the statistics of the
+    # reversed series. bars.py sorts by index; here a non-ascending index is refused.
+    import pandas as pd
+
+    from finlab.fracdiff import frac_diff, frac_diff_ffd
+    from finlab.structural_breaks import adf_stat, chu_stinchcombe_white, sadf
+
+    rw = np.cumsum(np.random.default_rng(5).standard_normal(60)) + 10
+    s = pd.Series(rw, index=pd.date_range("2024-01-01", periods=60, freq="D"))
+    r = s.iloc[::-1]
+    with pytest.raises(ValueError, match="sorted"):
+        chu_stinchcombe_white(r)
+    with pytest.raises(ValueError, match="sorted"):
+        adf_stat(r, 1)
+    with pytest.raises(ValueError, match="sorted"):
+        sadf(r, 8, 1)
+    with pytest.raises(ValueError, match="sorted"):
+        frac_diff_ffd(r, 0.4, 1e-3)
+    with pytest.raises(ValueError, match="sorted"):
+        frac_diff(r, 0.4)
+    # An ascending Series, and a plain array, are unchanged.
+    assert chu_stinchcombe_white(s).statistic.shape[0] == 60
+
+
+def test_cusum_test_and_chu_are_scale_invariant_at_large_magnitude() -> None:
+    # adf_stat and sadf rescale their input, but cusum_test and chu_stinchcombe_white refused a series
+    # near 1e155 although both statistics are ratios that do not change with scale.
+    from finlab import structural_breaks as sb
+
+    y = np.cumsum(np.random.default_rng(0).standard_normal(200))
+    big = y * 1e155
+    base_c = sb.cusum_test(y).statistic
+    np.testing.assert_allclose(sb.cusum_test(big).statistic, base_c, rtol=1e-9, atol=1e-12)
+    np.testing.assert_allclose(sb.chu_stinchcombe_white(big).statistic,
+                               sb.chu_stinchcombe_white(y).statistic, rtol=1e-9, atol=1e-12)
+    assert sb.cusum_test(big).sigma == pytest.approx(sb.cusum_test(y).sigma * 1e155, rel=1e-9)
+
+
+def test_integer_arguments_refuse_bool() -> None:
+    # bool is numbers.Integral, so True was read as 1 (lag and reference).
+    from finlab import structural_breaks as sb
+
+    y = np.cumsum(np.random.default_rng(0).standard_normal(60))
+    with pytest.raises(ValueError):
+        sb.adf_stat(y, True)
+    with pytest.raises(ValueError):
+        sb.chu_stinchcombe_white(y, reference=True)
+
+
+def test_cusum_test_refuses_residuals_that_overflow_in_original_units() -> None:
+    # The statistic and sigma stayed finite, but residuals = w_s * y_scale overflowed to inf for a
+    # series near 1.7e308. The residuals must be refused rather than returned as inf.
+    import finlab.structural_breaks as sb
+
+    y = np.random.default_rng(0).choice([-1.0, 1.0], 60) * 1.7e308
+    with pytest.raises(ValueError, match="not finite or underflow"):
+        sb.cusum_test(y)
+
+
+def test_cusum_test_large_series_keeps_finite_residuals() -> None:
+    # A series of 1e155 still gives the unscaled statistics, with finite residuals in its units.
+    import finlab.structural_breaks as sb
+
+    y = np.cumsum(np.random.default_rng(1).standard_normal(60))
+    base = sb.cusum_test(y)
+    big = sb.cusum_test(y * 1e155)
+    assert np.all(np.isfinite(big.residuals[1:]))
+    assert np.allclose(big.statistic[1:], base.statistic[1:], rtol=1e-9)
+
+
+def test_csw_critical_value_refuses_infinite_b() -> None:
+    # b = +inf gave infinite critical values, so chu_stinchcombe_white never rejected. The lag check
+    # already refuses a non-finite value, and b now gets the same rule.
+    import finlab.structural_breaks as sb
+
+    with pytest.raises(ValueError, match="b must be finite"):
+        sb.csw_critical_value(np.array([5.0]), b=np.inf)
+    with pytest.raises(ValueError, match="b must"):
+        sb.csw_critical_value(np.array([5.0]), b=-np.inf)
+    # The default b still gives finite critical values, and NaN b keeps its own message.
+    assert np.isfinite(sb.csw_critical_value(np.array([5.0]))).all()
+    with pytest.raises(ValueError, match="b must satisfy"):
+        sb.csw_critical_value(np.array([5.0]), b=np.nan)
+
+
+def test_cusum_and_chu_small_scale_match_unit_scale() -> None:
+    # The rescale covered only the large side, so a series of magnitude 1e-160 gave chu 1.38622
+    # against 1.38505 at scale 1 (8e-4 off) and cusum off by 1e-6. The statistics are scale-invariant,
+    # so they must match scale 1 to rounding, as adf_stat already does.
+    from finlab import structural_breaks as sb
+
+    y = np.cumsum(np.random.default_rng(0).standard_normal(120)) + 10
+    base_chu = sb.chu_stinchcombe_white(y).statistic[2]
+    base_cusum = sb.cusum_test(y).statistic[-1]
+    assert sb.chu_stinchcombe_white(y * 1e-160).statistic[2] == pytest.approx(base_chu, rel=1e-10)
+    assert sb.cusum_test(y * 1e-160).statistic[-1] == pytest.approx(base_cusum, rel=1e-10)
+    assert sb.chu_stinchcombe_white(y * 1e-200).statistic[2] == pytest.approx(base_chu, rel=1e-10)
+    assert sb.cusum_test(y * 1e-200).statistic[-1] == pytest.approx(base_cusum, rel=1e-10)
+
+
+def test_large_side_scale_still_matches_unit_scale() -> None:
+    # The large side is unchanged, and the small-side rescale does not touch a normal scale.
+    from finlab import structural_breaks as sb
+
+    y = np.cumsum(np.random.default_rng(0).standard_normal(120)) + 10
+    base = sb.cusum_test(y).statistic[-1]
+    assert sb.cusum_test(y * 1e150).statistic[-1] == pytest.approx(base, rel=1e-10)
+    assert sb.cusum_test(y).statistic[-1] == pytest.approx(base, rel=0, abs=0)
+
+
+def test_cusum_test_refuses_descending_exog_index_and_mismatched_labels():
+    # exog's index was never read, so a reversed exog frame gave the statistics of the numpy input,
+    # and labels that differed from series were paired by position.
+    idx = pd.date_range("2020-01-01", periods=40, freq="D")
+    rng = np.random.default_rng(1)
+    y = pd.Series(rng.normal(size=40), index=idx)
+    x = pd.DataFrame({"f": rng.normal(size=40)}, index=idx)
+    with pytest.raises(ValueError, match="sorted"):
+        cusum_test(y, x.iloc[::-1])
+    with pytest.raises(ValueError, match="same index"):
+        cusum_test(y, x.set_axis(idx + pd.Timedelta(hours=12)))
+    # Matching labelled exog keeps its value.
+    assert np.allclose(
+        cusum_test(y, x).statistic, cusum_test(y.to_numpy(), x.to_numpy()).statistic, equal_nan=True
+    )
+
+
+def test_cusum_test_pairs_the_same_instants_across_timezones():
+    idx = pd.date_range("2020-01-01", periods=40, freq="h", tz="UTC")
+    rng = np.random.default_rng(2)
+    y = pd.Series(rng.normal(size=40), index=idx)
+    x = pd.DataFrame({"f": rng.normal(size=40)}, index=idx)
+    x_berlin = x.set_axis(idx.tz_convert("Europe/Berlin"))
+    assert np.allclose(
+        cusum_test(y, x_berlin).statistic, cusum_test(y, x).statistic, atol=1e-12, equal_nan=True
+    )
+    with pytest.raises(ValueError, match="same index"):
+        cusum_test(y, x.set_axis(idx.tz_convert("Europe/Berlin") + pd.Timedelta(minutes=30)))
+
+
+@pytest.mark.parametrize("constant", ["c", "ct"])
+def test_adf_stat_is_invariant_to_a_large_level_shift(constant):
+    rng = np.random.default_rng(3)
+    base = np.cumsum(rng.standard_normal(2000) * 0.01)
+    assert adf_stat(base + 1e6, lag=1, constant=constant) == pytest.approx(
+        adf_stat(base, lag=1, constant=constant), abs=1e-8
+    )
+
+
+def test_sadf_is_invariant_to_a_large_level_shift():
+    rng = np.random.default_rng(4)
+    base = np.cumsum(rng.standard_normal(300) * 0.01)
+    shifted = sadf(base + 1e6, min_length=30, lags=1)
+    assert not np.isinf(shifted).any()
+    assert np.allclose(shifted, sadf(base, min_length=30, lags=1), atol=1e-8, equal_nan=True)

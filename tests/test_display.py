@@ -8,6 +8,7 @@ import subprocess
 import sys
 
 import numpy as np
+import pytest
 
 from finlab._display import html_table
 from finlab.pbo import PBOResult, probability_of_backtest_overfitting
@@ -139,3 +140,14 @@ def test_importing_public_modules_prints_nothing() -> None:
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout == ""
     assert proc.stderr == ""
+
+
+def test_html_table_refuses_a_mapping_with_a_clear_type_error() -> None:
+    with pytest.raises(TypeError, match=r"\(label, value\).*mapping\.items\(\)"):
+        html_table("t", {"abc": 1.0, "xyz": 2.0})
+
+
+def test_html_table_accepts_mapping_items() -> None:
+    page = html_table("t", {"abc": 1.0, "xyz": 2.0}.items())
+    assert _cell(page, "abc") == "1"
+    assert _cell(page, "xyz") == "2"

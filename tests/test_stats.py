@@ -324,8 +324,7 @@ def test_dsr_hand_computed_case_n_equals_one() -> None:
 # ---------------------------------------------------------------------------
 # Expected maximum: exact closed forms and an independent numerical reference
 #
-# Label for the numerical reference checks: independent numerical reference,
-# approximation error measured, not a book value.
+# The approximation error is measured against quadrature, not taken from the book.
 # ---------------------------------------------------------------------------
 
 _QUAD_BREAKS = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
@@ -384,8 +383,7 @@ def test_expected_max_n2_closed_form_for_exact_maximum_approximation_error_recor
 
 
 def test_expected_max_matches_independent_numerical_reference() -> None:
-    # Label: independent numerical reference, approximation error measured, not a book value.
-    # Measured (exact = quadrature; approx = expected_max_sharpe(N, 1.0)):
+    # Exact = quadrature; approx = expected_max_sharpe(N, 1.0). Measured values:
     #   N     exact         approx        approx - exact   relative
     #   2     0.5641895835  0.5197553443  -0.0444342393    -7.876 %
     #   5     1.1629644736  1.1925940010  +0.0296295274    +2.548 %
@@ -415,3 +413,179 @@ def test_psr_warns_on_infinite_benchmark_and_returns_its_limit() -> None:
     # An infinite sr_benchmark gives z = -inf, so PSR is 0 with a warning. An infinite sr_hat raises.
     with pytest.warns(UserWarning, match="probabilistic_sharpe_ratio.*non-finite"):
         assert probabilistic_sharpe_ratio(0.5, np.inf, 60, -0.2, 3.5) == 0.0
+
+
+def test_sharpe_ratio_rejects_multi_column_ndarray() -> None:
+    # A 2-D array was flattened, pooling every column into one series.
+    a = np.array([[1.0, 100], [2, 200], [3, 300], [1.5, 150]])
+    with pytest.raises(ValueError, match="one column"):
+        sharpe_ratio(a, annualize=False)
+
+
+def test_sharpe_ratio_single_column_and_row_vector_unchanged() -> None:
+    r = np.array([1.0, 2.0, 3.0, 1.5])
+    want = sharpe_ratio(r, annualize=False)
+    assert sharpe_ratio(r.reshape(-1, 1), annualize=False) == pytest.approx(want)
+    # A row vector is several columns, so it is refused like any other multi-column input.
+    # Accepting it would pool the columns into one series.
+    with pytest.raises(ValueError, match="one column"):
+        sharpe_ratio(r.reshape(1, -1), annualize=False)
+
+
+@pytest.mark.parametrize("kurt", [float("inf"), float("nan")])
+def test_psr_rejects_non_finite_kurtosis(kurt: float) -> None:
+    # Infinite kurtosis gave exactly 0.5 ("no skill") with no warning.
+    from finlab.stats import probabilistic_sharpe_ratio
+
+    with pytest.raises(ValueError, match="kurtosis must be finite"):
+        probabilistic_sharpe_ratio(1.0, 0.0, 100, 0.0, kurt)
+
+
+def test_psr_rejects_non_finite_skew() -> None:
+    from finlab.stats import probabilistic_sharpe_ratio
+
+    with pytest.raises(ValueError, match="skew must be finite"):
+        probabilistic_sharpe_ratio(1.0, 0.0, 100, float("inf"), 3.0)
+
+
+def test_psr_finite_skew_kurtosis_unchanged() -> None:
+    from finlab.stats import probabilistic_sharpe_ratio
+
+    assert probabilistic_sharpe_ratio(1.0, 0.0, 100, 0.0, 3.0) == pytest.approx(
+        0.9999999999999998, rel=1e-12
+    )
+
+
+def test_sharpe_ratio_tiny_scale_returns_are_finite_and_scale_invariant() -> None:
+    # An absolute 1e-12 floor treated returns of scale 1e-13 as constant.
+    base = np.array([1.0, 2.0, 3.0, 1.5])
+    tiny = base * 1e-13
+    assert np.isfinite(sharpe_ratio(tiny, annualize=False))
+    assert sharpe_ratio(tiny, annualize=False) == pytest.approx(
+        sharpe_ratio(base, annualize=False), rel=1e-12
+    )
+
+
+def test_sharpe_ratio_still_flags_float_noise_as_constant_at_unit_scale() -> None:
+    with pytest.warns(UserWarning, match="constant"):
+        assert math.isnan(sharpe_ratio(np.array([1.0, 1.0 + 1e-13, 1.0, 1.0])))
+
+
+def test_sharpe_ratio_rejects_single_row_multi_column_ndarray() -> None:
+    # A 1x3 array was raveled into three observations of one series.
+    with pytest.raises(ValueError, match="one column"):
+        sharpe_ratio(np.array([[0.01, 0.02, 0.03]]))
+
+
+def test_min_track_record_length_rejects_non_finite_skew_with_clear_message() -> None:
+    # A NaN skew must be named as the cause, not reported as "skew/kurtosis incompatible".
+    from finlab.stats import min_track_record_length
+
+    with pytest.raises(ValueError, match="skew must be finite"):
+        min_track_record_length(0.2, 0.1, skew=float("nan"))
+
+
+def test_min_track_record_length_rejects_non_finite_kurtosis_with_clear_message() -> None:
+    from finlab.stats import min_track_record_length
+
+    with pytest.raises(ValueError, match="kurt must be finite"):
+        min_track_record_length(0.2, 0.1, kurt=float("inf"))
+
+
+def test_sharpe_ratio_rejects_multi_column_dataframe() -> None:
+    # A multi-column DataFrame was reduced to its first column with no warning, while the same data
+    # as an ndarray is refused. Both containers now agree.
+    x = np.random.default_rng(0).normal(0.001, 0.01, 50)
+    with pytest.raises(ValueError, match="one column"):
+        sharpe_ratio(pd.DataFrame(np.column_stack([x, -x, x])), annualize=False)
+    with pytest.raises(ValueError, match="one column"):
+        sharpe_ratio(pd.DataFrame([[0.1, 0.2, 0.3]]), annualize=False)
+
+
+def test_sharpe_ratio_one_column_dataframe_unchanged() -> None:
+    x = np.random.default_rng(0).normal(0.001, 0.01, 50)
+    assert sharpe_ratio(pd.DataFrame({"a": x}), annualize=False) == pytest.approx(
+        sharpe_ratio(x, annualize=False)
+    )
+
+
+def test_sharpe_ratio_unused_periods_per_year_ignored_when_not_annualized() -> None:
+    # periods_per_year was validated even when annualize=False, where it is not used, so a per-period
+    # call with NaN or inf raised. The value is only checked when used.
+    x = np.random.default_rng(0).normal(0.001, 0.01, 50)
+    want = sharpe_ratio(x, annualize=False)
+    assert sharpe_ratio(x, periods_per_year=float("nan"), annualize=False) == pytest.approx(want)
+    assert sharpe_ratio(x, periods_per_year=float("inf"), annualize=False) == pytest.approx(want)
+    with pytest.raises(ValueError, match="periods_per_year"):
+        sharpe_ratio(x, periods_per_year=float("nan"), annualize=True)
+
+
+def test_psr_rejects_nan_benchmark() -> None:
+    # A NaN sr_benchmark returned NaN with a warning, while minTRL refuses it. An infinite benchmark
+    # stays a documented value (0.0).
+    from finlab.stats import probabilistic_sharpe_ratio
+
+    with pytest.raises(ValueError, match="sr_benchmark must not be NaN"):
+        probabilistic_sharpe_ratio(0.1, float("nan"), 100)
+
+
+def test_probabilistic_sharpe_accepts_zero_dim_array_skew() -> None:
+    # A 0-d array holds one real number, so it is accepted (0.8395...).
+    import numpy as np
+
+    from finlab.stats import min_track_record_length, probabilistic_sharpe_ratio
+
+    assert probabilistic_sharpe_ratio(0.1, 0.0, 100, np.array(0.0), 3.0) == pytest.approx(
+        0.8395254171844497, rel=1e-12
+    )
+    assert min_track_record_length(0.2, 0.1, np.array(0.0), np.array(3.0)) == pytest.approx(
+        276.96543231773217, rel=1e-12
+    )
+    with pytest.raises(ValueError, match="skew must be a real number"):
+        probabilistic_sharpe_ratio(0.1, 0.0, 100, np.array([0.0, 0.1]), 3.0)
+
+
+def test_sharpe_ratio_refuses_strings_bools_and_none() -> None:
+    # Strings became floats, bools became 1/0 and None became NaN.
+    from finlab.stats import sharpe_ratio
+
+    with pytest.raises(ValueError, match="returns must be real numbers"):
+        sharpe_ratio(["0.01", "0.02", "-0.01"])
+    with pytest.raises(ValueError, match="returns must be real numbers"):
+        sharpe_ratio([True, False, True])
+    with pytest.raises(ValueError, match="returns must be real numbers"):
+        sharpe_ratio([None, 0.01, 0.02, -0.01])
+
+
+def test_sharpe_ratio_refuses_none_entries_as_intended() -> None:
+    # A None entry is refused by name in a list. A pandas Series converts None to NaN before the
+    # function sees it, so only the list form is refused here.
+    from finlab.stats import sharpe_ratio
+
+    with pytest.raises(ValueError, match="real numbers"):
+        sharpe_ratio([0.01, None, -0.02, 0.03])
+
+
+def test_min_track_record_length_refuses_prob_at_or_below_half() -> None:
+    # For sr_hat > sr_benchmark, PSR(T) is above 0.5 for every T, so prob <= 0.5 has no solution. The
+    # function used to return a T that solves PSR = 1 - prob (0.95 at T = 273 for prob 0.05).
+    from finlab.stats import min_track_record_length, probabilistic_sharpe_ratio
+
+    with pytest.raises(ValueError, match="prob"):
+        min_track_record_length(0.1, 0.0, prob=0.05)
+    # The refusal applies to prob < 0.5 only (prob = 0.5 has the root T = 1, tested below), so 0.4 is refused.
+    with pytest.raises(ValueError, match="prob"):
+        min_track_record_length(0.1, 0.0, prob=0.4)
+    # Prob above 0.5 still solves PSR = prob at the returned length.
+    T = min_track_record_length(0.1, 0.0, prob=0.95)
+    assert probabilistic_sharpe_ratio(0.1, 0.0, math.ceil(T), 0.0, 3.0) == pytest.approx(0.95, abs=0.01)
+
+
+def test_min_track_record_length_prob_half_gives_the_root() -> None:
+    # At prob = 0.5 the root is T = 1 (z = 0), which is returned. The refusal is for prob < 0.5
+    # only, where PSR(T) stays above 0.5 for every T.
+    from finlab.stats import min_track_record_length
+
+    assert min_track_record_length(0.1, 0.0, prob=0.5) == pytest.approx(1.0)
+    with pytest.raises(ValueError, match="prob"):
+        min_track_record_length(0.1, 0.0, prob=0.4)

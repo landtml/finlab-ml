@@ -35,7 +35,7 @@ pytest                      # run the suite
 To install a tagged release instead:
 
 ```bash
-pip install "git+https://github.com/landtml/finlab-ml@v0.1.3"
+pip install "git+https://github.com/landtml/finlab-ml@v0.1.4"
 ```
 
 Requires Python 3.10 to 3.13.
@@ -157,7 +157,7 @@ from the repository root (see the script for the Chrome requirement).
 
 | Area | Status |
 |---|---|
-| CPCV purge and no-leakage property | Proved in [`docs/proofs/cpcv.md`](docs/proofs/cpcv.md); tested in `tests/test_cpcv.py`. The live-data certificate in `docs/proofs/cpcv.md` was not produced by a `finlab` run. |
+| CPCV purge and no-leakage property | Proved in [`docs/proofs/cpcv.md`](docs/proofs/cpcv.md); tested in `tests/test_cpcv.py`. The live-data block in `docs/proofs/cpcv.md` was printed by `tools/verify_leakage.py`. |
 | Purged K-fold, tuning, bet sizing, parallel helpers | Tested. Book worked examples for bet sizing (sigmoid calibration, target 97, limit price 112.3657) are tests. |
 | PBO via CSCV | Tested against a naive transcription. Under i.i.d. noise E[PBO] = 1/2 for even N (proved in `docs/proofs/pbo.md`), so a PBO near 1 is not a noise result. |
 | Deflated Sharpe, PSR, minTRL | Tested on hand-checked values. minTRL is cited to Bailey and López de Prado (2012), not AFML. |
@@ -213,6 +213,14 @@ Measured on 2026-10-10 on a shared machine (4 vCPU, Python 3.13.16, numpy 2.5.3,
   caller's responsibility for MDA and SFI; CSCV follows the book without purging.
 - **Leakage beyond the splitter.** The CV guarantee covers the split boundary given
   the `t1` you supply. Leakage in your own feature construction is not detected.
+- **Supported input.** Time-indexed inputs are a monotonic pandas `DatetimeIndex` with one
+  timezone or none, at any single unit (`s`, `ms`, `us`, `ns`). Every input to one call
+  must share the same awareness, so naive and aware inputs are not mixed. Inputs that
+  hold the same instants at different units across arguments are accepted. Other forms
+  are unsupported: object-dtype datetime indexes, one index that mixes timezones, strings
+  or integers standing in for timestamps, and non-monotonic indexes. Convert them first,
+  for example with `pd.to_datetime(..., utc=True)` and `sort_index()`. Results for
+  unsupported inputs are not guaranteed.
 - **Bar warm-up look-ahead.** Imbalance and runs bars start their expected-imbalance
   estimates from the first `init_T` ticks, so the first bars close on a threshold that
   uses later data. After that the estimates are EWMA updates from prior bars and ticks.
