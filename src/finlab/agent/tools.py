@@ -66,6 +66,9 @@ def _vec(args: dict[str, Any], key: str) -> np.ndarray:
         raise ToolError(f"'{key}' must be a non-empty array of numbers")
     if len(v) > MAX_ELEMENTS:
         raise ToolError(f"'{key}' has {len(v)} elements; the limit is {MAX_ELEMENTS}")
+    for i, x in enumerate(v):
+        if isinstance(x, bool):
+            raise ToolError(f"'{key}' element {i} must be a number, got bool")
     arr = np.asarray(v, dtype=np.float64)
     if arr.ndim != 1:
         raise ToolError(f"'{key}' must be a flat array of numbers")
@@ -111,6 +114,18 @@ def _bool(args: dict[str, Any], key: str, default: bool) -> bool:
     if not isinstance(v, bool):
         raise ToolError(f"'{key}' must be a boolean")
     return v
+
+
+def _symbols(args: dict[str, Any]) -> list[Any]:
+    msg = args.get("message")
+    if not isinstance(msg, list) or not msg:
+        raise ToolError("'message' must be a non-empty array of symbols")
+    if len(msg) > MAX_ELEMENTS:
+        raise ToolError(f"'message' is longer than {MAX_ELEMENTS}")
+    for i, x in enumerate(msg):
+        if isinstance(x, bool):
+            raise ToolError(f"'message' element {i} must be a string or integer, got bool")
+    return msg
 
 
 def _clean(x: float) -> float | None:
@@ -274,11 +289,7 @@ def _sadf(args):
     ["message"],
 )
 def _kont(args):
-    msg = args.get("message")
-    if not isinstance(msg, list) or not msg:
-        raise ToolError("'message' must be a non-empty array of symbols")
-    if len(msg) > MAX_ELEMENTS:
-        raise ToolError(f"'message' is longer than {MAX_ELEMENTS}")
+    msg = _symbols(args)
     return {"entropy": _clean(float(kontoyiannis_entropy(msg)))}
 
 
@@ -292,11 +303,7 @@ def _kont(args):
     ["message"],
 )
 def _plugin(args):
-    msg = args.get("message")
-    if not isinstance(msg, list) or not msg:
-        raise ToolError("'message' must be a non-empty array of symbols")
-    if len(msg) > MAX_ELEMENTS:
-        raise ToolError(f"'message' is longer than {MAX_ELEMENTS}")
+    msg = _symbols(args)
     return {"entropy": _clean(float(plug_in_entropy(msg, word_length=_int(args, "word_length", 1))))}
 
 

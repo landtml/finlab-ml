@@ -287,3 +287,12 @@ def test_string_boolean_is_rejected_not_truthy():
 def test_nested_array_is_rejected_for_flat_input():
     out, err = _call("sharpe_ratio", {"returns": [[0.1, 0.2], [0.3, 0.4]]})
     assert err and "'returns' must be a flat array of numbers" in out["error"]
+
+
+def test_boolean_elements_are_rejected_as_numbers_and_symbols():
+    out, err = _call("sharpe_ratio", {"returns": [True, False, True, True]})
+    assert err and "'returns' element 0" in out["error"] and "bool" in out["error"]
+    out, err = _call("kontoyiannis_entropy", {"message": ["a", True]})
+    assert err and "'message' element 1" in out["error"]
+    out, err = _call("plug_in_entropy", {"message": [False, 1]})
+    assert err and "'message' element 0" in out["error"]
