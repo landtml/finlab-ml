@@ -182,6 +182,16 @@ def _check_xy(X: Any, y: Any, sample_weight: Any = None) -> tuple[int, npt.NDArr
             f"sample_weight has shape {np.shape(sample_weight)} but X has {n} rows; "
             f"expected length {n}."
         )
+    # Labels must line up too: a pandas y or weight is otherwise used by position.
+    if isinstance(X, (pd.DataFrame, pd.Series)):
+        if isinstance(y, (pd.DataFrame, pd.Series)) and not y.index.equals(X.index):
+            raise ValueError("y index does not match X.index; align y to X before calling.")
+        if isinstance(sample_weight, (pd.DataFrame, pd.Series)) and not sample_weight.index.equals(
+            X.index
+        ):
+            raise ValueError(
+                "sample_weight index does not match X.index; align sample_weight to X before calling."
+            )
     return p, y_arr
 
 

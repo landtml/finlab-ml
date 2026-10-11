@@ -112,6 +112,16 @@ class SequentialBootstrapBagging:
             raise ValueError(
                 f"sample_weight has shape {w.shape} but X has {n} rows; expected length {n}."
             )
+        # Labels must line up too: a pandas y or weight is otherwise used by position.
+        if isinstance(X, pd.DataFrame):
+            if isinstance(y, (pd.DataFrame, pd.Series)) and not y.index.equals(X.index):
+                raise ValueError("y index does not match X.index; align y to X before calling.")
+            if isinstance(sample_weight, (pd.DataFrame, pd.Series)) and not sample_weight.index.equals(
+                X.index
+            ):
+                raise ValueError(
+                    "sample_weight index does not match X.index; align sample_weight to X before calling."
+                )
         rng = np.random.default_rng(self.seed)
         size = n if self.max_samples is None else int(self.max_samples)
         if size < 1:

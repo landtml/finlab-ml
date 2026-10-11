@@ -333,6 +333,46 @@ def test_mda_and_sfi_reject_sample_weight_of_wrong_length(length):
         sfi(NearestCentroid, X, y, cv, sample_weight=np.ones(length))
 
 
+def test_mda_and_sfi_reject_pandas_y_with_mismatched_index():
+    rng = np.random.default_rng(0)
+    Xdf = pd.DataFrame(rng.normal(size=(300, 2)), columns=["a", "b"])
+    y_reversed = pd.Series((Xdf["a"] > 0).astype(int).to_numpy(), index=Xdf.index[::-1])
+    cv = PurgedKFold(n_splits=3)
+    with pytest.raises(ValueError, match="index"):
+        mda(NearestCentroid, Xdf, y_reversed, cv)
+    with pytest.raises(ValueError, match="index"):
+        sfi(NearestCentroid, Xdf, y_reversed, cv)
+
+
+def test_mda_and_sfi_reject_pandas_weight_with_mismatched_index():
+    rng = np.random.default_rng(0)
+    Xdf = pd.DataFrame(rng.normal(size=(300, 2)), columns=["a", "b"])
+    y = pd.Series((Xdf["a"] > 0).astype(int).to_numpy(), index=Xdf.index)
+    w_reversed = pd.Series(np.ones(300), index=Xdf.index[::-1])
+    cv = PurgedKFold(n_splits=3)
+    with pytest.raises(ValueError, match="index"):
+        mda(NearestCentroid, Xdf, y, cv, sample_weight=w_reversed)
+    with pytest.raises(ValueError, match="index"):
+        sfi(NearestCentroid, Xdf, y, cv, sample_weight=w_reversed)
+
+
+def test_sfi_accepts_pandas_y_and_weight_aligned_to_x():
+    rng = np.random.default_rng(4)
+    Xdf = pd.DataFrame(rng.normal(size=(300, 3)), columns=list("abc"))
+    y = (Xdf["a"] > 0).astype(int).to_numpy()
+    w = np.random.default_rng(0).uniform(0.5, 1.5, len(y))
+    base_np, imp_np = sfi(NearestCentroid, Xdf, y, PurgedKFold(n_splits=3), sample_weight=w)
+    base_pd, imp_pd = sfi(
+        NearestCentroid,
+        Xdf,
+        pd.Series(y, index=Xdf.index),
+        PurgedKFold(n_splits=3),
+        sample_weight=pd.Series(w, index=Xdf.index),
+    )
+    np.testing.assert_allclose(np.asarray(base_pd), np.asarray(base_np))
+    np.testing.assert_allclose(imp_pd.to_numpy(), imp_np.to_numpy())
+
+
 def test_mdi_rejects_infinite_impurity():
     imp = np.array([[np.inf, 1.0], [1.0, 1.0]])
     with pytest.raises(ValueError, match="infinite"):

@@ -103,6 +103,36 @@ def test_sample_weight_length_must_match_rows(length):
         bag.fit(X, y, t1=t1, sample_weight=np.ones(length))
 
 
+def test_pandas_y_with_mismatched_index_is_rejected():
+    X, y, t1 = _data(200, seed=1)
+    Xdf = pd.DataFrame(X)
+    y_reversed = pd.Series(y, index=Xdf.index[::-1])
+    bag = SequentialBootstrapBagging(NearestCentroid, n_estimators=2)
+    with pytest.raises(ValueError, match="index"):
+        bag.fit(Xdf, y_reversed, t1=t1)
+
+
+def test_pandas_sample_weight_with_mismatched_index_is_rejected():
+    X, y, t1 = _data(200, seed=1)
+    Xdf = pd.DataFrame(X)
+    w_reversed = pd.Series(np.ones(200), index=Xdf.index[::-1])
+    bag = SequentialBootstrapBagging(NearestCentroid, n_estimators=2)
+    with pytest.raises(ValueError, match="index"):
+        bag.fit(Xdf, y, t1=t1, sample_weight=w_reversed)
+
+
+def test_aligned_pandas_y_and_weight_still_fit():
+    X, y, t1 = _data(300, seed=1)
+    Xdf = pd.DataFrame(X)
+    bag = SequentialBootstrapBagging(NearestCentroid, n_estimators=15, seed=3).fit(
+        Xdf,
+        pd.Series(y, index=Xdf.index),
+        t1=t1,
+        sample_weight=pd.Series(np.ones(len(y)), index=Xdf.index),
+    )
+    assert (bag.predict(X) == y).mean() > 0.85
+
+
 def test_failed_fit_leaves_no_partial_ensemble():
     X, y, t1 = _data()
     made = []
