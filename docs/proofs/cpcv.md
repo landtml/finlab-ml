@@ -24,7 +24,7 @@ made in this repository with `python3 tools/verify_leakage.py --synthetic` (exit
 not show behaviour on real price series. Run `python3 tools/verify_leakage.py`
 (needs `pip install yfinance` and network access) to reproduce the live check.
 
-This document gives (1) a mathematical proof that the splitter cannot leak
+The sections below give (1) a mathematical proof that the splitter cannot leak
 information from the test set into the training set, and (2) an empirical
 certificate from a large-scale run over real market data. It also states the
 confidence level and the scope/limits of the guarantee.
