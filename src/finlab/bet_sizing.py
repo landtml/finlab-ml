@@ -97,6 +97,8 @@ def prob_bet_size(
         # Checked here so the mismatch names both lengths, not a numpy broadcast error.
         n_prob = p.shape[0] if p.ndim else 1
         raise ValueError(f"side has length {s.shape[0]} but prob has length {n_prob}.")
+    if s is not None and not np.all(np.isin(s, (-1.0, 1.0))):
+        raise ValueError("side values must be -1 or +1.")
     with np.errstate(divide="ignore", invalid="ignore"):
         if num_classes == 2:
             z = (p - 0.5) / np.sqrt(p * (1.0 - p))

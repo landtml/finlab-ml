@@ -177,6 +177,12 @@ def test_prob_bet_size_applies_side_for_two_classes():
     np.testing.assert_allclose(prob_bet_size([0.7], side=[-1]), -long_bet)
 
 
+@pytest.mark.parametrize("bad_side", [[2], [0], [np.nan]])
+def test_prob_bet_size_rejects_side_outside_plus_minus_one(bad_side):
+    with pytest.raises(ValueError, match="side"):
+        prob_bet_size([0.9], side=bad_side)
+
+
 def test_prob_bet_size_names_both_lengths_on_side_mismatch():
     with pytest.raises(ValueError, match="side has length 2 but prob has length 3"):
         prob_bet_size([0.7, 0.2, 0.5], side=[1, -1], num_classes=3)
