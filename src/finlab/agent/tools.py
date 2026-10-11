@@ -247,7 +247,10 @@ def _fracdiff(args):
     d = _num(args, "d")
     if not 0.0 <= d <= 1.0:
         raise ToolError("'d' must be in [0, 1]")
-    out = frac_diff_ffd(s, d, thres=_num(args, "thres", 1e-5))
+    thres = _num(args, "thres", 1e-5)
+    if not 0.0 < thres <= 1.0:
+        raise ToolError("'thres' must be in (0, 1]")
+    out = frac_diff_ffd(s, d, thres=thres)
     return {"values": [_clean(float(x)) for x in np.asarray(out)]}
 
 

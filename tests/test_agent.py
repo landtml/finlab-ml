@@ -304,3 +304,10 @@ def test_non_numeric_element_names_argument_index_and_type():
     assert "'returns'" in out["error"]
     out, err = _call("sharpe_ratio", {"returns": ["0.1", "x"]})
     assert err and "element 0" in out["error"] and "str" in out["error"]
+
+
+def test_fracdiff_thres_out_of_range_is_rejected():
+    out, err = _call("frac_diff_ffd", {"series": [1, 2, 3], "d": 0.4, "thres": 2})
+    assert err and "'thres'" in out["error"]
+    out, err = _call("frac_diff_ffd", {"series": [1, 2, 3], "d": 0.4, "thres": 0})
+    assert err and "'thres'" in out["error"]
