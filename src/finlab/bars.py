@@ -423,7 +423,7 @@ def time_bars(
 
     Scope
     -----
-    Uses pandas ``resample`` (vectorised, not a numba loop).
+    Uses pandas ``resample`` (vectorised, with no numba loop).
     """
     if not isinstance(prices, pd.Series) or not isinstance(prices.index, pd.DatetimeIndex):
         raise TypeError("time_bars needs a pd.Series indexed by a DatetimeIndex.")
