@@ -67,6 +67,8 @@ def _vec(args: dict[str, Any], key: str) -> np.ndarray:
     if len(v) > MAX_ELEMENTS:
         raise ToolError(f"'{key}' has {len(v)} elements; the limit is {MAX_ELEMENTS}")
     arr = np.asarray(v, dtype=np.float64)
+    if arr.ndim != 1:
+        raise ToolError(f"'{key}' must be a flat array of numbers")
     if not np.all(np.isfinite(arr)):
         raise ToolError(f"'{key}' must contain only finite numbers")
     return arr

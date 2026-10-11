@@ -282,3 +282,8 @@ def test_string_boolean_is_rejected_not_truthy():
     assert err and "'is_returns' must be a boolean" in out["error"]
     out, err = _call("sharpe_ratio", {"returns": [1, 2], "annualize": False})
     assert not err and out["sharpe"] == pytest.approx(sharpe_ratio(np.array([1.0, 2.0]), annualize=False))
+
+
+def test_nested_array_is_rejected_for_flat_input():
+    out, err = _call("sharpe_ratio", {"returns": [[0.1, 0.2], [0.3, 0.4]]})
+    assert err and "'returns' must be a flat array of numbers" in out["error"]
