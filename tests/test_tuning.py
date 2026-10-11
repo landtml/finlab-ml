@@ -184,3 +184,12 @@ def test_cv_score_warns_on_zero_weight_test_fold():
     with pytest.warns(UserWarning, match="fold 0"):
         mean, _ = cv_score(Threshold, {"threshold": 0.0}, X, y, cv, sample_weight=w)
     assert np.isnan(mean)
+
+
+def test_y_length_must_match_rows():
+    X, y = _data()
+    y_long = np.concatenate([y, y[:100]])  # 400 labels for 300 rows
+    with pytest.raises(ValueError, match="y.*300"):
+        grid_search(Threshold, {"threshold": [0.0]}, X, y_long, PurgedKFold(3))
+    with pytest.raises(ValueError, match="y.*300"):
+        cv_score(Threshold, {"threshold": 0.0}, X, y_long, PurgedKFold(3))

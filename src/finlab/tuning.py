@@ -67,6 +67,11 @@ class SearchResult:
 def _as_arrays(X, y, sample_weight):
     Xa = X.to_numpy() if isinstance(X, (pd.DataFrame, pd.Series)) else np.asarray(X)
     ya = y.to_numpy() if isinstance(y, (pd.DataFrame, pd.Series)) else np.asarray(y)
+    # A longer y would be silently truncated by the row indexing in the CV loop.
+    if ya.shape[0] != Xa.shape[0]:
+        raise ValueError(
+            f"y has {ya.shape[0]} labels but X has {Xa.shape[0]} rows; expected length {Xa.shape[0]}."
+        )
     if sample_weight is not None:
         sample_weight = np.asarray(sample_weight, dtype=float)
         # A longer array would be silently truncated by the row indexing below.
