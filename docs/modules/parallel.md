@@ -23,6 +23,6 @@ print(lin_parts(10, 3))
 
 ## Notes
 
-Proof: [parallel.md](../proofs/parallel.md). Scope: functions passed with `num_threads > 1` must be picklable, meaning defined at module level.
+Proof: [parallel.md](../proofs/parallel.md). Scope: functions passed with `num_threads > 1` must be picklable, meaning defined at module level. Worker processes start with `forkserver`, or `spawn` where `forkserver` is unavailable. A script that uses `num_threads > 1` must guard its entry point with `if __name__ == "__main__":`.
 
 Full signatures: [API reference](../API.md).

@@ -39,3 +39,9 @@ cover `[0, n)`.
 Functions passed to `mp_pandas_obj` with `num_threads > 1` must be picklable, which
 means module-level. Work that depends on other chunks (non-independent functions) is
 not parallelisable by this helper.
+
+Worker processes start with `forkserver` on platforms that provide it, and with `spawn`
+elsewhere. The default `fork` start method can deadlock a child created from a process that
+already runs threads, and Python 3.12 warns about it. Under `spawn` and `forkserver` the
+worker module is imported again in each child, so a script's entry point must sit behind
+`if __name__ == "__main__":`.
