@@ -248,6 +248,11 @@ def average_active_signals(
         event is active. A timestamp where a NaN signal is active is NaN; a ``+inf``
         (``-inf``) signal makes it ``+inf`` (``-inf``), or NaN when both are active.
 
+    Raises
+    ------
+    ValueError
+        If ``t1`` contains NaT, or ``signals`` and ``t1`` have different indexes.
+
     Notes
     -----
     Implemented as a difference-array sweep over positions, so the cost is

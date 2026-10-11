@@ -86,7 +86,9 @@ def sharpe_ratio(
     -------
     float
         ``mean / std(ddof=1)``, multiplied by ``sqrt(periods_per_year)`` when
-        ``annualize`` is True. NaN if fewer than two observations remain.
+        ``annualize`` is True. NaN if fewer than two observations remain. An
+        all-zero series gives 0.0; any other constant series gives NaN with a
+        warning.
 
     Notes
     -----
