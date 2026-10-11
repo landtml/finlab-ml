@@ -105,6 +105,9 @@ def sharpe_ratio(
             stacklevel=2,
         )
         return float("nan")
+    if np.all(x == 0.0):
+        # An identically zero series has Sharpe ratio 0 by definition, not an undefined one.
+        return 0.0
     mu = float(np.mean(x))
     # Constant input still gives a tiny nonzero np.std from float noise, so test the
     # range against a relative tolerance instead of testing the std for exact zero.

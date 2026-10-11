@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 import math
+import warnings
 from collections.abc import Callable
 
 import numpy as np
@@ -48,6 +49,14 @@ def test_sharpe_ratio_constant_returns_give_nan_with_warning(value: float) -> No
     # Float noise in np.std must not turn a constant series into a huge finite Sharpe.
     with pytest.warns(UserWarning, match="constant"):
         assert math.isnan(sharpe_ratio(np.full(10, value)))
+
+
+def test_sharpe_ratio_identically_zero_returns_are_zero_without_warning() -> None:
+    # An all-zero trial has Sharpe ratio 0 by definition; it is not undefined like a nonzero constant.
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        assert sharpe_ratio(np.zeros(10), annualize=False) == 0.0
+    assert not [w for w in caught if issubclass(w.category, UserWarning)]
 
 
 def test_psr_is_half_when_sr_equals_benchmark() -> None:

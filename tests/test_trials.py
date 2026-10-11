@@ -293,6 +293,13 @@ def test_dsr_single_trial_is_psr_against_zero() -> None:
     assert reg.deflated_sharpe() == expected
 
 
+def test_dsr_accepts_identically_zero_trial_alongside_a_random_one() -> None:
+    reg = TrialRegistry()
+    reg.record("zero", {}, np.zeros(64))
+    reg.record("random", {}, _noise(71, T=64, mean=0.001))
+    assert math.isfinite(reg.deflated_sharpe())
+
+
 def test_dsr_rejects_empty_registry_and_zero_variance_trial() -> None:
     with pytest.raises(ValueError, match="at least one"):
         TrialRegistry().deflated_sharpe()
