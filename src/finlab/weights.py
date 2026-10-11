@@ -155,6 +155,12 @@ def num_co_events(index: pd.Index | Sequence, t1: pd.Series) -> pd.Series:
     """
     grid = _grid(index)
     starts, ends = _spans(grid, t1)
+    # The kernel indexes a difference array of length len(grid) + 1 by end + 1, so an
+    # end at or past the bar count would write out of bounds without an error.
+    if ends.size and int(ends.max()) >= len(grid):
+        raise ValueError(
+            f"t1 has a span end at bar {int(ends.max())}, but index has only {len(grid)} bars."
+        )
     c = _concurrency_sweep(len(grid), starts, ends)
     return pd.Series(c, index=grid, name="c_t")
 
