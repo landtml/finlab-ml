@@ -334,3 +334,8 @@ def test_tools_call_without_string_name_says_missing_tool_name(params):
     assert reply["id"] == 12
     assert reply["error"]["code"] == -32602
     assert "missing tool name" in reply["error"]["message"]
+
+
+def test_cpcv_rejects_non_positive_n_samples():
+    out, err = _call("cpcv_split_summary", {"n_samples": -5, "n_groups": 6, "n_test_groups": 2})
+    assert err and "n_samples must be a positive integer, got -5" in out["error"]

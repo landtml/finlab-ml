@@ -384,6 +384,8 @@ def _bet(args):
 )
 def _cpcv(args):
     n = _int(args, "n_samples")
+    if n < 1:
+        raise ToolError(f"n_samples must be a positive integer, got {n}")
     if n > MAX_ELEMENTS:
         raise ToolError(f"n_samples above {MAX_ELEMENTS}")
     horizon = _int(args, "horizon", 1)
