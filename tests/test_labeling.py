@@ -336,7 +336,7 @@ def test_get_bins_side_without_meta_warns_and_is_unchanged():
         warnings.simplefilter("ignore")
         silent = get_bins(ev, close, meta=False)
     pd.testing.assert_frame_equal(warned, silent)
-    # The bin really is the sign of the raw return, not of the side-adjusted P&L.
+    # The bin is the sign of the raw return, not of the side-adjusted P&L.
     raw = close.loc[warned.index.map(lambda t: ev.loc[t, "t1"])].to_numpy() / close.loc[warned.index].to_numpy() - 1.0
     np.testing.assert_array_equal(warned["bin"].to_numpy(), np.sign(raw).astype(int))
 
@@ -393,7 +393,7 @@ def test_pandas_only_labeling_helpers_reject_non_pandas_input(bad) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Timezone mismatch between target and close (W3-L01)
+# Timezone mismatch between target and close
 # ---------------------------------------------------------------------------
 
 
@@ -408,7 +408,7 @@ def test_get_events_rejects_naive_target_with_aware_close():
 
 
 # ---------------------------------------------------------------------------
-# Timezone of the index is kept on barrier and t1 values (W3-L02)
+# Timezone of the index is kept on barrier and t1 values
 # ---------------------------------------------------------------------------
 
 
@@ -425,7 +425,7 @@ def test_vertical_barrier_and_events_keep_index_timezone():
 
 
 # ---------------------------------------------------------------------------
-# Vertical barrier between bars (W3-L03)
+# Vertical barrier between bars
 # ---------------------------------------------------------------------------
 
 
@@ -444,7 +444,7 @@ def test_get_events_warns_when_vertical_barrier_falls_between_bars():
 
 
 # ---------------------------------------------------------------------------
-# Input order does not change daily volatility (W3-L04)
+# Input order does not change daily volatility
 # ---------------------------------------------------------------------------
 
 
