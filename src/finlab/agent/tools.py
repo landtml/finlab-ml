@@ -2,7 +2,7 @@
 
 Every tool is a pure function from JSON arguments to a JSON-serialisable dict. Inputs
 are checked against a size limit before any array is allocated, so one request
-cannot exhaust memory. Output contains only the answer, not the input echoed back.
+cannot exhaust memory. Output holds only the answer, and the input is never echoed back.
 """
 
 from __future__ import annotations
