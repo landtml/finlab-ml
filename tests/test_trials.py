@@ -300,6 +300,20 @@ def test_dsr_accepts_identically_zero_trial_alongside_a_random_one() -> None:
     assert math.isfinite(reg.deflated_sharpe())
 
 
+def test_dsr_selected_identically_zero_trial_uses_normal_moments() -> None:
+    # A losing trial plus two zero trials: the zero trial has the best Sharpe ratio (0) and is selected.
+    loser = np.random.default_rng(90).normal(-0.002, 0.01, 120)
+    reg = TrialRegistry()
+    reg.record("loser", {}, loser)
+    reg.record("never_trades", {}, np.zeros(120))
+    reg.record("never_trades_2", {}, np.zeros(120))
+    srs = np.array([sharpe_ratio(loser, annualize=False), 0.0, 0.0])
+    expected = deflated_sharpe_ratio(0.0, 3, float(np.var(srs, ddof=1)), 120, 0.0, 3.0)
+    result = reg.deflated_sharpe()
+    assert math.isfinite(result)
+    assert result == pytest.approx(expected, rel=1e-14)
+
+
 def test_dsr_rejects_empty_registry_and_zero_variance_trial() -> None:
     with pytest.raises(ValueError, match="at least one"):
         TrialRegistry().deflated_sharpe()
