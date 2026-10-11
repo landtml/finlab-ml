@@ -456,3 +456,107 @@ def test_from_json_rejects_non_finite_returns() -> None:
     )
     with pytest.raises(ValueError, match="finite"):
         TrialRegistry.from_json(text)
+
+
+# ---------------------------------------------------------------------------
+# Value equality
+# ---------------------------------------------------------------------------
+
+
+def _record(**overrides: object) -> TrialRecord:
+    fields: dict[str, object] = {
+        "name": "fast",
+        "params": {"window": 10, "use_vol": True},
+        "returns": [0.1, -0.2, 0.3],
+    }
+    fields.update(overrides)
+    return TrialRecord(**fields)  # type: ignore[arg-type]
+
+
+def test_equal_records_compare_equal_and_hash_equal() -> None:
+    a = _record()
+    b = _record()
+    assert a is not b
+    assert a == b
+    assert hash(a) == hash(b)
+    assert len({a, b}) == 1
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"name": "slow"},
+        {"params": {"window": 11, "use_vol": True}},
+        {"params": {"window": 10, "use_vol": False}},
+        {"params": {"window": 10}},
+        # 10 and 10.0 are different stored types, and 1 and True are different values.
+        {"params": {"window": 10.0, "use_vol": True}},
+        {"params": {"window": 10, "use_vol": 1}},
+        {"returns": [0.1, -0.2, 0.30001]},
+        {"returns": [0.1, -0.2]},
+        {"returns": [0.1, -0.2, 0.3, 0.4]},
+    ],
+)
+def test_records_with_different_values_compare_unequal(changes: dict[str, object]) -> None:
+    assert _record() != _record(**changes)
+    assert _record(**changes) != _record()
+
+
+def test_negative_zero_return_equals_positive_zero() -> None:
+    # -0.0 and 0.0 are equal numbers, so the record hash must not depend on the sign bit.
+    a = _record(returns=[0.0, 1.0])
+    b = _record(returns=[-0.0, 1.0])
+    assert a == b
+    assert hash(a) == hash(b)
+
+
+def test_nan_returns_compare_equal_to_nan_returns() -> None:
+    # Returns must be finite, so the constructor never stores NaN. The array is swapped in
+    # after construction to reach the comparison. NaN is equal to NaN here because IEEE
+    # comparison makes NaN unequal to itself, and a record would then fail to equal itself.
+    a = _record()
+    b = _record()
+    nan_returns = np.array([0.1, np.nan, 0.3])
+    object.__setattr__(a, "returns", nan_returns)
+    object.__setattr__(b, "returns", nan_returns.copy())
+    assert a == b
+    assert hash(a) == hash(b)
+
+
+def test_registries_with_the_same_records_in_order_compare_equal() -> None:
+    assert _sample_registry() == _sample_registry()
+    assert TrialRegistry() == TrialRegistry()
+
+
+def test_registry_equality_depends_on_registration_order() -> None:
+    # Column order of the performance matrix and the tie-break in deflated_sharpe follow
+    # registration order, so two registries holding the same trials in another order differ.
+    x, y = _noise(1), _noise(2)
+    a = TrialRegistry()
+    a.record("x", {}, x)
+    a.record("y", {}, y)
+    b = TrialRegistry()
+    b.record("y", {}, y)
+    b.record("x", {}, x)
+    assert a != b
+
+
+def test_registries_with_different_records_compare_unequal() -> None:
+    arrays = _arrays(3, seed=0)
+    assert _registry(arrays) == _registry(_arrays(3, seed=0))
+    assert _registry(arrays) != _registry(_arrays(3, seed=1))
+    assert _registry(arrays[:2]) != _registry(arrays)
+    assert TrialRegistry() != _registry(arrays)
+
+
+def test_registry_is_unhashable_because_it_is_mutable() -> None:
+    with pytest.raises(TypeError, match="unhashable"):
+        hash(TrialRegistry())
+
+
+def test_round_trips_compare_equal() -> None:
+    reg = _sample_registry()
+    assert TrialRegistry.from_json(reg.to_json()) == reg
+    assert TrialRegistry.from_dict(reg.to_dict()) == reg
+    rec = reg.records[0]
+    assert TrialRecord.from_dict(rec.to_dict()) == rec
