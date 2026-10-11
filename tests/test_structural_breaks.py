@@ -307,3 +307,11 @@ def test_sadf_pandas_index_and_nan_prefix():
 def test_sadf_rejects_short_min_length():
     with pytest.raises(ValueError):
         sadf(np.arange(50.0).cumsum(), min_length=3, lags=2)
+
+
+def test_cusum_near_collinear_regressors_raise_not_finite():
+    rng = np.random.default_rng(1)
+    y = np.cumsum(rng.normal(size=300))
+    x = rng.normal(size=300)
+    with pytest.raises(ValueError, match="not finite"):
+        cusum_test(y, np.column_stack([x, x * (1 + 1e-6)]))

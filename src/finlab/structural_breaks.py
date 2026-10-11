@@ -260,7 +260,12 @@ def cusum_test(series: Any, exog: Any = None) -> CusumResult:
         raise ValueError("initial design X_p'X_p is singular; use more leading rows.")
     resid = w[p:]
     sigma = float(math.sqrt(np.mean(resid * resid)))
-    if sigma == 0.0:
+    if not math.isfinite(sigma):
+        raise ValueError(
+            "recursive residuals are not finite; this is usually caused by near-collinear "
+            "regressors. Remove one of the regressors."
+        )
+    if not sigma > 0.0:
         raise ValueError("recursive residuals are all zero; no variation in series.")
 
     stat = np.full(n_obs, np.nan)
