@@ -41,6 +41,7 @@ effects are not corrected for, only diluted through orthogonalization.
 from __future__ import annotations
 
 import math
+import warnings
 from typing import Any, Callable, Iterator, Protocol, Sequence
 
 import numpy as np
@@ -146,6 +147,16 @@ def _folds(cv: Any, X: Any) -> Iterator[tuple[npt.NDArray[np.int_], npt.NDArray[
         yield np.asarray(train, dtype=np.intp), np.asarray(test, dtype=np.intp)
 
 
+def _warn_if_zero_weight(w_te: npt.NDArray[np.float64] | None, fold: int) -> None:
+    """Warn when a test fold has no weight, since its weighted accuracy is 0/0 = NaN."""
+    if w_te is not None and not np.any(w_te):
+        warnings.warn(
+            f"fold {fold} has zero total sample weight in its test rows; its score is NaN.",
+            UserWarning,
+            stacklevel=3,
+        )
+
+
 def _summarize(per_fold: npt.NDArray[np.float64], names: list[Any]) -> pd.DataFrame:
     """Mean and standard error across folds (rows) for each feature (columns)."""
     n = per_fold.shape[0]
@@ -157,13 +168,37 @@ def _summarize(per_fold: npt.NDArray[np.float64], names: list[Any]) -> pd.DataFr
     return pd.DataFrame({"mean": mean, "std": se}, index=names)
 
 
-def _check_xy(X: Any, y: Any) -> tuple[int, npt.NDArray[Any]]:
+def _same_index(a: pd.Index, b: pd.Index) -> bool:
+    # Two tz-aware indexes match when they name the same instants, whatever zone each uses.
+    if getattr(a, "tz", None) is not None and getattr(b, "tz", None) is not None:
+        return a.tz_convert("UTC").equals(b.tz_convert("UTC"))
+    return a.equals(b)
+
+
+def _check_xy(X: Any, y: Any, sample_weight: Any = None) -> tuple[int, npt.NDArray[Any]]:
     p = _n_features(X)
     y_arr = np.asarray(y)
-    if y_arr.shape[0] != np.shape(X)[0]:
+    n = np.shape(X)[0]
+    if y_arr.shape[0] != n:
         raise ValueError(
-            f"X and y disagree on the number of samples: {np.shape(X)[0]} vs {y_arr.shape[0]}."
+            f"X and y disagree on the number of samples: {n} vs {y_arr.shape[0]}."
         )
+    if sample_weight is not None and np.shape(sample_weight) != (n,):
+        # Checked here because a longer array would be silently truncated by the fold indexing.
+        raise ValueError(
+            f"sample_weight has shape {np.shape(sample_weight)} but X has {n} rows; "
+            f"expected length {n}."
+        )
+    # Labels must line up too: a pandas y or weight is otherwise used by position.
+    if isinstance(X, (pd.DataFrame, pd.Series)):
+        if isinstance(y, (pd.DataFrame, pd.Series)) and not _same_index(y.index, X.index):
+            raise ValueError("y index does not match X.index; align y to X before calling.")
+        if isinstance(sample_weight, (pd.DataFrame, pd.Series)) and not sample_weight.index.equals(
+            X.index
+        ):
+            raise ValueError(
+                "sample_weight index does not match X.index; align sample_weight to X before calling."
+            )
     return p, y_arr
 
 
@@ -248,6 +283,9 @@ def mdi_from_matrix(imp: Any, names: Sequence[Any] | None = None) -> pd.DataFram
     names = list(range(p)) if names is None else list(names)
     if len(names) != p:
         raise ValueError(f"Got {len(names)} names for {p} features.")
+    # Infinity would turn its column into NaN and zero out the others after normalizing.
+    if np.isinf(arr).any():
+        raise ValueError("imp contains infinite values; impurity decreases must be finite.")
 
     mean, se = _mdi_column_stats(np.ascontiguousarray(arr))
     total = float(np.nansum(mean))
@@ -319,18 +357,19 @@ def mda(
     """
     if n_repeats < 1:
         raise ValueError(f"n_repeats must be >= 1, got {n_repeats}.")
-    p, y_arr = _check_xy(X, y)
+    p, y_arr = _check_xy(X, y, sample_weight)
     w_arr = None if sample_weight is None else np.asarray(sample_weight, dtype=np.float64)
     names = _feature_names(X, p)
     rng = np.random.default_rng(seed)
 
     baseline: list[float] = []
     drops: list[npt.NDArray[np.float64]] = []
-    for train, test in _folds(cv, X):
+    for fold, (train, test) in enumerate(_folds(cv, X)):
         X_tr, y_tr = _take_rows(X, train), y_arr[train]
         X_te, y_te = _take_rows(X, test), y_arr[test]
         w_tr = None if w_arr is None else w_arr[train]
         w_te = None if w_arr is None else w_arr[test]
+        _warn_if_zero_weight(w_te, fold)
 
         model = _fit(model_factory, X_tr, y_tr, w_tr)
         base = _score(scoring, y_te, np.asarray(model.predict(X_te)), w_te)
@@ -387,16 +426,17 @@ def sfi(
     with another can score at chance. A score at chance is not evidence the feature
     is useless.
     """
-    p, y_arr = _check_xy(X, y)
+    p, y_arr = _check_xy(X, y, sample_weight)
     w_arr = None if sample_weight is None else np.asarray(sample_weight, dtype=np.float64)
     names = _feature_names(X, p)
 
     baseline: list[float] = []
     per_feature: list[npt.NDArray[np.float64]] = []
-    for train, test in _folds(cv, X):
+    for fold, (train, test) in enumerate(_folds(cv, X)):
         y_tr, y_te = y_arr[train], y_arr[test]
         w_tr = None if w_arr is None else w_arr[train]
         w_te = None if w_arr is None else w_arr[test]
+        _warn_if_zero_weight(w_te, fold)
 
         X_tr_all, X_te_all = _take_rows(X, train), _take_rows(X, test)
         full = _fit(model_factory, X_tr_all, y_tr, w_tr)

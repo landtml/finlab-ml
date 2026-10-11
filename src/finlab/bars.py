@@ -45,6 +45,7 @@ order-book data, and the auction-outlier filtering the book discusses in 2.3.1.2
 
 from __future__ import annotations
 
+import warnings
 from typing import Literal
 
 import numpy as np
@@ -332,6 +333,13 @@ def _as_arrays(
         if not np.all(np.isfinite(v)) or np.any(v < 0.0):
             raise ValueError("volumes must be finite and non-negative.")
         v = np.ascontiguousarray(v)
+    # Bars are formed in arrival order, so an unsorted Series must be put in time
+    # order first; a stable sort keeps the arrival order of duplicate timestamps.
+    if isinstance(prices, pd.Series) and not index.is_monotonic_increasing:
+        order = index.argsort(kind="stable")
+        index = index[order]
+        p = np.ascontiguousarray(p[order])
+        v = np.ascontiguousarray(v[order])
     return index, p, v
 
 
@@ -419,10 +427,10 @@ def time_bars(
     """
     if not isinstance(prices, pd.Series) or not isinstance(prices.index, pd.DatetimeIndex):
         raise TypeError("time_bars needs a pd.Series indexed by a DatetimeIndex.")
-    _, p, v = _as_arrays(prices, volumes, need_volume=False)
+    index, p, v = _as_arrays(prices, volumes, need_volume=False)
     df = pd.DataFrame(
         {"price": p, "volume": v, "dollar": p * v},
-        index=prices.index,
+        index=index,
     )
     rs = df.resample(freq, closed="right", label="right")
     out = pd.DataFrame(
@@ -438,6 +446,16 @@ def time_bars(
     )
     out = out[out["ticks"] > 0].copy()
     out["ticks"] = out["ticks"].astype(np.int64)
+    # The module contract drops an incomplete trailing bar, but whether the last
+    # interval is complete cannot be known from the ticks alone, so it is kept
+    # and flagged here rather than silently changing the output.
+    if len(out):
+        warnings.warn(
+            "the last time-bar interval is not closed and is kept; the module "
+            "contract drops an incomplete trailing bar, so it may still change.",
+            UserWarning,
+            stacklevel=2,
+        )
     return out
 
 
@@ -716,6 +734,12 @@ def cusum_filter(
     if isinstance(series, pd.Series):
         index: pd.Index | None = pd.Index(series.index)
         x = series.to_numpy(dtype=np.float64)
+        # The filter runs in arrival order, so an unsorted Series is put in time order
+        # first, as _as_arrays does for the bar kinds. A stable sort keeps duplicates.
+        if not index.is_monotonic_increasing:
+            order = index.argsort(kind="stable")
+            index = index[order]
+            x = np.ascontiguousarray(x[order])
     else:
         index = None
         x = np.asarray(series, dtype=np.float64).reshape(-1)

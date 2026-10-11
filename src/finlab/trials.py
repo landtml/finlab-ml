@@ -70,7 +70,7 @@ class TrialRecord:
     def __post_init__(self) -> None:
         object.__setattr__(self, "name", _check_name(self.name))
         object.__setattr__(self, "params", _check_params(self.params))
-        object.__setattr__(self, "returns", _check_returns(self.returns))
+        object.__setattr__(self, "returns", _check_returns(self.returns, self.name))
 
     @property
     def params_dict(self) -> dict[str, ParamValue]:
@@ -194,7 +194,8 @@ class TrialRegistry:
         registration wins. ``var_sr`` is the sample variance (ddof=1) of the
         non-annualised Sharpe ratios of all registered trials, including the
         selected one. Skewness and non-excess kurtosis are the scipy estimates
-        on the selected trial's returns. With one registered trial ``var_sr``
+        on the selected trial's returns, or 0 and 3 when that trial is identically
+        zero. With one registered trial ``var_sr``
         is 0; the expected maximum is then 0, so the result is the PSR against
         zero skill.
 
@@ -223,13 +224,18 @@ class TrialRegistry:
         x = np.asarray(self._records[best].returns)
         n = self.n_trials
         var_sr = float(np.var(srs, ddof=1)) if n > 1 else 0.0
+        # Skew and kurtosis of a constant series are undefined; a normal distribution's values stand in.
+        if np.all(x == 0):
+            g3, g4 = 0.0, 3.0
+        else:
+            g3, g4 = float(skew(x)), float(kurtosis(x, fisher=False))
         return deflated_sharpe_ratio(
             float(srs[best]),
             n,
             var_sr,
             x.size if n_obs is None else n_obs,
-            float(skew(x)),
-            float(kurtosis(x, fisher=False)),
+            g3,
+            g4,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -282,11 +288,19 @@ def _check_params(params: Any) -> tuple[tuple[str, ParamValue], ...]:
         pairs = list(params.items())
     else:
         try:
-            pairs = [(key, value) for key, value in params]
-        except (TypeError, ValueError) as exc:
+            items = list(params)
+        except TypeError as exc:
             raise ValueError(
                 "params must be a mapping or an iterable of (key, value) pairs"
             ) from exc
+        pairs = []
+        for item in items:
+            # A string of length 2 would unpack into a key and a value, so only tuples and lists count.
+            if not isinstance(item, (tuple, list)) or len(item) != 2:
+                raise ValueError(
+                    f"params must be a mapping or an iterable of (key, value) pairs; got item {item!r}"
+                )
+            pairs.append((item[0], item[1]))
     checked: list[tuple[str, ParamValue]] = []
     seen: set[str] = set()
     for key, value in pairs:
@@ -318,7 +332,17 @@ def _check_param_value(key: str, value: Any) -> ParamValue:
     )
 
 
-def _check_returns(returns: Any) -> np.ndarray:
+def _check_returns(returns: Any, name: str) -> np.ndarray:
+    try:
+        items = list(returns)
+    except TypeError as exc:
+        raise ValueError(f"trial {name!r}: returns must be a sequence of real numbers") from exc
+    for item in items:
+        # np.array would turn "0.1" into 0.1 and True into 1.0; neither is a return.
+        if isinstance(item, (str, bytes, bool, np.bool_)):
+            raise ValueError(
+                f"trial {name!r}: returns must be real numbers, got {type(item).__name__} {item!r}"
+            )
     try:
         arr = np.array(returns, dtype=np.float64)
     except (TypeError, ValueError) as exc:

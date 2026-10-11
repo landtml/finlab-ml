@@ -319,3 +319,95 @@ def test_orthogonal_features_dataframe_round_trip_and_constant_column_rejected()
         orthogonal_features(np.column_stack([X, np.ones(100)]))
     with pytest.raises(RuntimeError):
         OrthogonalFeatures().transform(X)
+
+
+@pytest.mark.parametrize("length", [10, 400])
+def test_mda_and_sfi_reject_sample_weight_of_wrong_length(length):
+    rng = np.random.default_rng(0)
+    X = rng.normal(size=(300, 2))
+    y = (X[:, 0] > 0).astype(int)
+    cv = PurgedKFold(n_splits=3)
+    with pytest.raises(ValueError, match="sample_weight.*300"):
+        mda(NearestCentroid, X, y, cv, sample_weight=np.ones(length))
+    with pytest.raises(ValueError, match="sample_weight.*300"):
+        sfi(NearestCentroid, X, y, cv, sample_weight=np.ones(length))
+
+
+def test_mda_and_sfi_reject_pandas_y_with_mismatched_index():
+    rng = np.random.default_rng(0)
+    Xdf = pd.DataFrame(rng.normal(size=(300, 2)), columns=["a", "b"])
+    y_reversed = pd.Series((Xdf["a"] > 0).astype(int).to_numpy(), index=Xdf.index[::-1])
+    cv = PurgedKFold(n_splits=3)
+    with pytest.raises(ValueError, match="index"):
+        mda(NearestCentroid, Xdf, y_reversed, cv)
+    with pytest.raises(ValueError, match="index"):
+        sfi(NearestCentroid, Xdf, y_reversed, cv)
+
+
+def test_mda_and_sfi_reject_pandas_weight_with_mismatched_index():
+    rng = np.random.default_rng(0)
+    Xdf = pd.DataFrame(rng.normal(size=(300, 2)), columns=["a", "b"])
+    y = pd.Series((Xdf["a"] > 0).astype(int).to_numpy(), index=Xdf.index)
+    w_reversed = pd.Series(np.ones(300), index=Xdf.index[::-1])
+    cv = PurgedKFold(n_splits=3)
+    with pytest.raises(ValueError, match="index"):
+        mda(NearestCentroid, Xdf, y, cv, sample_weight=w_reversed)
+    with pytest.raises(ValueError, match="index"):
+        sfi(NearestCentroid, Xdf, y, cv, sample_weight=w_reversed)
+
+
+def test_sfi_accepts_pandas_y_and_weight_aligned_to_x():
+    rng = np.random.default_rng(4)
+    Xdf = pd.DataFrame(rng.normal(size=(300, 3)), columns=list("abc"))
+    y = (Xdf["a"] > 0).astype(int).to_numpy()
+    w = np.random.default_rng(0).uniform(0.5, 1.5, len(y))
+    base_np, imp_np = sfi(NearestCentroid, Xdf, y, PurgedKFold(n_splits=3), sample_weight=w)
+    base_pd, imp_pd = sfi(
+        NearestCentroid,
+        Xdf,
+        pd.Series(y, index=Xdf.index),
+        PurgedKFold(n_splits=3),
+        sample_weight=pd.Series(w, index=Xdf.index),
+    )
+    np.testing.assert_allclose(np.asarray(base_pd), np.asarray(base_np))
+    np.testing.assert_allclose(imp_pd.to_numpy(), imp_np.to_numpy())
+
+
+def test_mdi_rejects_infinite_impurity():
+    imp = np.array([[np.inf, 1.0], [1.0, 1.0]])
+    with pytest.raises(ValueError, match="infinite"):
+        mdi_from_matrix(imp, ["a", "b"])
+
+
+def test_mda_warns_on_zero_weight_test_fold_and_keeps_values():
+    rng = np.random.default_rng(0)
+    X = rng.normal(size=(300, 2))
+    y = (X[:, 0] > 0).astype(int)
+    cv = PurgedKFold(n_splits=3)
+    first_test = next(iter(cv.split(X)))[1]
+    w = np.ones(300)
+    w[first_test] = 0.0
+    with pytest.warns(UserWarning, match="fold 0"):
+        baseline, _ = mda(NearestCentroid, X, y, cv, sample_weight=w)
+    assert np.isnan(baseline[0])
+    assert np.all(np.isfinite(baseline[1:]))
+
+
+def test_check_xy_accepts_same_instants_in_another_timezone():
+    from finlab.importance import _check_xy
+
+    utc = pd.date_range("2020-01-01", periods=10, freq="D", tz="UTC")
+    X = pd.DataFrame(np.random.default_rng(0).normal(size=(10, 2)), index=utc)
+    y = pd.Series(np.arange(10), index=utc.tz_convert("Asia/Taipei"))
+    _, y_arr = _check_xy(X, y)
+    np.testing.assert_array_equal(y_arr, np.arange(10))
+
+
+def test_check_xy_rejects_shifted_instants_across_timezones():
+    from finlab.importance import _check_xy
+
+    utc = pd.date_range("2020-01-01", periods=10, freq="D", tz="UTC")
+    X = pd.DataFrame(np.random.default_rng(0).normal(size=(10, 2)), index=utc)
+    y = pd.Series(np.arange(10), index=(utc + pd.Timedelta(days=1)).tz_convert("Asia/Taipei"))
+    with pytest.raises(ValueError, match="index"):
+        _check_xy(X, y)

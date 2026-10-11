@@ -28,12 +28,14 @@ the chapter, and the sampling of events (Chapter 2) that produces
 
 from __future__ import annotations
 
+import warnings
 from typing import Sequence
 
 import numpy as np
 import pandas as pd
 from numba import prange
 
+from ._checks import _require_type
 from ._jit import jit, pjit
 
 __all__ = [
@@ -70,9 +72,10 @@ def get_daily_vol(close: pd.Series, span: int = 100) -> pd.Series:
     Returns
     -------
     pd.Series
-        Volatility aligned to ``close.index``. Each bar ``t`` is compared with
-        the last bar strictly before ``t - 1 day``. Bars with no such bar (the
-        first day of the sample) are NaN.
+        Volatility aligned to ``close.index``. The return of bar ``t`` is taken
+        against the last bar strictly before ``t - 1 day``. On daily data that
+        bar is usually two trading days back, not one. Bars with no such bar
+        (the first day of the sample) are NaN.
 
     Notes
     -----
@@ -80,12 +83,25 @@ def get_daily_vol(close: pd.Series, span: int = 100) -> pd.Series:
     built as above. This function does the same, with the lookup written as
     a vectorised ``searchsorted``.
 
-    Scope: one-day look-back on a time index. Irregular sampling is handled
-    by the calendar lookback, not by a fixed bar count.
+    Scope: the look-back is calendar based, not a fixed bar count, so
+    irregular sampling follows the calendar.
     """
+    _require_type(close, "close", pd.Series)
     if not isinstance(close.index, pd.DatetimeIndex):
         raise TypeError("close must be indexed by a DatetimeIndex.")
+    # The lookback and the EWM recursion both need time order, whatever order the input has.
+    orig_index = close.index
+    close = close.sort_index()
+    if close.index.has_duplicates:
+        raise ValueError(
+            "close index has duplicate timestamps; get_daily_vol needs one price per timestamp"
+        )
     px = close.to_numpy(dtype=float)
+    # The EWM skips NaN returns without an error, so a NaN price after the first valid
+    # price must be rejected here. Leading NaN (a series listed later) is allowed.
+    finite = np.isfinite(px)
+    if np.isinf(px).any() or (finite.any() and not finite[np.argmax(finite):].all()):
+        raise ValueError("close must contain only finite prices.")
     idx = close.index
     prev = idx.searchsorted(idx - pd.Timedelta(days=1), side="left") - 1
     valid = prev >= 0
@@ -93,7 +109,7 @@ def get_daily_vol(close: pd.Series, span: int = 100) -> pd.Series:
     rets = px[cur] / px[prev[valid]] - 1.0
     ret_s = pd.Series(rets, index=idx[cur])
     vol = ret_s.ewm(span=span).std()
-    out = vol.reindex(idx)
+    out = vol.reindex(orig_index)
     out.name = "daily_vol"
     return out
 
@@ -101,6 +117,21 @@ def get_daily_vol(close: pd.Series, span: int = 100) -> pd.Series:
 # ---------------------------------------------------------------------------
 # Snippet 3.4 -- vertical barrier
 # ---------------------------------------------------------------------------
+
+
+def _utc_values(index: pd.Index) -> np.ndarray:
+    # Naive datetime64 in UTC, so copying bar times into a numpy array keeps the instant.
+    if getattr(index, "tz", None) is not None:
+        return index.tz_convert(None).to_numpy()
+    return index.to_numpy()
+
+
+def _restore_tz(values: np.ndarray, index: pd.Index) -> pd.DatetimeIndex:
+    # Naive inputs keep their previous dtype. Aware inputs get back the zone and unit of the index.
+    out = pd.DatetimeIndex(values)
+    if getattr(index, "tz", None) is None:
+        return out
+    return out.tz_localize("UTC").tz_convert(index.tz).as_unit(index.unit)
 
 
 def add_vertical_barrier(
@@ -132,8 +163,8 @@ def add_vertical_barrier(
     pos = grid.searchsorted(t_events + pd.Timedelta(days=num_days), side="left")
     valid = pos < len(grid)
     vals = np.full(len(t_events), np.datetime64("NaT", "ns"))
-    vals[valid] = grid.to_numpy()[pos[valid]]
-    return pd.Series(pd.DatetimeIndex(vals), index=t_events)
+    vals[valid] = _utc_values(grid)[pos[valid]]
+    return pd.Series(_restore_tz(vals, grid), index=t_events)
 
 
 # ---------------------------------------------------------------------------
@@ -278,6 +309,15 @@ def get_events(
     if pt_sl_arr.shape[0] != 2 or np.any(pt_sl_arr < 0) or not np.all(np.isfinite(pt_sl_arr)):
         raise ValueError("pt_sl must be two finite, non-negative floats.")
 
+    # A naive target against an aware close reindexes to all NaN and drops every
+    # event without a message, so the mismatch is refused up front.
+    target_tz = getattr(target.index, "tz", None)
+    grid_tz = getattr(grid, "tz", None)
+    if target_tz != grid_tz:
+        raise ValueError(
+            f"target index timezone ({target_tz}) must match close timezone "
+            f"({grid_tz}); convert one of them before calling get_events."
+        )
     trgt_all = target.reindex(ev_index).to_numpy(dtype=float)
     keep = np.isfinite(trgt_all) & (trgt_all > min_ret)
     ev_index = ev_index[keep]
@@ -308,6 +348,15 @@ def get_events(
             if np.any(ends_v < starts[has_vert]):
                 raise ValueError("a vertical barrier falls before its event start.")
             ends[has_vert] = ends_v
+            # The scan stops at the prior bar while get_bins prices t1 at the next one,
+            # so a barrier between bars makes the two disagree.
+            if np.any(grid.get_indexer(vert_time[has_vert]) < 0):
+                warnings.warn(
+                    "a vertical barrier falls between bars: the path is cut at the prior "
+                    "bar, but get_bins prices t1 at the next bar. Place barriers on the bar grid.",
+                    UserWarning,
+                    stacklevel=2,
+                )
 
     hit_pos, code = _scan_first_touch(
         px,
@@ -321,17 +370,17 @@ def get_events(
 
     n = len(ev_index)
     t1 = np.full(n, np.datetime64("NaT", "ns"))
-    grid_vals = grid.to_numpy()
+    grid_vals = _utc_values(grid)
     horiz = code > 0
     t1[horiz] = grid_vals[hit_pos[horiz]]
     vert_only = (~horiz) & has_vert
     code_out = code.astype(np.int64)
     code_out[vert_only] = 3
-    t1[vert_only] = vert_time.to_numpy()[vert_only]
+    t1[vert_only] = _utc_values(vert_time)[vert_only]
 
     out = pd.DataFrame(
         {
-            "t1": pd.DatetimeIndex(t1),
+            "t1": _restore_tz(t1, grid),
             "trgt": trgt,
             "side": side_v,
             "barrier": np.asarray(BARRIER_NAMES, dtype=object)[code_out],
@@ -384,6 +433,8 @@ def get_bins(events: pd.DataFrame, close: pd.Series, meta: bool = False) -> pd.D
 
     Scope: one price series. Returns are simple, not log.
     """
+    _require_type(events, "events", pd.DataFrame)
+    _require_type(close, "close", pd.Series)
     ev = events.dropna(subset=["t1"])
     t1_vals = pd.DatetimeIndex(ev["t1"])
     px_start = close.reindex(ev.index, method="bfill").to_numpy(dtype=float)
@@ -393,6 +444,15 @@ def get_bins(events: pd.DataFrame, close: pd.Series, meta: bool = False) -> pd.D
         if "side" not in ev.columns:
             raise ValueError("meta=True requires a 'side' column in events.")
         ret = ret * ev["side"].to_numpy(dtype=float)
+    elif "side" in ev.columns:
+        # Warn only: the label is still sign(raw return), as before.
+        warnings.warn(
+            "get_bins(meta=False) with a 'side' column labels the sign of the raw "
+            "return, not the bet's P&L. Pass meta=True to label whether the side "
+            "was right (meta-labeling).",
+            UserWarning,
+            stacklevel=2,
+        )
     finite = np.isfinite(ret)
     ret = ret[finite]
     index = ev.index[finite]
@@ -430,6 +490,8 @@ def meta_labels(
     Zero sides ("no bet") are rejected. Drop them before calling this function
     if the primary model abstains.
     """
+    _require_type(events, "events", pd.DataFrame)
+    _require_type(close, "close", pd.Series)
     ev = events.copy()
     if isinstance(side, pd.Series):
         ev["side"] = side.reindex(ev.index).to_numpy(dtype=float)

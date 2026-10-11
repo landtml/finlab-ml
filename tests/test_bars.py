@@ -263,6 +263,16 @@ def test_time_bars_right_closed_and_dropping_empty() -> None:
     assert out.loc[pd.Timestamp("2024-01-01 00:04:00"), "volume"] == 4.0
 
 
+def test_time_bars_warns_that_trailing_interval_is_kept() -> None:
+    idx = pd.to_datetime(["2020-01-02 10:00:10", "2020-01-02 10:00:50", "2020-01-02 10:01:20"])
+    s = pd.Series([1.0, 2.0, 3.0], index=idx)
+    with pytest.warns(UserWarning, match="not closed"):
+        out = time_bars(s, freq="1min")
+    # The trailing (10:01, 10:02] interval holds one tick and is kept, not dropped.
+    assert list(out.index) == [pd.Timestamp("2020-01-02 10:01:00"), pd.Timestamp("2020-01-02 10:02:00")]
+    assert out["ticks"].tolist() == [2, 1]
+
+
 def test_numpy_input_gives_positional_index() -> None:
     p, v = make_ticks(4, n=200)
     bars = tick_bars(p, 10)
@@ -276,6 +286,48 @@ def test_series_index_is_used_as_bar_timestamp() -> None:
     idx = pd.date_range("2024-03-01", periods=120, freq="s")
     bars = tick_bars(pd.Series(p, index=idx), 30)
     assert list(bars.index) == [idx[29], idx[59], idx[89], idx[119]]
+
+
+def test_unsorted_series_gives_the_same_bars_as_sorted() -> None:
+    p, v = make_ticks(13, n=600)
+    idx = pd.date_range("2024-03-01", periods=600, freq="s")
+    perm = np.random.default_rng(13).permutation(600)
+    sorted_bars = tick_bars(pd.Series(p, index=idx), 50, volumes=pd.Series(v, index=idx))
+    shuffled = tick_bars(
+        pd.Series(p[perm], index=idx[perm]),
+        50,
+        volumes=pd.Series(v[perm], index=idx[perm]),
+    )
+    assert shuffled.index.is_monotonic_increasing
+    pd.testing.assert_frame_equal(shuffled, sorted_bars)
+
+
+def test_time_bars_pair_each_tick_with_its_own_timestamp() -> None:
+    idx = pd.to_datetime(["2020-01-02 10:00:50", "2020-01-02 10:00:10", "2020-01-02 10:00:30"])
+    s = pd.Series([4.0, 1.0, 2.0], index=idx)
+    expected_index = pd.DatetimeIndex(["2020-01-02 10:01:00"])
+    with pytest.warns(UserWarning, match="not closed"):
+        bars = time_bars(s, None, "1min")
+    assert list(bars.index) == list(expected_index)
+    assert bars["open"].iloc[0] == 1.0
+    assert bars["high"].iloc[0] == 4.0
+    assert bars["low"].iloc[0] == 1.0
+    assert bars["close"].iloc[0] == 4.0
+    assert bars["ticks"].iloc[0] == 3
+
+
+def test_time_bars_volume_follows_unsorted_ticks() -> None:
+    idx = pd.to_datetime(["2020-01-02 10:00:50", "2020-01-02 10:00:10", "2020-01-02 10:00:30"])
+    s = pd.Series([4.0, 1.0, 2.0], index=idx)
+    vol_array = np.array([40.0, 10.0, 20.0])
+    vol_series = pd.Series(vol_array, index=idx)
+    with pytest.warns(UserWarning, match="not closed"):
+        from_array = time_bars(s, vol_array, "1min")
+        from_series = time_bars(s, vol_series, "1min")
+    for bars in (from_array, from_series):
+        assert bars["volume"].iloc[0] == 70.0
+        assert bars["dollar_value"].iloc[0] == 1.0 * 10.0 + 2.0 * 20.0 + 4.0 * 40.0
+        assert bars.index.is_monotonic_increasing
 
 
 # --------------------------------------------------------------------------- #
@@ -400,3 +452,12 @@ def test_cusum_rejects_non_finite_and_bad_threshold() -> None:
         cusum_filter(np.array([0.0, np.nan, 1.0]), 0.1)
     with pytest.raises(ValueError):
         cusum_filter(np.array([0.0, 1.0]), 0.0)
+
+
+def test_cusum_shuffled_series_gives_the_same_events_as_sorted() -> None:
+    rng = np.random.default_rng(4)
+    ts = pd.date_range("2021-01-04 09:00", periods=400, freq="7s")
+    p = pd.Series(100 + np.cumsum(rng.normal(0, 0.1, 400)), index=ts)
+    shuffled = p.iloc[rng.permutation(400)]
+    expected = cusum_filter(p, 1.0)
+    pd.testing.assert_index_equal(cusum_filter(shuffled, 1.0), expected)

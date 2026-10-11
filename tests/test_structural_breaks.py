@@ -197,6 +197,47 @@ def test_csw_critical_value_book_constant():
         csw_critical_value(0)
 
 
+@pytest.mark.parametrize("reference", [None, 0, 1])
+def test_csw_constant_leading_values_do_not_raise(reference):
+    # sigma_t = 0 while the series is still flat, so the statistic is undefined there.
+    y = np.array([0.0, 0.0, 0.0, 1.0, 2.0, 4.0])
+    res = chu_stinchcombe_white(y, reference=reference)
+    assert len(res.statistic) == len(y)
+    assert len(res.critical) == len(y)
+    assert len(res.reject) == len(y)
+
+
+@pytest.mark.parametrize("reference", [None, 0])
+def test_csw_zero_volatility_entries_are_nan(reference):
+    y = np.array([0.0, 0.0, 0.0, 1.0, 2.0, 4.0])
+    res = chu_stinchcombe_white(y, reference=reference)
+    # sigma_1 = sigma_2 = 0: the statistic is NaN there and never rejects.
+    assert np.isnan(res.statistic[1]) and np.isnan(res.statistic[2])
+    assert not res.reject[1] and not res.reject[2]
+    # From index 3 on sigma is positive, so the statistic is finite.
+    assert np.all(np.isfinite(res.statistic[3:]))
+
+
+def test_csw_zero_volatility_pandas_shape_and_index():
+    idx = pd.date_range("2024-01-01", periods=5, freq="D")
+    y = pd.Series([0.0, 0.0, 1.0, 2.0, 3.0], index=idx)
+    res = chu_stinchcombe_white(y)
+    assert isinstance(res.statistic, pd.Series)
+    assert list(res.statistic.index) == list(idx)
+    assert np.isnan(res.statistic.iloc[1])
+    assert np.isfinite(res.statistic.iloc[2:]).all()
+
+
+@pytest.mark.parametrize("seed", [4, 5])
+def test_csw_normal_series_has_no_nan_after_start(seed):
+    rng = np.random.default_rng(seed)
+    y = rng.standard_normal(50).cumsum()
+    res = chu_stinchcombe_white(y)
+    assert np.all(np.isfinite(res.statistic[1:]))
+    fixed = chu_stinchcombe_white(y, reference=3)
+    assert np.all(np.isfinite(fixed.statistic[4:]))
+
+
 def test_csw_detects_late_drift():
     rng = np.random.default_rng(7)
     y = rng.standard_normal(300).cumsum() * 0.01
@@ -266,3 +307,130 @@ def test_sadf_pandas_index_and_nan_prefix():
 def test_sadf_rejects_short_min_length():
     with pytest.raises(ValueError):
         sadf(np.arange(50.0).cumsum(), min_length=3, lags=2)
+
+
+def test_cusum_near_collinear_regressors_raise_not_finite():
+    rng = np.random.default_rng(1)
+    y = np.cumsum(rng.normal(size=300))
+    x = rng.normal(size=300)
+    with pytest.raises(ValueError, match="not finite"):
+        cusum_test(y, np.column_stack([x, x * (1 + 1e-6)]))
+
+
+def _magnitude_message(exc_info):
+    text = str(exc_info.value)
+    assert "magnitude" in text
+    assert "collinear" not in text and "reproduce" not in text
+
+
+def test_cusum_large_magnitude_series_names_magnitude_not_collinearity():
+    with pytest.raises(ValueError) as exc_info:
+        cusum_test(np.linspace(1, 2, 50) * 1e160)
+    _magnitude_message(exc_info)
+
+
+def test_cusum_underflowing_series_names_magnitude_not_exact_fit():
+    rng = np.random.default_rng(7)
+    with pytest.raises(ValueError) as exc_info:
+        cusum_test(rng.normal(size=60) * 1e-200)
+    _magnitude_message(exc_info)
+
+
+def test_cusum_constant_series_keeps_no_variation_message():
+    with pytest.raises(ValueError, match="no variation in series"):
+        cusum_test(np.ones(50))
+
+
+def test_cusum_exact_fit_regressor_raises_reproduce_message():
+    rng = np.random.default_rng(2)
+    y = np.cumsum(rng.normal(size=300))[:3]
+    with pytest.raises(ValueError, match="reproduce"):
+        cusum_test(y, y.reshape(-1, 1))
+
+
+def test_adf_rejects_non_integer_lag():
+    y = np.random.default_rng(3).standard_normal(120).cumsum()
+    with pytest.raises(ValueError):
+        adf_stat(y, 1.9)
+    assert np.isfinite(adf_stat(y, 1))
+    assert np.isfinite(adf_stat(y, np.int64(1)))
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf"), "x", "2"])
+def test_adf_non_finite_or_non_numeric_lag_is_value_error(bad):
+    y = np.random.default_rng(4).standard_normal(120).cumsum()
+    with pytest.raises(ValueError, match="lag must be an integer"):
+        adf_stat(y, bad)
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), "x"])
+def test_sadf_non_finite_or_non_numeric_lags_is_value_error(bad):
+    y = np.random.default_rng(4).standard_normal(120).cumsum()
+    with pytest.raises(ValueError, match="lags must be an integer"):
+        sadf(y, min_length=30, lags=bad)
+
+
+def test_adf_integer_valued_float_and_numpy_integer_lags_work():
+    y = np.random.default_rng(6).standard_normal(120).cumsum()
+    assert adf_stat(y, 2.0) == pytest.approx(adf_stat(y, 2))
+    assert adf_stat(y, np.int64(2)) == pytest.approx(adf_stat(y, 2))
+
+
+def test_sadf_rejects_non_integer_lags():
+    y = np.random.default_rng(4).standard_normal(60).cumsum()
+    with pytest.raises(ValueError):
+        sadf(y, min_length=20, lags=1.5)
+
+
+# --------------------------------------------------------------------------- #
+# CSW at extreme magnitudes
+# --------------------------------------------------------------------------- #
+
+
+def _csw_walk() -> np.ndarray:
+    return np.cumsum(np.random.default_rng(1).normal(size=300))
+
+
+@pytest.mark.parametrize("scale", [1e-170, 1e170])
+def test_csw_extreme_magnitude_raises(scale):
+    with pytest.raises(ValueError, match="magnitude"):
+        chu_stinchcombe_white(_csw_walk() * scale)
+
+
+def test_csw_ordinary_scale_output_is_finite_and_unchanged():
+    res = chu_stinchcombe_white(_csw_walk())
+    assert np.all(np.isfinite(res.statistic[1:]))
+    assert np.nanmax(np.abs(res.statistic)) == pytest.approx(3.2997035863686834, rel=1e-9)
+    assert int(res.reject.sum()) == 8
+
+
+def test_csw_constant_series_still_all_nan_without_error():
+    res = chu_stinchcombe_white(np.full(50, 2.0))
+    assert np.all(np.isnan(res.statistic))
+    assert int(res.reject.sum()) == 0
+
+
+@pytest.mark.parametrize("min_length", [30.5, float("nan")])
+def test_sadf_rejects_non_integer_min_length(min_length):
+    y = np.cumsum(np.random.default_rng(2).normal(size=100))
+    with pytest.raises(ValueError, match="min_length"):
+        sadf(y, min_length=min_length)
+
+
+def test_sadf_accepts_integer_valued_min_length():
+    y = np.cumsum(np.random.default_rng(2).normal(size=100))
+    np.testing.assert_allclose(
+        sadf(y, min_length=30.0)[-3:], sadf(y, min_length=30)[-3:], rtol=0, atol=0
+    )
+
+
+def test_csw_non_integer_reference_names_reference():
+    y = np.cumsum(np.random.default_rng(1).normal(size=50))
+    with pytest.raises(ValueError, match="reference must be an integer"):
+        chu_stinchcombe_white(y, reference=1.5)
+
+
+def test_sadf_nan_min_length_names_min_length():
+    y = np.cumsum(np.random.default_rng(2).normal(size=100))
+    with pytest.raises(ValueError, match="min_length"):
+        sadf(y, min_length=float("nan"))

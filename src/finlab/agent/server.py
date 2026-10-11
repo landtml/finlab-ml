@@ -19,6 +19,12 @@ PROTOCOL_VERSION = "2024-11-05"
 __all__ = ["handle_message", "main"]
 
 
+def _reject_constant(name: str) -> None:
+    # json.loads accepts NaN and Infinity by default; they are not JSON and would
+    # be echoed back as invalid output.
+    raise ValueError(f"non-standard constant {name}")
+
+
 def _ok(req_id: Any, result: dict[str, Any]) -> dict[str, Any]:
     return {"jsonrpc": "2.0", "id": req_id, "result": result}
 
@@ -29,12 +35,12 @@ def _err(req_id: Any, code: int, message: str) -> dict[str, Any]:
 
 def handle_message(msg: dict[str, Any]) -> dict[str, Any] | None:
     """Handle one decoded JSON-RPC message. Returns the reply, or None for notifications."""
-    if not isinstance(msg, dict) or msg.get("jsonrpc") != "2.0" or "method" not in msg:
+    if not isinstance(msg, dict) or msg.get("jsonrpc") != "2.0" or not isinstance(msg.get("method"), str):
         return _err(msg.get("id") if isinstance(msg, dict) else None, -32600, "invalid request")
     method = msg["method"]
     req_id = msg.get("id")
     is_notification = "id" not in msg
-    params = msg.get("params") or {}
+    params = msg.get("params")
 
     if method == "initialize":
         result = {
@@ -50,8 +56,14 @@ def handle_message(msg: dict[str, Any]) -> dict[str, Any] | None:
     if method == "tools/list":
         return None if is_notification else _ok(req_id, {"tools": list_tools()})
     if method == "tools/call":
+        if params is None:
+            params = {}
+        if not isinstance(params, dict):
+            return None if is_notification else _err(req_id, -32602, "invalid params: expected an object")
         name = params.get("name")
-        result, is_error = call_tool(str(name), params.get("arguments"))
+        if not isinstance(name, str):
+            return None if is_notification else _err(req_id, -32602, "invalid params: missing tool name")
+        result, is_error = call_tool(name, params.get("arguments"))
         body = {
             "content": [{"type": "text", "text": json.dumps(result, separators=(",", ":"))}],
             "isError": is_error,
@@ -67,11 +79,21 @@ def main(stdin: TextIO = sys.stdin, stdout: TextIO = sys.stdout) -> None:
         if not line:
             continue
         try:
-            msg = json.loads(line)
+            msg = json.loads(line, parse_constant=_reject_constant)
         except json.JSONDecodeError as exc:
             reply: dict[str, Any] | None = _err(None, -32700, f"parse error: {exc.msg}")
+        except RecursionError:
+            # Nesting deeper than the decoder allows; the line is not valid JSON for us.
+            reply = _err(None, -32700, "parse error: nesting too deep")
+        except ValueError as exc:
+            # e.g. an integer literal over the decoder's digit limit.
+            reply = _err(None, -32700, f"parse error: {exc}")
         else:
-            reply = handle_message(msg)
+            try:
+                reply = handle_message(msg)
+            except Exception as exc:  # one bad message must not stop the server
+                is_request = isinstance(msg, dict) and "id" in msg
+                reply = _err(msg.get("id"), -32603, f"internal error: {type(exc).__name__}") if is_request else None
         if reply is not None:
             stdout.write(json.dumps(reply, separators=(",", ":")) + "\n")
             stdout.flush()

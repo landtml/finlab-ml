@@ -44,6 +44,7 @@ from __future__ import annotations
 import itertools
 import math
 import numbers
+import warnings
 from dataclasses import dataclass
 from typing import Callable, Optional, Union
 
@@ -110,8 +111,10 @@ def probability_of_backtest_overfitting(
         integral float such as 8.0 is accepted), divide T, and satisfy T / S >= 2.
     performance : callable, optional
         ``performance(sub)`` takes a (rows, N) ndarray and returns a length-N
-        array of trial scores (higher is better). Defaults to the per-column
-        Sharpe ratio, which uses the numba kernel.
+        array of trial scores (higher is better). ``+inf`` and ``-inf`` are
+        allowed as the zero-variance convention of the default; NaN raises
+        ``ValueError``. Defaults to the per-column Sharpe ratio, which uses the
+        numba kernel.
 
     Returns
     -------
@@ -133,6 +136,16 @@ def probability_of_backtest_overfitting(
     ``docs/proofs/pbo.md``).
     """
     S = _partition_count(n_partitions)
+    if isinstance(performance_matrix, (pd.DataFrame, pd.Series)) and not (
+        performance_matrix.index.is_monotonic_increasing
+    ):
+        # Rows are used by position, so an unsorted index changes the blocks
+        # without any error. The index is ignored, so only warn.
+        warnings.warn(
+            "performance_matrix index is not increasing: rows are treated as time order, in the row order given",
+            UserWarning,
+            stacklevel=2,
+        )
     mat = _validate(performance_matrix, S)
     T, N = mat.shape
     L = T // S
@@ -280,6 +293,14 @@ def _cscv_callable_logits(
         test_sr = np.asarray(performance(test), dtype=np.float64).ravel()
         if train_sr.shape != (N,) or test_sr.shape != (N,):
             raise ValueError("performance must return one score per column")
+        for label, scores in (("training", train_sr), ("test", test_sr)):
+            # +/-inf is the zero-variance convention of the default path; only NaN has no rank.
+            bad = np.flatnonzero(np.isnan(scores))
+            if bad.size:
+                raise ValueError(
+                    f"performance callable returned non-finite (NaN) scores for trial column(s) "
+                    f"{bad.tolist()} on the {label} data of split {c}; every trial needs a score that is not NaN"
+                )
         best = int(np.argmax(train_sr))
         rank = int(np.sum(test_sr <= test_sr[best]))
         omega = rank / (N + 1.0)

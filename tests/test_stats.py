@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 import math
+import warnings
 from collections.abc import Callable
 
 import numpy as np
@@ -41,6 +42,21 @@ def test_sharpe_ratio_annualisation_matches_manual() -> None:
     assert sharpe_ratio(s, periods_per_year=12) == pytest.approx(
         manual_per_period * math.sqrt(12), rel=1e-12
     )
+
+
+@pytest.mark.parametrize("value", [0.01, -0.003, 1e-6])
+def test_sharpe_ratio_constant_returns_give_nan_with_warning(value: float) -> None:
+    # Float noise in np.std must not turn a constant series into a huge finite Sharpe.
+    with pytest.warns(UserWarning, match="constant"):
+        assert math.isnan(sharpe_ratio(np.full(10, value)))
+
+
+def test_sharpe_ratio_identically_zero_returns_are_zero_without_warning() -> None:
+    # An all-zero trial has Sharpe ratio 0 by definition; it is not undefined like a nonzero constant.
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        assert sharpe_ratio(np.zeros(10), annualize=False) == 0.0
+    assert not [w for w in caught if issubclass(w.category, UserWarning)]
 
 
 def test_psr_is_half_when_sr_equals_benchmark() -> None:
@@ -133,6 +149,32 @@ def test_min_track_record_length_hand_computation() -> None:
         hand, rel=1e-12
     )
     assert hand == pytest.approx(13.1749455434, abs=1e-9)
+
+
+@pytest.mark.parametrize("bad_benchmark", [float("nan"), float("inf")])
+def test_min_track_record_length_rejects_non_finite_benchmark(bad_benchmark: float) -> None:
+    # A NaN benchmark fails every comparison, so it used to return NaN without complaint.
+    with pytest.raises(ValueError, match="sr_benchmark"):
+        min_track_record_length(0.5, bad_benchmark, 0.0, 3.0, 0.95)
+
+
+@pytest.mark.parametrize("bad_sr_hat", [float("nan"), float("inf")])
+def test_min_track_record_length_rejects_non_finite_sr_hat(bad_sr_hat: float) -> None:
+    with pytest.raises(ValueError, match="sr_hat must be finite"):
+        min_track_record_length(bad_sr_hat, 0.0, 0.0, 3.0, 0.95)
+
+
+@pytest.mark.parametrize("bad_n_obs", [float("nan"), float("inf")])
+def test_probabilistic_sharpe_ratio_rejects_non_finite_n_obs(bad_n_obs: float) -> None:
+    # NaN passed the n_obs < 2 check and inf returned 1.0 with no warning.
+    with pytest.raises(ValueError, match="n_obs"):
+        probabilistic_sharpe_ratio(0.1, 0.0, bad_n_obs)
+
+
+@pytest.mark.parametrize("bad_sr_hat", [float("nan"), float("inf")])
+def test_probabilistic_sharpe_ratio_rejects_non_finite_sr_hat(bad_sr_hat: float) -> None:
+    with pytest.raises(ValueError, match="sr_hat must be finite"):
+        probabilistic_sharpe_ratio(bad_sr_hat, 0.0, 100)
 
 
 def test_min_track_record_length_round_trip_gives_target_psr() -> None:
@@ -361,3 +403,15 @@ def test_expected_max_matches_independent_numerical_reference() -> None:
     assert expected_max_sharpe(2, 1.0) < _exact_expected_max(2)
     for n in (5, 10, 50, 100, 1000):
         assert expected_max_sharpe(n, 1.0) > _exact_expected_max(n)
+
+
+@pytest.mark.parametrize("returns", [[], [0.003547]], ids=["empty", "single"])
+def test_sharpe_ratio_warns_on_fewer_than_two_observations(returns: list[float]) -> None:
+    with pytest.warns(UserWarning, match="sharpe_ratio.*fewer than two"):
+        assert math.isnan(sharpe_ratio(returns, periods_per_year=252.0))
+
+
+def test_psr_warns_on_infinite_benchmark_and_returns_its_limit() -> None:
+    # An infinite sr_benchmark gives z = -inf, so PSR is 0 with a warning. An infinite sr_hat raises.
+    with pytest.warns(UserWarning, match="probabilistic_sharpe_ratio.*non-finite"):
+        assert probabilistic_sharpe_ratio(0.5, np.inf, 60, -0.2, 3.5) == 0.0

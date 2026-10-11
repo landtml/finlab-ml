@@ -368,3 +368,14 @@ def test_time_decay_rejects_bad_c():
         time_decay(np.ones(3), c_last=1.5)
     with pytest.raises(ValueError, match="c_last must lie in"):
         time_decay(np.ones(3), c_last=-1.0)
+
+
+@pytest.mark.parametrize("bad", [[1.0, 2.0], np.zeros((2, 2))])
+def test_sample_weight_by_return_rejects_non_pandas_input(bad) -> None:
+    idx = pd.date_range("2024-01-01", periods=4)
+    close = pd.Series([10.0, 10.5, 10.2, 10.8], index=idx)
+    t1 = pd.Series(idx[1:3], index=idx[:2])
+    with pytest.raises(TypeError, match="t1"):
+        sample_weight_by_return(idx, bad, close)
+    with pytest.raises(TypeError, match="close"):
+        sample_weight_by_return(idx, t1, bad)

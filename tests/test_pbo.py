@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import itertools
 import math
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -64,6 +65,40 @@ def test_callable_path_agrees_with_default_sharpe() -> None:
     generic = probability_of_backtest_overfitting(M, n_partitions=8, performance=sharpe)
     np.testing.assert_allclose(generic.logits, fast.logits, rtol=1e-10, atol=1e-12)
     assert generic.pbo == fast.pbo
+
+
+def test_callable_returning_nan_for_a_column_raises_named_error() -> None:
+    rng = np.random.default_rng(12)
+    M = rng.normal(0.0, 1.0, size=(64, 6))
+
+    def broken(sub: np.ndarray) -> np.ndarray:
+        out = sub.mean(axis=0) / sub.std(axis=0, ddof=1)
+        out[2] = np.nan
+        return out
+
+    # Checked before ranking: a NaN score would otherwise give rank 0 and a math domain error.
+    with pytest.raises(ValueError, match="non-finite") as info:
+        probability_of_backtest_overfitting(M, n_partitions=8, performance=broken)
+    assert "split" in str(info.value) and "trial" in str(info.value)
+
+
+@pytest.mark.parametrize(("constant", "pbo"), [(0.5, 0.0), (-0.5, 0.6285714285714286)])
+def test_callable_mirroring_default_zero_variance_convention_matches_default(constant: float, pbo: float) -> None:
+    rng = np.random.default_rng(1)
+    M = rng.normal(0.0, 0.01, size=(64, 8))
+    M[:, 2] = constant
+
+    def sharpe(sub: np.ndarray) -> np.ndarray:
+        sd = sub.std(axis=0, ddof=1)
+        mu = sub.mean(axis=0)
+        ratio = mu / sd
+        return np.where(sd == 0, np.where(mu == 0, 0.0, np.sign(mu) * np.inf), ratio)
+
+    default = probability_of_backtest_overfitting(M, n_partitions=8)
+    generic = probability_of_backtest_overfitting(M, n_partitions=8, performance=sharpe)
+    assert default.pbo == pytest.approx(pbo, abs=1e-12)
+    assert generic.pbo == default.pbo
+    assert np.isfinite(generic.logits).all()
 
 
 def test_dataframe_input_equals_ndarray() -> None:
@@ -366,3 +401,43 @@ def test_infinite_entries_rejected(bad: float) -> None:
     M[2, 1] = bad
     with pytest.raises(ValueError, match="finite"):
         probability_of_backtest_overfitting(M, n_partitions=4)
+
+
+# ---------------------------------------------------------------------------
+# A DatetimeIndex is ignored: rows are used in the order given. Warn when the
+# index says the rows are out of time order, so a shuffled frame does not
+# change PBO silently. Results stay unchanged.
+# ---------------------------------------------------------------------------
+def _row_order_warnings(record) -> list:
+    return [w for w in record if issubclass(w.category, UserWarning) and "row order" in str(w.message)]
+
+
+def test_shuffled_datetime_index_warns_about_row_order() -> None:
+    rng = np.random.default_rng(51)
+    M = rng.normal(0.0, 0.01, size=(32, 3))
+    idx = pd.date_range("2020-01-01", periods=32, freq="D")
+    perm = rng.permutation(32)
+    df = pd.DataFrame(M[perm], index=idx[perm], columns=["a", "b", "c"])
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
+        probability_of_backtest_overfitting(df, n_partitions=4)
+    assert len(_row_order_warnings(record)) == 1
+
+
+def test_sorted_datetime_index_emits_no_row_order_warning() -> None:
+    rng = np.random.default_rng(52)
+    M = rng.normal(0.0, 0.01, size=(32, 3))
+    idx = pd.date_range("2020-01-01", periods=32, freq="D")
+    df = pd.DataFrame(M, index=idx, columns=["a", "b", "c"])
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
+        probability_of_backtest_overfitting(df, n_partitions=4)
+    assert _row_order_warnings(record) == []
+
+
+def test_numpy_input_emits_no_row_order_warning() -> None:
+    M = np.random.default_rng(53).normal(0.0, 0.01, size=(32, 3))
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
+        probability_of_backtest_overfitting(M, n_partitions=4)
+    assert _row_order_warnings(record) == []

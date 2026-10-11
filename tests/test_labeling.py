@@ -8,6 +8,8 @@ scanning against scipy.stats.linregress.
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -315,3 +317,177 @@ def test_trend_scanning_labels_perfect_uptrend_as_plus_one():
     assert set(out["bin"].dropna()) == {1.0}
     # Floating-point residuals keep SSE tiny but nonzero, so t is huge and finite.
     assert out["t_value"].iloc[0] > 1e6
+
+
+def test_get_bins_side_without_meta_warns_and_is_unchanged():
+    import warnings
+
+    close = _random_walk(200, seed=11, vol=0.02)
+    rng = np.random.default_rng(11)
+    t_events = close.index[np.sort(rng.choice(180, size=30, replace=False))]
+    target = pd.Series(0.02, index=close.index)
+    side = pd.Series(rng.choice([-1.0, 1.0], size=len(t_events)), index=t_events)
+    ev = get_events(close, t_events, (1.0, 1.0), target, 0.0,
+                    vertical_barrier_times=add_vertical_barrier(t_events, close, 8),
+                    side=side)
+    with pytest.warns(UserWarning, match="raw return"):
+        warned = get_bins(ev, close)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        silent = get_bins(ev, close, meta=False)
+    pd.testing.assert_frame_equal(warned, silent)
+    # The bin really is the sign of the raw return, not of the side-adjusted P&L.
+    raw = close.loc[warned.index.map(lambda t: ev.loc[t, "t1"])].to_numpy() / close.loc[warned.index].to_numpy() - 1.0
+    np.testing.assert_array_equal(warned["bin"].to_numpy(), np.sign(raw).astype(int))
+
+
+def test_get_bins_meta_true_does_not_warn():
+    import warnings
+
+    close = _random_walk(200, seed=12, vol=0.02)
+    rng = np.random.default_rng(12)
+    t_events = close.index[np.sort(rng.choice(180, size=30, replace=False))]
+    target = pd.Series(0.02, index=close.index)
+    side = pd.Series(rng.choice([-1.0, 1.0], size=len(t_events)), index=t_events)
+    ev = get_events(close, t_events, (1.0, 1.0), target, 0.0,
+                    vertical_barrier_times=add_vertical_barrier(t_events, close, 8),
+                    side=side)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        get_bins(ev, close, meta=True)
+
+
+def test_get_bins_without_side_column_does_not_warn():
+    import warnings
+
+    close = _random_walk(200, seed=13, vol=0.02)
+    rng = np.random.default_rng(13)
+    t_events = close.index[np.sort(rng.choice(180, size=30, replace=False))]
+    target = pd.Series(0.02, index=close.index)
+    ev = get_events(close, t_events, (1.0, 1.0), target, 0.0,
+                    vertical_barrier_times=add_vertical_barrier(t_events, close, 8))
+    ev = ev.drop(columns=["side"])
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        get_bins(ev, close)
+
+
+@pytest.mark.parametrize("bad", [[1.0, 2.0], np.zeros((2, 2))])
+def test_pandas_only_labeling_helpers_reject_non_pandas_input(bad) -> None:
+    idx = pd.date_range("2024-01-01", periods=4)
+    close = pd.Series([10.0, 10.5, 10.2, 10.8], index=idx)
+    events = pd.DataFrame(
+        {"t1": idx[1:], "trgt": [0.01] * 3, "side": [1.0] * 3},
+        index=idx[:3],
+    )
+    with pytest.raises(TypeError, match="pandas"):
+        get_daily_vol(bad)
+    with pytest.raises(TypeError, match="events"):
+        get_bins(bad, close)
+    with pytest.raises(TypeError, match="close"):
+        get_bins(events, bad)
+    with pytest.raises(TypeError, match="events"):
+        meta_labels(bad, close, side=pd.Series([1.0] * 3, index=events.index))
+    with pytest.raises(TypeError, match="close"):
+        meta_labels(events, bad, side=pd.Series([1.0] * 3, index=events.index))
+
+
+# ---------------------------------------------------------------------------
+# Timezone mismatch between target and close (W3-L01)
+# ---------------------------------------------------------------------------
+
+
+def test_get_events_rejects_naive_target_with_aware_close():
+    close = _random_walk(60, seed=11).tz_localize("America/New_York")
+    tv = add_vertical_barrier(close.index[:3], close, 2)
+    target = pd.Series(0.02, index=pd.bdate_range("2019-01-01", periods=60))
+    with pytest.raises(ValueError, match="timezone") as info:
+        get_events(close, close.index[:3], (1, 1), target, 0.01, vertical_barrier_times=tv)
+    assert "America/New_York" in str(info.value)
+    assert "None" in str(info.value)
+
+
+# ---------------------------------------------------------------------------
+# Timezone of the index is kept on barrier and t1 values (W3-L02)
+# ---------------------------------------------------------------------------
+
+
+def test_vertical_barrier_and_events_keep_index_timezone():
+    close = _random_walk(60, seed=12).tz_localize("America/New_York")
+    events = close.index[:20:5]
+    vt = add_vertical_barrier(events, close, 10)
+    assert vt.dtype == close.index.dtype
+    target = pd.Series(0.02, index=close.index)
+    ev = get_events(close, events, (1, 1), target, 0.01, vertical_barrier_times=vt)
+    assert ev["t1"].dtype == close.index.dtype
+    bins = get_bins(ev, close)
+    assert len(bins) == len(events)
+
+
+# ---------------------------------------------------------------------------
+# Vertical barrier between bars (W3-L03)
+# ---------------------------------------------------------------------------
+
+
+def test_get_events_warns_when_vertical_barrier_falls_between_bars():
+    c = _random_walk(40, seed=13)
+    t0 = c.index[0]
+    between = pd.Series([c.index[10] + pd.Timedelta(hours=12)], index=[t0])
+    on_grid = pd.Series([c.index[10]], index=[t0])
+    trgt = pd.Series(10.0, index=c.index)
+    with pytest.warns(UserWarning, match="between bars"):
+        ev = get_events(c, [t0], (10, 10), trgt, 0.01, vertical_barrier_times=between)
+    assert ev.loc[t0, "t1"] == c.index[10] + pd.Timedelta(hours=12)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", UserWarning)
+        get_events(c, [t0], (10, 10), trgt, 0.01, vertical_barrier_times=on_grid)
+
+
+# ---------------------------------------------------------------------------
+# Input order does not change daily volatility (W3-L04)
+# ---------------------------------------------------------------------------
+
+
+def test_get_daily_vol_is_independent_of_input_order():
+    s = _random_walk(30, seed=14)
+    shuffled = s.iloc[np.random.default_rng(1).permutation(len(s))]
+    expected = get_daily_vol(s, 5).reindex(shuffled.index)
+    pd.testing.assert_series_equal(get_daily_vol(shuffled, 5), expected)
+
+
+@pytest.mark.parametrize("bad", [np.nan, np.inf, -np.inf])
+def test_get_daily_vol_rejects_non_finite_prices(bad):
+    idx = pd.bdate_range("2024-01-01", periods=30)
+    px = np.linspace(100.0, 110.0, 30)
+    px[12] = bad
+    with pytest.raises(ValueError, match="close"):
+        get_daily_vol(pd.Series(px, index=idx))
+
+
+def test_get_daily_vol_allows_leading_nan_before_first_price():
+    # A column padded with NaN before listing: the NaN prefix is skipped, not rejected.
+    rng = np.random.default_rng(0)
+    idx = pd.bdate_range("2020-01-01", periods=300)
+    c = pd.Series(100 * np.exp(np.cumsum(rng.normal(0, 0.01, 300))), index=idx)
+    c.iloc[:20] = np.nan
+    vol = get_daily_vol(c)
+    assert np.all(np.isfinite(vol.iloc[-200:].to_numpy()))
+    assert np.isfinite(vol.iloc[-1])
+
+
+def test_get_daily_vol_interior_nan_after_listing_still_raises():
+    rng = np.random.default_rng(0)
+    idx = pd.bdate_range("2020-01-01", periods=300)
+    c = pd.Series(100 * np.exp(np.cumsum(rng.normal(0, 0.01, 300))), index=idx)
+    c.iloc[:20] = np.nan
+    c.iloc[150] = np.nan
+    with pytest.raises(ValueError, match="finite"):
+        get_daily_vol(c)
+
+
+def test_get_daily_vol_duplicate_timestamps_raise_clear_error():
+    idx = pd.bdate_range("2024-01-01", periods=30)
+    s = pd.Series(np.linspace(100.0, 110.0, 30), index=idx)
+    dup = pd.concat([s, s.iloc[-3:]]).sort_index(kind="stable")
+    with pytest.raises(ValueError, match="duplicate timestamps"):
+        get_daily_vol(dup)
