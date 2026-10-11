@@ -35,7 +35,7 @@ pytest                      # run the suite
 To install a tagged release instead:
 
 ```bash
-pip install "git+https://github.com/landtml/finlab-ml@v0.1.2"
+pip install "git+https://github.com/landtml/finlab-ml@v0.1.3"
 ```
 
 Requires Python 3.10 to 3.13.

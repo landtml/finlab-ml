@@ -5,6 +5,22 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-10-11
+
+### Changed
+
+- `TrialRecord` and `TrialRegistry` compare by value. `TrialRecord` stays hashable.
+  `TrialRegistry` is not hashable, because it is mutable. Parameter values compare by type,
+  so `10` and `10.0` are different.
+- `mp_pandas_obj`, and the functions built on it such as `run_trials`, start worker processes
+  with `forkserver`, or with `spawn` where `forkserver` is unavailable. A script that uses
+  `num_threads > 1` must guard its entry point with `if __name__ == "__main__":`. Without the
+  guard, the script raises `RuntimeError` when it starts.
+- The package declares its license with the SPDX expression `MIT`. Building it requires
+  setuptools 77.0.3 or newer.
+- The MCP server replies to a JSON-RPC batch with one error, code `-32600`, and does not reply
+  to a message that is a client's response.
+
 ## [0.1.2] - 2026-10-10
 
 ### Changed
@@ -107,16 +123,8 @@ Changes since 0.1.0.
 
 - Some statements in the proof notes are claimed from the book only and have not been
   checked against the printed pages. Each one is labelled in its note.
-- The numba kernels `_sample_uniqueness` (`finlab.monte_carlo`) and `_concurrency_sweep`
-  (`finlab.weights`) do not check that span ends are below the bar count. The public callers
-  keep them in range.
-- With zero draws, the Monte Carlo kernel raises `ZeroDivisionError` and the dense reference
-  raises `ValueError`.
-- On Python 3.12 and later, the default `fork` start method emits a `DeprecationWarning` from
-  the process pool in `finlab.parallel`.
-- `setuptools` warns about the `license` table and the license classifier in
-  `pyproject.toml`. The package still builds and passes `twine check`.
-- `TrialRecord` and `TrialRegistry` compare by identity, not by value.
+- The numba kernel `_sample_uniqueness` (`finlab.monte_carlo`) does not check that span ends
+  are below the bar count. Its public caller keeps them in range.
 - `import finlab.plot` succeeds without plotly; calling a plotting function then raises an
   `ImportError` with the install command.
 - The Monte Carlo notebook counts a trial as "higher" only if the difference exceeds 1e-12.
@@ -134,7 +142,8 @@ Changes since 0.1.0.
 
 First tagged release. No changelog was kept for it. Its source is at the `v0.1.0` tag.
 
-[Unreleased]: https://github.com/landtml/finlab-ml/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/landtml/finlab-ml/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/landtml/finlab-ml/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/landtml/finlab-ml/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/landtml/finlab-ml/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/landtml/finlab-ml/releases/tag/v0.1.0
