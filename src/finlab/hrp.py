@@ -242,19 +242,21 @@ def hrp_weights(
     if np.any(diag <= 0.0):
         raise ValueError("cov must have a strictly positive diagonal")
 
+    # The shape check runs for every N, so a single asset cannot hide a mismatched corr.
+    if corr is None:
+        sd = np.sqrt(diag)
+        R = C / np.outer(sd, sd)
+    else:
+        if isinstance(corr, pd.DataFrame) and labels is not None:
+            R = np.asarray(corr.loc[labels, labels], dtype=np.float64)
+        else:
+            R = np.asarray(corr, dtype=np.float64)
+        if R.shape != C.shape:
+            raise ValueError("corr and cov must have the same shape")
+
     if n == 1:
         w = np.ones(1)
     else:
-        if corr is None:
-            sd = np.sqrt(diag)
-            R = C / np.outer(sd, sd)
-        else:
-            if isinstance(corr, pd.DataFrame) and labels is not None:
-                R = np.asarray(corr.loc[labels, labels], dtype=np.float64)
-            else:
-                R = np.asarray(corr, dtype=np.float64)
-            if R.shape != C.shape:
-                raise ValueError("corr and cov must have the same shape")
         D = np.asarray(correlation_distance(R), dtype=np.float64)
         np.fill_diagonal(D, 0.0)
         link = sch.linkage(squareform(D, checks=False), method=method)

@@ -213,6 +213,13 @@ def test_hrp_accepts_explicit_correlation() -> None:
     np.testing.assert_allclose(hrp_weights(C, corr=R), hrp_weights(C))
 
 
+def test_hrp_single_asset_still_checks_corr_shape() -> None:
+    with pytest.raises(ValueError, match="same shape"):
+        hrp_weights(np.array([[0.04]]), corr=np.ones((3, 3)))
+    with pytest.raises(ValueError, match="same shape"):
+        hrp_weights(np.array([[0.04]]), corr=np.ones((1, 2)))
+
+
 def test_hrp_single_asset_and_bad_inputs() -> None:
     assert hrp_weights(np.array([[2.0]])).tolist() == [1.0]
     with pytest.raises(ValueError):
