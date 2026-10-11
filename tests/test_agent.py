@@ -256,3 +256,20 @@ def test_oversized_integer_id_is_parse_error_and_server_survives():
     replies = [json.loads(x) for x in out.getvalue().splitlines()]
     assert replies[0]["error"]["code"] == -32700
     assert replies[1] == {"jsonrpc": "2.0", "id": 5, "result": {}}
+
+
+def _strict_loads(text):
+    def reject(name):
+        raise ValueError(f"non-standard constant {name}")
+
+    return json.loads(text, parse_constant=reject)
+
+
+@pytest.mark.parametrize("token", ["NaN", "Infinity", "-Infinity"])
+def test_non_standard_constant_id_is_parse_error_and_reply_is_strict_json(token):
+    line = '{"jsonrpc":"2.0","id":' + token + ',"method":"ping"}'
+    out = io.StringIO()
+    srv.main(io.StringIO(line + "\n"), out)
+    reply = _strict_loads(out.getvalue().splitlines()[0])
+    assert reply["error"]["code"] == -32700
+    assert reply["id"] is None

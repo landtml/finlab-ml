@@ -19,6 +19,12 @@ PROTOCOL_VERSION = "2024-11-05"
 __all__ = ["handle_message", "main"]
 
 
+def _reject_constant(name: str) -> None:
+    # json.loads accepts NaN and Infinity by default; they are not JSON and would
+    # be echoed back as invalid output.
+    raise ValueError(f"non-standard constant {name}")
+
+
 def _ok(req_id: Any, result: dict[str, Any]) -> dict[str, Any]:
     return {"jsonrpc": "2.0", "id": req_id, "result": result}
 
@@ -69,7 +75,7 @@ def main(stdin: TextIO = sys.stdin, stdout: TextIO = sys.stdout) -> None:
         if not line:
             continue
         try:
-            msg = json.loads(line)
+            msg = json.loads(line, parse_constant=_reject_constant)
         except json.JSONDecodeError as exc:
             reply: dict[str, Any] | None = _err(None, -32700, f"parse error: {exc.msg}")
         except RecursionError:
