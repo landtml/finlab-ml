@@ -5,6 +5,94 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-10-11
+
+### Added
+
+- The MCP tool reply carries a `warnings` list when a library call emits a warning. The key
+  is present only when the list is not empty.
+- `DatetimeIndex` inputs may carry one timezone or none, at any single resolution (seconds,
+  microseconds or nanoseconds). The same instants at different resolutions or zones are
+  aligned by instant in `get_events`, `average_active_signals`, the bar builders, and the
+  `sample_weight` arguments of `importance`, `ensemble` and `tuning`.
+- `PBO` warns when its input looks like cumulative equity curves rather than returns.
+- `get_bins` warns when it drops every event and returns nothing.
+- `README.md` lists the supported input forms under "Scope and limitations".
+
+### Changed
+
+- A vertical barrier that falls between bars is priced at the last bar at or before it, the
+  bar the path scan uses. Labels whose barrier falls between bars change.
+- A naive `DatetimeIndex` whose repeated label is not adjacent is refused by name before the
+  bar builders and `cusum_filter` sort it. Unambiguous naive input and aware input are
+  unchanged.
+- `get_bins(meta=True)` refuses a NaN `side` by name, with the count of affected events.
+- `average_uniqueness` refuses a NaN or non-positive concurrency inside a label span.
+- `SequentialBootstrapBagging` refuses a non-integer target, a `None` label and a `NaT` in
+  `t1` by name. It reads `pd.NA` features as NaN and passes `sample_weight` only when weights
+  are given. `predict` refuses non-finite averaged probabilities.
+- `tuning` scorers return one finite or NaN number per fold. A per-class output is refused by
+  name. Grid ties keep the first candidate.
+- `importance` (`mda`, `sfi`) passes `sample_weight` only when weights are given. Orthogonal
+  features read `pd.NA` as NaN.
+- `prob_bet_size` aligns a labelled `side` to a labelled probability by label, and refuses a
+  label that matches nothing. Array inputs keep positional behaviour.
+- `encode_quantile` warns when tied values straddle a bin edge. The codes do not change.
+- `plug_in_entropy`, `lempel_ziv` and `kontoyiannis` refuse NaN and infinite list entries
+  before coercion. Entropy messages refuse `NaT` and `pd.NA` by name.
+- A named DataFrame predicted after a fit on an array warns that the names are not used.
+- `purged` cross-validation and the other splitters refuse a `t1` whose end is before its start,
+  and a `t1` of non-timestamp values, by name.
+- The MCP server refuses a tool call whose argument keys the schema does not declare.
+- The MCP server keeps the request id in the reply to a bare `NaN` or `Infinity` literal.
+- `time_decay` refuses weights that are not one-dimensional.
+- The per-period unit of `probabilistic_sharpe_ratio`, `deflated_sharpe_ratio` and
+  `minTRL` is stated in their docstrings and in `docs/modules/stats.md`. `sharpe_ratio`
+  annualizes by default, so pass `annualize=False` before feeding its output to these.
+- `time_decay` divides by the whole-series total. Weights built on train and test together
+  therefore carry test-period information into training weights. The docstring says so.
+
+### Fixed
+
+- Vertical-barrier expiry rounds up to the grid unit before the search.
+- The embargo product is rounded before the ceiling is taken.
+- The ADF regression is centred before the fit, so `tau` does not depend on the level of the
+  series.
+- Indicator matrices refuse NaN instead of counting it as active.
+- Timezone-aware object-dtype datetime indexes are read for their zone, in `get_events`,
+  `add_vertical_barrier` and the purged splitters. Object-dtype `t1` of datetime values is
+  accepted by purged cross-validation.
+- Same-instant volumes are accepted by the bar builders across units and zones.
+- Fitted column names are kept when a refit is refused.
+- `tuning` passes `sample_weight` to a fit only when weights are given, so estimators without
+  the argument work.
+- `importance` and `ensemble` align `sample_weight` by instant across zones.
+- A scorer that returns more than one number per fold is refused.
+- Library warnings reach the MCP client in the tool reply.
+
+### Known limitations
+
+- The supported input forms are a monotonic `DatetimeIndex` with one timezone or none, at any
+  single resolution, and the same awareness across inputs. An object-dtype datetime index,
+  mixed zones in one index, strings or integers used as timestamps, and a non-monotonic index
+  are not supported.
+- `get_daily_vol` on daily bars uses the last bar strictly before `t` minus one day, which is
+  two trading days back for most bars. This matches AFML Snippet 3.1.
+- The expanding-window `frac_diff` mask depends on the sample length, following AFML Snippet
+  5.2. Changing the length changes existing outputs.
+- `prob_bet_size` on an `(n, 2)` array returns `(n, 2)` opposite bets with no warning.
+- `PSR`, `DSR` and `minTRL` accept moments that no distribution can produce, and do not refuse
+  them.
+- `PBO` on identical trials gives 0.0, because ties favour the in-sample winner.
+- `roll_measure`, `kyle_lambda` and `amihud_illiquidity` accept returns or prices in place of
+  each other, and `sharpe_ratio` accepts price levels. No check is made.
+- The MCP server accepts `NaN`, `Infinity` and string integers such as `"3"` where the schema
+  says integer.
+- The sequential bootstrap measures uniqueness on the event-start grid, not the bar grid.
+- `get_events` does not warn when the target is above 1.
+- `add_vertical_barrier` and `get_daily_vol` offset by 24 hours on the index. Across a
+  daylight-saving change this can differ from 24 elapsed hours.
+
 ## [0.1.3] - 2026-10-11
 
 ### Changed
@@ -142,7 +230,8 @@ Changes since 0.1.0.
 
 First tagged release. No changelog was kept for it. Its source is at the `v0.1.0` tag.
 
-[Unreleased]: https://github.com/landtml/finlab-ml/compare/v0.1.3...HEAD
+[Unreleased]: https://github.com/landtml/finlab-ml/compare/v0.1.4...HEAD
+[0.1.4]: https://github.com/landtml/finlab-ml/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/landtml/finlab-ml/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/landtml/finlab-ml/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/landtml/finlab-ml/compare/v0.1.0...v0.1.1
