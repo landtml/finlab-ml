@@ -9,7 +9,7 @@ Implements, following the book's notation:
   (AFML 18.4, Snippet 18.2).
 * :func:`lempel_ziv_entropy` -- an entropy estimate from the LZ dictionary size
   (see the Notes: the book gives no formula, so this is the standard LZ78
-  normalisation, not an AFML formula).
+  normalisation, borrowed from outside AFML).
 * :func:`kontoyiannis_entropy` -- the Kontoyiannis / Gao et al. (2008) LZ
   estimator with the expanding or sliding centred window (AFML 18.4,
   Snippet 18.4).
@@ -42,8 +42,8 @@ Literal readings and deviations
 * Lempel-Ziv: the book describes the estimate only qualitatively ("the number
   of items in a Lempel-Ziv dictionary relative to the length of the message").
   :func:`lempel_ziv_entropy` uses ``c log2(c) / n`` with ``c`` the number of
-  phrases. This is the standard LZ78 normalisation from the literature, not a
-  formula given in AFML, and it is labelled as such in the proofs document.
+  phrases. This is the standard LZ78 normalisation from the literature; AFML gives
+  no such formula, and it is labelled as such in the proofs document.
 * Encoding: the sigma-encoding counts ``ceil((max - min) / sigma)`` codes, as
   the book says. When ``max`` lands exactly on a bin edge the top bin is
   clipped to the last code so that the alphabet size is preserved.
