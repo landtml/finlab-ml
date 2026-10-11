@@ -150,3 +150,24 @@ def test_failed_fit_leaves_no_partial_ensemble():
     assert not hasattr(bag, "estimators_")
     with pytest.raises(RuntimeError, match="not fitted"):
         bag.predict(X)
+
+
+def test_pandas_y_same_instants_in_another_timezone_is_accepted():
+    X, y, _ = _data(200, seed=1)
+    utc = pd.date_range("2020-01-01", periods=200, freq="D", tz="UTC")
+    t1 = make_t1(utc, 10)
+    Xdf = pd.DataFrame(X, index=utc)
+    y_taipei = pd.Series(y, index=utc.tz_convert("Asia/Taipei"))
+    bag = SequentialBootstrapBagging(NearestCentroid, n_estimators=3, seed=2).fit(Xdf, y_taipei, t1=t1)
+    assert len(bag.estimators_) == 3
+
+
+def test_pandas_y_shifted_instants_across_timezones_is_rejected():
+    X, y, _ = _data(200, seed=1)
+    utc = pd.date_range("2020-01-01", periods=200, freq="D", tz="UTC")
+    t1 = make_t1(utc, 10)
+    Xdf = pd.DataFrame(X, index=utc)
+    y_shifted = pd.Series(y, index=(utc + pd.Timedelta(days=1)).tz_convert("Asia/Taipei"))
+    bag = SequentialBootstrapBagging(NearestCentroid, n_estimators=2)
+    with pytest.raises(ValueError, match="index"):
+        bag.fit(Xdf, y_shifted, t1=t1)

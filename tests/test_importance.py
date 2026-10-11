@@ -391,3 +391,23 @@ def test_mda_warns_on_zero_weight_test_fold_and_keeps_values():
         baseline, _ = mda(NearestCentroid, X, y, cv, sample_weight=w)
     assert np.isnan(baseline[0])
     assert np.all(np.isfinite(baseline[1:]))
+
+
+def test_check_xy_accepts_same_instants_in_another_timezone():
+    from finlab.importance import _check_xy
+
+    utc = pd.date_range("2020-01-01", periods=10, freq="D", tz="UTC")
+    X = pd.DataFrame(np.random.default_rng(0).normal(size=(10, 2)), index=utc)
+    y = pd.Series(np.arange(10), index=utc.tz_convert("Asia/Taipei"))
+    _, y_arr = _check_xy(X, y)
+    np.testing.assert_array_equal(y_arr, np.arange(10))
+
+
+def test_check_xy_rejects_shifted_instants_across_timezones():
+    from finlab.importance import _check_xy
+
+    utc = pd.date_range("2020-01-01", periods=10, freq="D", tz="UTC")
+    X = pd.DataFrame(np.random.default_rng(0).normal(size=(10, 2)), index=utc)
+    y = pd.Series(np.arange(10), index=(utc + pd.Timedelta(days=1)).tz_convert("Asia/Taipei"))
+    with pytest.raises(ValueError, match="index"):
+        _check_xy(X, y)

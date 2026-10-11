@@ -464,3 +464,21 @@ def test_vpin_rejects_non_integer_n_window() -> None:
         vpin(prices, v, bucket_volume=50.0, n_window=2.0)
     out = vpin(prices, v, bucket_volume=50.0, n_window=np.int64(2))
     assert out.shape[0] > 0
+
+
+def test_vpin_accepts_two_million_buckets() -> None:
+    # 2e9 shares in 1,000-share buckets is 2e6 buckets: valid high-volume input, under the cap.
+    prices = np.linspace(100.0, 101.0, 200)
+    v = np.full(200, 1e7)
+    out = vpin(prices, v, bucket_volume=1000.0, n_window=5)
+    assert out.shape[0] == 2_000_000
+    finite = out[np.isfinite(out)]
+    assert finite.size > 0
+    assert np.all((finite >= 0.0) & (finite <= 1.0))
+
+
+def test_vpin_rejects_bucket_count_above_ten_million() -> None:
+    prices = np.linspace(100.0, 101.0, 200)
+    v = np.full(200, 5.5e7)  # 1.1e10 shares / 1,000 = 1.1e7 buckets
+    with pytest.raises(ValueError, match=r"1\.1e\+07 .*exceeds 10,000,000"):
+        vpin(prices, v, bucket_volume=1000.0, n_window=5)

@@ -734,6 +734,12 @@ def cusum_filter(
     if isinstance(series, pd.Series):
         index: pd.Index | None = pd.Index(series.index)
         x = series.to_numpy(dtype=np.float64)
+        # The filter runs in arrival order, so an unsorted Series is put in time order
+        # first, as _as_arrays does for the bar kinds. A stable sort keeps duplicates.
+        if not index.is_monotonic_increasing:
+            order = index.argsort(kind="stable")
+            index = index[order]
+            x = np.ascontiguousarray(x[order])
     else:
         index = None
         x = np.asarray(series, dtype=np.float64).reshape(-1)

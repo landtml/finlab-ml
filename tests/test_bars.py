@@ -452,3 +452,12 @@ def test_cusum_rejects_non_finite_and_bad_threshold() -> None:
         cusum_filter(np.array([0.0, np.nan, 1.0]), 0.1)
     with pytest.raises(ValueError):
         cusum_filter(np.array([0.0, 1.0]), 0.0)
+
+
+def test_cusum_shuffled_series_gives_the_same_events_as_sorted() -> None:
+    rng = np.random.default_rng(4)
+    ts = pd.date_range("2021-01-04 09:00", periods=400, freq="7s")
+    p = pd.Series(100 + np.cumsum(rng.normal(0, 0.1, 400)), index=ts)
+    shuffled = p.iloc[rng.permutation(400)]
+    expected = cusum_filter(p, 1.0)
+    pd.testing.assert_index_equal(cusum_filter(shuffled, 1.0), expected)

@@ -67,6 +67,9 @@ class SearchResult:
 def _as_arrays(X, y, sample_weight):
     Xa = X.to_numpy() if isinstance(X, (pd.DataFrame, pd.Series)) else np.asarray(X)
     ya = y.to_numpy() if isinstance(y, (pd.DataFrame, pd.Series)) else np.asarray(y)
+    # None or a scalar has no rows to compare, so reject it before the shape check.
+    if ya.ndim == 0:
+        raise ValueError(f"y must be array-like with one label per row, got {y!r}.")
     # A longer y would be silently truncated by the row indexing in the CV loop.
     if ya.shape[0] != Xa.shape[0]:
         raise ValueError(

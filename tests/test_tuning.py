@@ -212,3 +212,13 @@ def test_non_string_iterable_grid_values_still_accepted():
     assert len(res.results) == 2
     res = randomized_search(Threshold, {"threshold": np.array([0.0, 0.5])}, 3, X, y, PurgedKFold(3))
     assert len(res.results) == 3
+
+
+@pytest.mark.parametrize("call", ["grid", "cv"])
+def test_y_none_raises_value_error_naming_y(call):
+    X, _ = _data()
+    with pytest.raises(ValueError, match="y"):
+        if call == "grid":
+            grid_search(Threshold, {"threshold": [0.0]}, X, None, PurgedKFold(3))
+        else:
+            cv_score(Threshold, {"threshold": 0.0}, X, None, PurgedKFold(3))

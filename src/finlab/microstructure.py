@@ -644,10 +644,11 @@ def vpin(
         raise ValueError("n_window must be >= 1")
     total = float(v.sum())
     n_buckets = total / bucket_volume
-    if n_buckets > 1_000_000:
+    # The bucket arrays cost about 80 bytes per bucket, so this cap keeps memory near 1 GB.
+    if n_buckets > 10_000_000:
         raise ValueError(
-            f"bucket count {n_buckets:.3g} (total volume / bucket_volume) exceeds 1,000,000; "
-            "bucket_volume may be in the wrong units."
+            f"bucket count {n_buckets:.3g} (total volume / bucket_volume) exceeds "
+            "10,000,000; bucket_volume may be in the wrong units."
         )
     buy_frac = bulk_volume_classification(p, v, sigma=sigma)
     max_buckets = int(math.floor(total / bucket_volume)) + 2

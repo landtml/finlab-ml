@@ -168,6 +168,13 @@ def _summarize(per_fold: npt.NDArray[np.float64], names: list[Any]) -> pd.DataFr
     return pd.DataFrame({"mean": mean, "std": se}, index=names)
 
 
+def _same_index(a: pd.Index, b: pd.Index) -> bool:
+    # Two tz-aware indexes match when they name the same instants, whatever zone each uses.
+    if getattr(a, "tz", None) is not None and getattr(b, "tz", None) is not None:
+        return a.tz_convert("UTC").equals(b.tz_convert("UTC"))
+    return a.equals(b)
+
+
 def _check_xy(X: Any, y: Any, sample_weight: Any = None) -> tuple[int, npt.NDArray[Any]]:
     p = _n_features(X)
     y_arr = np.asarray(y)
@@ -184,7 +191,7 @@ def _check_xy(X: Any, y: Any, sample_weight: Any = None) -> tuple[int, npt.NDArr
         )
     # Labels must line up too: a pandas y or weight is otherwise used by position.
     if isinstance(X, (pd.DataFrame, pd.Series)):
-        if isinstance(y, (pd.DataFrame, pd.Series)) and not y.index.equals(X.index):
+        if isinstance(y, (pd.DataFrame, pd.Series)) and not _same_index(y.index, X.index):
             raise ValueError("y index does not match X.index; align y to X before calling.")
         if isinstance(sample_weight, (pd.DataFrame, pd.Series)) and not sample_weight.index.equals(
             X.index

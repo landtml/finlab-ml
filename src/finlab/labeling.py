@@ -92,9 +92,15 @@ def get_daily_vol(close: pd.Series, span: int = 100) -> pd.Series:
     # The lookback and the EWM recursion both need time order, whatever order the input has.
     orig_index = close.index
     close = close.sort_index()
+    if close.index.has_duplicates:
+        raise ValueError(
+            "close index has duplicate timestamps; get_daily_vol needs one price per timestamp"
+        )
     px = close.to_numpy(dtype=float)
-    # The EWM skips NaN returns without an error, so a NaN price must be rejected here.
-    if not np.all(np.isfinite(px)):
+    # The EWM skips NaN returns without an error, so a NaN price after the first valid
+    # price must be rejected here. Leading NaN (a series listed later) is allowed.
+    finite = np.isfinite(px)
+    if np.isinf(px).any() or (finite.any() and not finite[np.argmax(finite):].all()):
         raise ValueError("close must contain only finite prices.")
     idx = close.index
     prev = idx.searchsorted(idx - pd.Timedelta(days=1), side="left") - 1
