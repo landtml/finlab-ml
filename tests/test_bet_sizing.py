@@ -266,6 +266,15 @@ def test_average_active_signals_rejects_non_pandas_input(bad) -> None:
         average_active_signals(signals, bad)
 
 
+def test_multiclass_probability_below_uniform_rejected():
+    # The predicted label's probability is a maximum, so it cannot be below 1/k.
+    with pytest.raises(ValueError, match="1/num_classes"):
+        prob_bet_size([0.2], side=[1], num_classes=3)
+    with pytest.raises(ValueError, match="1/num_classes"):
+        prob_bet_size([0.0], side=[1], num_classes=3)
+    assert prob_bet_size([1.0 / 3], side=[1], num_classes=3)[0] == pytest.approx(0.0, abs=1e-12)
+
+
 def test_prob_bet_size_applies_side_for_two_classes():
     # A short side must flip the sign of the two-class bet, not be silently dropped.
     long_bet = prob_bet_size([0.7])

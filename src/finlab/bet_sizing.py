@@ -85,7 +85,8 @@ def prob_bet_size(
     Notes
     -----
     Probabilities of exactly 0 or 1 give ``z = +/- inf`` and bet sizes of exactly
-    ``+/- 1``; probabilities outside ``[0, 1]`` are rejected.
+    ``+/- 1``; probabilities outside ``[0, 1]`` are rejected, and for
+    ``num_classes > 2`` so are probabilities below ``1/num_classes``.
     """
     p = np.asarray(prob, dtype=np.float64)
     if np.any((p < 0) | (p > 1)) or np.any(np.isnan(p)):
@@ -108,7 +109,10 @@ def prob_bet_size(
         else:
             if s is None:
                 raise ValueError("side is required when num_classes > 2.")
-            z = (p - 1.0 / num_classes) / np.sqrt(p * (1.0 - p))
+            if np.any(p < 1.0 / num_classes):
+                # Below the uniform probability the bet would point against the predicted label.
+                raise ValueError(f"probabilities must be at least 1/num_classes = {1.0 / num_classes!r}.")
+            z =(p - 1.0 / num_classes) / np.sqrt(p * (1.0 - p))
             m = s * (2.0 * ndtr(z) - 1.0)
     # Degenerate endpoints: p in {0, 1} gives z = +/- inf; ndtr handles it, but the
     # 0/0 limits of the two-class case at p = 0.5 are exactly 0.
