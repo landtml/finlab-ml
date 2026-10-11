@@ -241,7 +241,8 @@ def average_active_signals(
     -------
     pd.Series
         Mean of the signals of active events at each timestamp; ``0`` where no
-        event is active.
+        event is active. A timestamp where a NaN-signal event is active is NaN;
+        NaN signals are otherwise ignored in the mean.
 
     Notes
     -----
@@ -262,17 +263,26 @@ def average_active_signals(
     n = len(grid)
     total = np.zeros(n + 1)
     count = np.zeros(n + 1)
+    nan_active = np.zeros(n + 1)
     vals = signals.to_numpy(dtype=np.float64)[valid]
     s = start[valid]
     e = end[valid]
-    np.add.at(total, s, vals)
-    np.add.at(total, e + 1, -vals)
-    np.add.at(count, s, 1.0)
-    np.add.at(count, e + 1, -1.0)
+    # NaN signals are left out of the sums and tracked separately, so they do not spread past their span.
+    is_nan = np.isnan(vals)
+    clean = np.where(is_nan, 0.0, vals)
+    present = (~is_nan).astype(np.float64)
+    np.add.at(total, s, clean)
+    np.add.at(total, e + 1, -clean)
+    np.add.at(count, s, present)
+    np.add.at(count, e + 1, -present)
+    np.add.at(nan_active, s, is_nan.astype(np.float64))
+    np.add.at(nan_active, e + 1, -is_nan.astype(np.float64))
     total = np.cumsum(total)[:n]
     count = np.cumsum(count)[:n]
+    nan_active = np.cumsum(nan_active)[:n]
     with np.errstate(divide="ignore", invalid="ignore"):
         avg = np.where(count > 0, total / np.maximum(count, 1), 0.0)
+    avg = np.where(nan_active > 0, np.nan, avg)
     return pd.Series(avg, index=grid, name="signal")
 
 

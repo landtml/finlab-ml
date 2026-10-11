@@ -130,6 +130,16 @@ def test_average_active_signals_matches_naive_loop():
     np.testing.assert_allclose(got, want, atol=1e-12)
 
 
+def test_average_active_signals_nan_signal_only_poisons_its_active_span() -> None:
+    idx = pd.date_range("2024-01-01", periods=5, freq="D")
+    signals = pd.Series([1.0, np.nan, 1.0, -1.0, 1.0], index=idx)
+    t1 = pd.Series(idx[[2, 3, 4, 4, 4]], index=idx)
+    got = average_active_signals(signals, t1).to_numpy()
+    assert got[0] == pytest.approx(1.0)
+    assert np.isnan(got[1:4]).all()  # the NaN event is active at 1, 2 and 3
+    assert got[4] == pytest.approx(1.0 / 3.0)  # events 2, 3 and 4 remain, with mean 1/3
+
+
 def test_calibrate_sigmoid_width_warns_on_infinite_x_and_still_returns_inf() -> None:
     with pytest.warns(UserWarning, match="calibrate_sigmoid_width.*non-finite"):
         assert calibrate_sigmoid_width(np.inf, 0.5) == math.inf
