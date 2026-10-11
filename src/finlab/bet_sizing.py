@@ -191,10 +191,12 @@ def limit_price(
 
     Implements the book's formula
     ``p_bar = (1/|target - current|) sum_j L(f, w, j / Q)`` over
-    ``j = |current + sgn(target - current)| .. |target|``, where
-    ``L(f, w, m) = f - m sqrt(w / (1 - m^2))`` inverts the sigmoid in the market
-    price. Returns ``nan`` when ``target == current`` (no order) and when
-    ``abs(target) == max_position`` (the cap term has no finite limit).
+    ``j`` runs over the absolute fill levels between ``|current + sgn(target - current)|``
+    and ``|target|`` (in either order), and ``m = +/- j / Q`` carries the sign of the
+    traded position. ``L(f, w, m) = f - m sqrt(w / (1 - m^2))`` inverts the sigmoid in
+    the market price. Returns ``nan`` when ``target == current`` (no order) and when
+    ``abs(target) == max_position`` (the cap term has no finite limit). Raises
+    ``ValueError`` when ``abs(target)`` or ``abs(current)`` exceeds ``max_position``.
 
     Notes
     -----
