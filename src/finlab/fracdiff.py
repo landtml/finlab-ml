@@ -43,6 +43,7 @@ statsmodels call (Snippet 5.4) is not a dependency here.
 
 from __future__ import annotations
 
+import warnings
 from typing import Callable, NamedTuple
 
 import numpy as np
@@ -310,6 +311,15 @@ def frac_diff_ffd(
     Numba kernel :func:`_fixed_width_apply`, O(n * width).
     """
     w = get_weights_ffd(d, thres)
+    width = w.shape[0] - 1
+    n = series.shape[0] if hasattr(series, "shape") else len(series)
+    if width >= n:
+        warnings.warn(
+            f"series of length {n} is shorter than the FFD window (width {width}); "
+            "the output is all NaN. Use a larger thres, or frac_diff for an expanding window.",
+            UserWarning,
+            stacklevel=2,
+        )
     return _apply_per_column(series, lambda x: _fixed_width_apply(x, w))
 
 

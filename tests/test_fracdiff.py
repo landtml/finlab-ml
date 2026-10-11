@@ -270,3 +270,30 @@ def test_validation() -> None:
         frac_diff_ffd(np.arange(10.0), float("nan"))
     with pytest.raises(ValueError):
         get_weights(0.5, 0)
+
+
+# --------------------------------------------------------------------------- #
+# Series shorter than the FFD window
+# --------------------------------------------------------------------------- #
+
+
+def _walk(n: int, seed: int = 4) -> np.ndarray:
+    rng = np.random.default_rng(seed)
+    return np.cumsum(rng.normal(0, 0.01, n)) + 5
+
+
+def test_frac_diff_ffd_warns_when_series_shorter_than_window():
+    lp = _walk(2000)
+    with pytest.warns(UserWarning, match="shorter than"):
+        out = frac_diff_ffd(lp[:1000], 0.2)
+    assert not np.isfinite(out).any()
+
+
+def test_frac_diff_ffd_no_warning_when_window_fits():
+    import warnings
+
+    lp = _walk(2000)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        out = frac_diff_ffd(lp, 0.5)
+    assert np.isfinite(out).any()
