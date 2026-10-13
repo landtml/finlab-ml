@@ -30,8 +30,51 @@ bag = SequentialBootstrapBagging(Centroid, n_estimators=10, seed=0).fit(X, y, t1
 print("train accuracy", (bag.predict(X) == y).mean().round(3))
 ```
 
+## Out-of-bag score
+
+With `oob_score=True`, `fit` also scores each row with the bags that did not draw it.
+The base estimator needs `predict_proba`; without it, `fit` refuses by name before training.
+The example is self-contained, because each page's blocks run in their own namespace.
+
+```python
+import numpy as np
+import pandas as pd
+from finlab.cv import make_t1
+from finlab.ensemble import SequentialBootstrapBagging
+
+class Proba:
+    def fit(self, X, y, sample_weight=None):
+        self.classes_ = np.unique(y)
+        self.c_ = np.stack([X[y == c].mean(axis=0) for c in self.classes_])
+        return self
+    def predict_proba(self, X):
+        s = np.exp(-((X[:, None] - self.c_[None]) ** 2).sum(2))
+        return s / s.sum(1, keepdims=True)
+
+rng = np.random.default_rng(4)
+idx = pd.date_range("2020-01-01", periods=200, freq="D")
+y = rng.integers(0, 2, 200)
+X = rng.normal(size=(200, 2)) + np.where(y[:, None] == 1, 1.5, -1.5)
+
+bag = SequentialBootstrapBagging(Proba, n_estimators=20, seed=0, oob_score=True)
+bag.fit(X, y, t1=make_t1(idx, 10))
+print("oob accuracy", round(bag.oob_score_, 3))
+print("oob_decision_function_", bag.oob_decision_function_.shape)
+```
+
+`oob_decision_function_` has shape `(n_samples, n_classes)`. Row i averages the
+`predict_proba` of the bags whose draws exclude i. A row that every bag drew is NaN.
+`oob_score_` is the accuracy of the argmax over the rows that have an estimate. With
+`sample_weight`, that accuracy is weighted by the weights. `fit` warns with the number of
+NaN rows.
+
+Labels that overlap in time leak between in-bag and out-of-bag samples, so the OOB score
+is optimistic for overlapping labels. It is no substitute for purged cross-validation
+([cv](cv.md)). Claimed from the book only (not verified against the text).
+
 ## Notes
 
-Proof: [ensemble.md](../proofs/ensemble.md). Scope: out-of-bag estimation is not implemented.
+Proof: [ensemble.md](../proofs/ensemble.md). Scope: the OOB score uses the draws of one fit
+and does no purging of overlapping labels.
 
 Full signatures: [API reference](../API.md).
