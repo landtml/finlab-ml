@@ -12,6 +12,9 @@ Covers AFML chapter 19 ("Microstructural Features"):
 * :func:`kyle_lambda` / :func:`kyle_lambda_tstat` -- price impact from the
   regression of price changes on signed volume, section 19.4.1.
 * :func:`amihud_illiquidity` -- Amihud's lambda, section 19.4.2.
+* :func:`hasbrouck_lambda` / :func:`hasbrouck_lambda_tstat` and
+  :func:`signed_root_dollar_volume` -- Hasbrouck's regression of bar log-price
+  changes on signed root dollar volume, section 19.4.3.
 * :func:`bulk_volume_classification` and :func:`vpin` -- volume-clock order
   imbalance and VPIN, section 19.5.2. The book does not give a bulk-volume
   classifier; BVC is taken from Easley, Lopez de Prado and O'Hara (2012),
@@ -21,10 +24,10 @@ Scope: each function takes one instrument's series. Series inputs return
 Series (index preserved); numpy inputs return numpy arrays. Loops that are
 not expressible as a single vectorized expression are compiled with numba.
 
-Not covered: the Lee-Ready classifier, Hasbrouck's regression and its
-time-bar sampling, the Kalman smoothing of spread estimates, the first-order
-PIN mixture-of-Poissons MLE (section 19.5.1), and the book's Snippet 19.1
-rolling implementation (its ``pd.stats.moments`` calls are obsolete; the
+Not covered: the Lee-Ready classifier, the choice of time bars for Hasbrouck's
+regression (the caller passes the bar ids), the Kalman smoothing of spread
+estimates, the first-order PIN mixture-of-Poissons MLE (section 19.5.1), and
+the book's Snippet 19.1 rolling implementation (its ``pd.stats.moments`` calls are obsolete; the
 rolling windows are re-derived here and checked against a naive formula).
 """
 
@@ -49,6 +52,9 @@ __all__ = [
     "kyle_lambda",
     "kyle_lambda_tstat",
     "amihud_illiquidity",
+    "hasbrouck_lambda",
+    "hasbrouck_lambda_tstat",
+    "signed_root_dollar_volume",
     "bulk_volume_classification",
     "vpin",
 ]
@@ -540,6 +546,178 @@ def amihud_illiquidity(
             raise ValueError("ratio method needs strictly positive dollar_volume")
         return float(np.mean(r / dv))
     raise ValueError(f"unknown method {method!r}")
+
+
+# Largest bar count the helper allocates. Above it the bar ids are likely in the wrong units.
+_MAX_BARS = 10_000_000
+
+
+def _hasbrouck_inputs(
+    bar_close: ArrayLike, signed_root_dollar_volume: ArrayLike
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return ``(x, y)``: regressor from bar 1 on, and ``y = diff(log(bar_close))``."""
+    _check_same_index(
+        bar_close, signed_root_dollar_volume, "bar_close and signed_root_dollar_volume"
+    )
+    p = _require_finite(_to_float(bar_close, "bar_close"), "bar_close")
+    x_all = _require_finite(
+        _to_float(signed_root_dollar_volume, "signed_root_dollar_volume"),
+        "signed_root_dollar_volume",
+    )
+    if p.shape != x_all.shape:
+        raise ValueError("bar_close and signed_root_dollar_volume must have the same length")
+    if p.shape[0] < 3:
+        raise ValueError("hasbrouck_lambda needs at least 3 observations")
+    if np.any(p <= 0.0):
+        raise ValueError("bar_close must be strictly positive, since its logarithm is taken")
+    return x_all[1:], np.diff(np.log(p))
+
+
+def hasbrouck_lambda(bar_close: ArrayLike, signed_root_dollar_volume: ArrayLike) -> float:
+    """Hasbrouck's lambda: log-price impact per unit of signed root dollar volume.
+
+    Estimates ``log(p~_tau) - log(p~_{tau-1}) = lambda * x_tau + e_tau`` (AFML
+    section 19.4.3) by OLS without intercept. ``x_tau`` is the per-bar sum
+    ``sum_t b_t sqrt(p_t V_t)`` over the trades in bar ``tau``.
+
+    Parameters
+    ----------
+    bar_close : array-like, shape (B,)
+        Closing price of each bar, strictly positive, in time order.
+    signed_root_dollar_volume : array-like, shape (B,)
+        Per-bar sum of ``b_t sqrt(p_t V_t)``, as built by
+        :func:`signed_root_dollar_volume`. Element ``tau`` is paired with the
+        log-price change into bar ``tau``, so element 0 is unused.
+
+    Returns
+    -------
+    float
+        The slope ``lambda = sum(x*y) / sum(x*x)``, with ``x`` the regressor
+        from bar 1 on and ``y = diff(log(bar_close))``.
+
+    Notes
+    -----
+    The regressor is a signed square root of dollar volume, not the signed
+    volume used by :func:`kyle_lambda`. The response is a log-price change, so
+    ``lambda`` is a log-price move per unit of regressor.
+
+    Scope: one instrument over one estimation window. The caller chooses the
+    bars. A zero regressor gives division by zero, which is raised as
+    ``ValueError``.
+    """
+    x, y = _hasbrouck_inputs(bar_close, signed_root_dollar_volume)
+    # Overflow is caught by the isfinite test below, so the numpy warning is silenced here.
+    with np.errstate(over="ignore"):
+        sxx = float(np.dot(x, x))
+        sxy = float(np.dot(x, y))
+    if sxx == 0.0:
+        raise ValueError("signed_root_dollar_volume is identically zero")
+    if math.isfinite(sxx) and math.isfinite(sxy):
+        return sxy / sxx
+    # The squared sums overflow once the regressor reaches about 1e154. The scaled
+    # regression in _ols_origin gives the slope.
+    return float(_ols_origin(x, y)[0])
+
+
+def hasbrouck_lambda_tstat(
+    bar_close: ArrayLike, signed_root_dollar_volume: ArrayLike
+) -> tuple[float, float]:
+    """Hasbrouck's lambda and its t-statistic.
+
+    Parameters
+    ----------
+    bar_close, signed_root_dollar_volume : array-like, shape (B,)
+        As in :func:`hasbrouck_lambda`.
+
+    Returns
+    -------
+    tuple of (float, float)
+        ``(lambda, t)`` where ``t = lambda / se(lambda)`` and the standard
+        error uses ``B - 2`` degrees of freedom (one slope, no intercept, and
+        ``B - 1`` regression rows).
+
+    Notes
+    -----
+    Standard OLS through the origin, with the same standard error formula as
+    :func:`kyle_lambda_tstat`. An exact fit gives an infinite t-value.
+    """
+    x, y = _hasbrouck_inputs(bar_close, signed_root_dollar_volume)
+    with np.errstate(over="ignore"):
+        sxx = float(np.dot(x, x))
+    if sxx == 0.0:
+        raise ValueError("signed_root_dollar_volume is identically zero")
+    lam, t = _ols_origin(x, y)
+    return float(lam), float(t)
+
+
+def signed_root_dollar_volume(
+    prices: ArrayLike, volumes: ArrayLike, signs: ArrayLike, bar_ids: ArrayLike
+) -> np.ndarray:
+    """Per-bar sums of signed root dollar volume from trade data.
+
+    For each bar ``tau`` this returns ``sum_t b_t sqrt(p_t V_t)`` over the
+    trades in that bar. It is the regressor of :func:`hasbrouck_lambda`
+    (AFML section 19.4.3).
+
+    Parameters
+    ----------
+    prices : array-like, shape (N,)
+        Trade prices, strictly positive.
+    volumes : array-like, shape (N,)
+        Trade volumes, strictly positive.
+    signs : array-like, shape (N,)
+        Trade signs ``b_t`` in {-1, 0, 1}. :func:`tick_rule` gives signs in
+        {-1, 1}. Use 0 for a trade whose side is unknown.
+    bar_ids : array-like of int, shape (N,)
+        Non-negative integer bar number of each trade, counted from 0.
+
+    Returns
+    -------
+    numpy.ndarray, shape (max(bar_ids) + 1,)
+        Per-bar sums. A bar with no trades gets 0.
+
+    Notes
+    -----
+    The root is computed as ``sqrt(p) * sqrt(V)``, so a product ``p * V`` that
+    overflows float64 (prices and volumes near 1e200) does not overflow here.
+    Trades need not be in time order, since they are summed by bar number.
+    Element ``tau`` of the result must line up with the closing price of bar
+    ``tau``; the function cannot check this.
+
+    Scope: one instrument.
+    """
+    _check_same_index(prices, volumes, "prices and volumes")
+    _check_same_index(prices, signs, "prices and signs")
+    _check_same_index(prices, bar_ids, "prices and bar_ids")
+    p = _require_finite(_to_float(prices, "prices"), "prices")
+    v = _require_finite(_to_float(volumes, "volumes"), "volumes")
+    sg = _require_finite(_to_float(signs, "signs"), "signs")
+    b = np.asarray(bar_ids)
+    if b.ndim != 1:
+        raise ValueError(f"bar_ids must be one-dimensional, got shape {b.shape}")
+    if p.shape != v.shape or p.shape != sg.shape or p.shape != b.shape:
+        raise ValueError("prices, volumes, signs and bar_ids must have the same length")
+    if p.shape[0] == 0:
+        raise ValueError("signed_root_dollar_volume needs at least one trade")
+    if np.any(p <= 0.0):
+        raise ValueError("prices must be strictly positive")
+    if np.any(v <= 0.0):
+        raise ValueError("volumes must be strictly positive")
+    if not np.all(np.isin(sg, (-1.0, 0.0, 1.0))):
+        raise ValueError("signs must be -1, 0 or 1")
+    if b.dtype.kind not in "iu":
+        raise ValueError(f"bar_ids must be integers, got dtype {b.dtype}")
+    if np.any(b < 0):
+        raise ValueError("bar_ids must be non-negative")
+    n_bars = int(b.max()) + 1
+    if n_bars > _MAX_BARS:
+        raise ValueError(
+            f"bar_ids name {n_bars:,} bars (max bar_id + 1), above the limit of "
+            f"{_MAX_BARS:,}; bar_ids may be in the wrong units."
+        )
+    # sqrt(p) * sqrt(V) equals sqrt(p * V) but cannot overflow when p * V does.
+    root = sg * np.sqrt(p) * np.sqrt(v)
+    return np.bincount(b.astype(np.intp), weights=root, minlength=n_bars)
 
 
 # ---------------------------------------------------------------------------

@@ -17,9 +17,12 @@ from finlab.microstructure import (
     becker_parkinson_volatility,
     bulk_volume_classification,
     corwin_schultz_spread,
+    hasbrouck_lambda,
+    hasbrouck_lambda_tstat,
     kyle_lambda,
     kyle_lambda_tstat,
     roll_measure,
+    signed_root_dollar_volume,
     tick_rule,
     vpin,
 )
@@ -128,6 +131,37 @@ def naive_vpin(
             continue
         s = sum(abs(bs[k][0] - bs[k][1]) for k in range(tau - n_window + 1, tau + 1))
         out.append(s / (n_window * bucket))
+    return out
+
+
+def naive_hasbrouck(bar_close: list[float], srdv: list[float]) -> tuple[float, float]:
+    """Loop over bars straight from the OLS formulas; returns ``(lambda, t)``."""
+    xs: list[float] = []
+    ys: list[float] = []
+    for tau in range(1, len(bar_close)):
+        ys.append(math.log(bar_close[tau]) - math.log(bar_close[tau - 1]))
+        xs.append(srdv[tau])
+    sxx = 0.0
+    sxy = 0.0
+    for i in range(len(xs)):
+        sxx += xs[i] * xs[i]
+        sxy += xs[i] * ys[i]
+    lam = sxy / sxx
+    ssr = 0.0
+    for i in range(len(xs)):
+        e = ys[i] - lam * xs[i]
+        ssr += e * e
+    se = math.sqrt(ssr / (len(xs) - 1) / sxx)
+    return lam, lam / se
+
+
+def naive_signed_root_dollar_volume(
+    prices: list[float], volumes: list[float], signs: list[float], bar_ids: list[int]
+) -> list[float]:
+    """Add each trade's ``b_t sqrt(p_t V_t)`` to its bar, one trade at a time."""
+    out = [0.0] * (max(bar_ids) + 1)
+    for p, v, s, b in zip(prices, volumes, signs, bar_ids):
+        out[b] += s * math.sqrt(p * v)
     return out
 
 
@@ -320,6 +354,197 @@ def test_amihud_regression_and_ratio_match_naive() -> None:
 def test_amihud_rejects_bad_method() -> None:
     with pytest.raises(ValueError, match="unknown method"):
         amihud_illiquidity(np.ones(3), np.ones(3), method="nope")
+
+
+# ---------------------------------------------------------------------------
+# Hasbrouck lambda and signed root dollar volume
+# ---------------------------------------------------------------------------
+def test_hasbrouck_lambda_recovers_known_slope_exactly() -> None:
+    # log closes follow lambda * x exactly. exp and log round each close, so the
+    # recovered slope agrees to about 1e-14, not bit for bit.
+    rng = np.random.default_rng(1)
+    x = rng.choice([-1.0, 1.0], size=300) * rng.uniform(1.0, 10.0, size=300)
+    lam = 0.37
+    logc = np.r_[0.0, np.cumsum(lam * x[1:])]
+    srdv = x.copy()
+    srdv[0] = 123.0  # element 0 is unused, so this value must not change the result
+    assert hasbrouck_lambda(np.exp(logc), srdv) == pytest.approx(lam, abs=1e-10)
+    got, t = hasbrouck_lambda_tstat(np.exp(logc), srdv)
+    assert got == pytest.approx(lam, abs=1e-10)
+    assert abs(t) > 1e6  # residuals are rounding noise, so the t-value is huge
+
+
+@pytest.mark.parametrize("seed", range(3))
+def test_hasbrouck_lambda_matches_numpy_lstsq(seed: int) -> None:
+    rng = np.random.default_rng(seed)
+    B = 300
+    x = rng.choice([-1.0, 1.0], size=B) * rng.exponential(1.0, size=B)
+    y = 0.8 * x[1:] + rng.normal(scale=0.5, size=B - 1)
+    bar_close = np.exp(np.r_[0.0, np.cumsum(y)])
+    lam_ref = np.linalg.lstsq(x[1:, None], np.diff(np.log(bar_close)), rcond=None)[0][0]
+    lam, t = hasbrouck_lambda_tstat(bar_close, x)
+    assert lam == pytest.approx(lam_ref, rel=1e-10)
+    # The slope is within four standard errors of the truth, where se is the t-test's own se.
+    se = lam / t
+    assert abs(lam - 0.8) < 4 * abs(se)
+
+
+@pytest.mark.parametrize("seed", range(3))
+def test_hasbrouck_lambda_matches_naive_loop(seed: int) -> None:
+    rng = np.random.default_rng(seed)
+    B = 120
+    srdv = rng.choice([-1.0, 1.0], size=B) * rng.uniform(0.5, 50.0, size=B)
+    log_steps = np.r_[0.0, 0.01 * srdv[1:] + rng.normal(0, 0.02, B - 1)]
+    bar_close = 100 * np.exp(np.cumsum(log_steps))
+    lam, t = hasbrouck_lambda_tstat(bar_close, srdv)
+    lam_ref, t_ref = naive_hasbrouck(bar_close.tolist(), srdv.tolist())
+    assert lam == pytest.approx(lam_ref, rel=1e-10)
+    assert t == pytest.approx(t_ref, rel=1e-9)
+    assert hasbrouck_lambda(bar_close, srdv) == pytest.approx(lam_ref, rel=1e-10)
+
+
+def test_hasbrouck_tstat_matches_hand_computation() -> None:
+    # Regressor (1, 2, 3) against response (2, 3, 5), from bars 1 to 3.
+    # sum(xy) = 23, sum(x^2) = 14, so lambda = 23/14. SSR = 38 - 23**2/14 = 3/14.
+    # se^2 = SSR / ((3 - 1) * 14) = 3/392, so t^2 = (23/14)**2 * 392/3 = 1058/3.
+    bar_close = np.exp([0.0, 2.0, 5.0, 10.0])
+    srdv = np.array([0.0, 1.0, 2.0, 3.0])
+    lam, t = hasbrouck_lambda_tstat(bar_close, srdv)
+    assert lam == pytest.approx(23.0 / 14.0, rel=1e-12)
+    assert t == pytest.approx(math.sqrt(1058.0 / 3.0), rel=1e-12)
+
+
+def test_hasbrouck_lambda_rejects_zero_regressor() -> None:
+    with pytest.raises(ValueError, match="identically zero"):
+        hasbrouck_lambda(np.array([1.0, 2.0, 3.0, 4.0]), np.zeros(4))
+    with pytest.raises(ValueError, match="identically zero"):
+        hasbrouck_lambda_tstat(np.array([1.0, 2.0, 3.0, 4.0]), np.zeros(4))
+
+
+@pytest.mark.parametrize(
+    ("bar_close", "srdv", "match"),
+    [
+        ([100.0, 0.0, 101.0, 102.0], [0.0, 1.0, 2.0, 3.0], "strictly positive"),
+        ([100.0, -1.0, 101.0, 102.0], [0.0, 1.0, 2.0, 3.0], "strictly positive"),
+        ([100.0, 101.0, 102.0], [0.0, 1.0, 2.0, 3.0], "same length"),
+        ([100.0, 101.0], [0.0, 1.0], "at least 3"),
+        ([100.0, math.nan, 101.0, 102.0], [0.0, 1.0, 2.0, 3.0], "finite"),
+        ([100.0, 101.0, 102.0, 103.0], [0.0, 1.0, math.inf, 3.0], "finite"),
+    ],
+)
+def test_hasbrouck_refuses_bad_input(bar_close, srdv, match: str) -> None:
+    with pytest.raises(ValueError, match=match):
+        hasbrouck_lambda(bar_close, srdv)
+    with pytest.raises(ValueError, match=match):
+        hasbrouck_lambda_tstat(bar_close, srdv)
+
+
+def test_hasbrouck_refuses_labels_that_differ() -> None:
+    idx = pd.date_range("2024-01-01", periods=5, freq="D")
+    close = pd.Series(np.linspace(100.0, 104.0, 5), index=idx)
+    srdv = pd.Series(np.arange(5.0), index=idx + pd.Timedelta(hours=12))
+    with pytest.raises(ValueError, match="same index"):
+        hasbrouck_lambda(close, srdv)
+
+
+def test_hasbrouck_lambda_large_regressor_stays_finite() -> None:
+    # The squared regressor overflows near 1e154. The scaled fallback must still
+    # return the slope, which is about 3e-200 here.
+    rng = np.random.default_rng(9)
+    x = 1e200 * rng.choice([-1.0, 1.0], size=40) * rng.uniform(0.5, 2.0, size=40)
+    x[0] = 0.0
+    lam_true = 3e-200
+    bar_close = np.exp(np.r_[0.0, np.cumsum(lam_true * x[1:])])
+    got = hasbrouck_lambda(bar_close, x)
+    assert np.isfinite(got)
+    assert got == pytest.approx(lam_true, rel=1e-9)
+    lam, t = hasbrouck_lambda_tstat(bar_close, x)
+    assert lam == pytest.approx(lam_true, rel=1e-9)
+    assert not np.isnan(t)
+
+
+def test_signed_root_dollar_volume_hand_example() -> None:
+    # Bar 0: +sqrt(4 * 1) = 2, then -sqrt(1 * 1) = -1, so the bar sums to 1.
+    # Bar 1 has no trades and gets 0. Bar 2: +sqrt(9 * 4) = 6, and the trade with
+    # sign 0 adds nothing.
+    out = signed_root_dollar_volume(
+        [4.0, 1.0, 9.0, 16.0], [1.0, 1.0, 4.0, 1.0], [1, -1, 1, 0], [0, 0, 2, 2]
+    )
+    assert out.tolist() == [1.0, 0.0, 6.0]
+
+
+@pytest.mark.parametrize("seed", range(3))
+def test_signed_root_dollar_volume_matches_naive(seed: int) -> None:
+    rng = np.random.default_rng(seed)
+    n = 300
+    prices = 50 + 10 * rng.random(n)
+    volumes = rng.integers(1, 100, size=n).astype(float)
+    signs = rng.choice([-1.0, 0.0, 1.0], size=n)
+    bar_ids = np.sort(rng.integers(0, 40, size=n))  # some bars may be empty
+    got = signed_root_dollar_volume(prices, volumes, signs, bar_ids)
+    ref = naive_signed_root_dollar_volume(
+        prices.tolist(), volumes.tolist(), signs.tolist(), bar_ids.tolist()
+    )
+    assert got.shape == (int(bar_ids.max()) + 1,)
+    np.testing.assert_allclose(got, ref, rtol=1e-12, atol=0.0)
+
+
+def test_signed_root_dollar_volume_large_prices_stay_finite() -> None:
+    # p * V = 1e400 overflows float64, but sqrt(p) * sqrt(V) = 1e200 does not.
+    got = signed_root_dollar_volume([1e200], [1e200], [1], [0])
+    assert got.tolist() == [pytest.approx(1e200, rel=1e-12)]
+
+
+def test_hasbrouck_trade_level_matches_bar_reference() -> None:
+    # Trades are grouped into bars of six, and each bar closes at its last trade.
+    rng = np.random.default_rng(5)
+    bars, per = 50, 6
+    n = bars * per
+    bar_ids = np.repeat(np.arange(bars), per)
+    prices = 100 * np.exp(np.cumsum(rng.normal(scale=0.01, size=n)))
+    volumes = rng.integers(1, 40, size=n).astype(float)
+    signs = tick_rule(prices)
+    srdv = signed_root_dollar_volume(prices, volumes, signs, bar_ids)
+    bar_close = prices[per - 1 :: per]
+    ref_srdv = naive_signed_root_dollar_volume(
+        prices.tolist(), volumes.tolist(), signs.tolist(), bar_ids.tolist()
+    )
+    np.testing.assert_allclose(srdv, ref_srdv, rtol=1e-12, atol=0.0)
+    lam, t = hasbrouck_lambda_tstat(bar_close, srdv)
+    lam_ref, t_ref = naive_hasbrouck(bar_close.tolist(), srdv.tolist())
+    assert lam == pytest.approx(lam_ref, rel=1e-10)
+    assert t == pytest.approx(t_ref, rel=1e-9)
+
+
+@pytest.mark.parametrize(
+    ("prices", "volumes", "signs", "bar_ids", "match"),
+    [
+        ([0.0, 1.0], [1.0, 1.0], [1, 1], [0, 0], "prices must be strictly positive"),
+        ([1.0, 1.0], [0.0, 1.0], [1, 1], [0, 0], "volumes must be strictly positive"),
+        ([1.0, 1.0], [1.0, 1.0], [1, 2], [0, 0], "signs must be -1, 0 or 1"),
+        ([1.0, 1.0], [1.0, 1.0], [1, math.nan], [0, 0], "finite"),
+        ([1.0, 1.0], [1.0, 1.0], [1, 1], [0, -1], "non-negative"),
+        ([1.0, 1.0], [1.0, 1.0], [1, 1], [0.0, 1.0], "integers"),
+        ([1.0, 1.0], [1.0, 1.0], [1, 1], [True, False], "integers"),
+        ([1.0, 1.0], [1.0, 1.0], [1, 1], [0], "same length"),
+        ([], [], [], [], "at least one trade"),
+        ([1.0, 1.0], [1.0, 1.0], [1, 1], [0, 10_000_000], "limit"),
+        ([[1.0, 2.0]], [[1.0, 2.0]], [[1, 1]], [0, 0], "one-dimensional"),
+    ],
+)
+def test_signed_root_dollar_volume_refuses_bad_input(
+    prices, volumes, signs, bar_ids, match: str
+) -> None:
+    with pytest.raises(ValueError, match=match):
+        signed_root_dollar_volume(prices, volumes, signs, bar_ids)
+
+
+def test_signed_root_dollar_volume_refuses_labels_that_differ() -> None:
+    idx = pd.date_range("2024-01-01", periods=3, freq="D")
+    prices = pd.Series([1.0, 2.0, 3.0], index=idx)
+    bar_ids = pd.Series([0, 0, 1], index=idx + pd.Timedelta(hours=12))
+    with pytest.raises(ValueError, match="same index"):
+        signed_root_dollar_volume(prices, [1.0, 1.0, 1.0], [1, 1, 1], bar_ids)
 
 
 # ---------------------------------------------------------------------------
