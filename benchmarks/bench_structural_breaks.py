@@ -10,7 +10,7 @@ import time
 
 import numpy as np
 
-from finlab.structural_breaks import adf_stat, chu_stinchcombe_white, cusum_test, sadf
+from finlab.structural_breaks import adf_stat, cadf, chu_stinchcombe_white, cusum_test, qadf, sadf
 
 
 def best_of(fn, repeat: int = 3) -> float:
@@ -41,6 +41,14 @@ def naive_sadf(y: np.ndarray, min_length: int, lag: int) -> np.ndarray:
     return out
 
 
+def naive_qadf(y: np.ndarray, min_length: int, lag: int, q: float) -> np.ndarray:
+    out = np.full(len(y), np.nan)
+    for e in range(min_length - 1, len(y)):
+        taus = [naive_adf(y[s : e + 1], lag) for s in range(0, e - min_length + 2)]
+        out[e] = np.quantile(taus, q)
+    return out
+
+
 def naive_cusum(y: np.ndarray) -> np.ndarray:
     w = np.full(len(y), np.nan)
     for t in range(1, len(y)):
@@ -67,6 +75,8 @@ def main() -> None:
     warm = rng.standard_normal(60).cumsum()
     adf_stat(warm, 1)
     sadf(warm, 20, 1)
+    qadf(warm, 20, 1, q=0.95)
+    cadf(warm, 20, 1, q=0.95)
     cusum_test(warm)
     chu_stinchcombe_white(warm)
     chu_stinchcombe_white(warm, reference=3)
@@ -78,6 +88,10 @@ def main() -> None:
     t_naive = best_of(lambda: naive_sadf(y, 30, 1), repeat=1)
     t_jit = best_of(lambda: sadf(y, 30, 1))
     print(f"{'sadf (lag=1, c)':<28}{300:>6}{t_naive:>12.4f}{t_jit:>12.6f}{t_naive / t_jit:>9.0f}x")
+
+    t_naive = best_of(lambda: naive_qadf(y, 30, 1, 0.95), repeat=1)
+    t_jit = best_of(lambda: qadf(y, 30, 1, q=0.95))
+    print(f"{'qadf (lag=1, c, q=0.95)':<28}{300:>6}{t_naive:>12.4f}{t_jit:>12.6f}{t_naive / t_jit:>9.0f}x")
 
     y = rng.standard_normal(2000)
     t_naive = best_of(lambda: naive_cusum(y), repeat=1)
@@ -92,6 +106,7 @@ def main() -> None:
     print("\njit-only timing for larger inputs (no naive run):")
     y = rng.standard_normal(1000).cumsum()
     print(f"sadf n=1000 (lag=1, c): {best_of(lambda: sadf(y, 50, 1), repeat=1):.3f} s")
+    print(f"qadf n=1000 (lag=1, c, q=0.95): {best_of(lambda: qadf(y, 50, 1, q=0.95), repeat=1):.3f} s")
 
 
 if __name__ == "__main__":

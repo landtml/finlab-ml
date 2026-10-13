@@ -11,6 +11,8 @@ Implements, following the book's notation:
   AFML 17.4.2 on a single window.
 * :func:`sadf` -- the Supremum Augmented Dickey-Fuller series (AFML 17.4.2,
   Snippet 17.1 inner loop wrapped in the outer end-point loop).
+* :func:`qadf` and :func:`cadf` -- the quantile and conditional ADF series over the
+  same ADF statistics that :func:`sadf` maximises (AFML 17.4.2).
 * :func:`chow_dfc` and :func:`sdfc` -- the Chow-type Dickey-Fuller statistic at
   one break fraction, and its supremum over admissible breaks (AFML ch. 17).
 
@@ -48,8 +50,7 @@ Literal readings and deviations
 
 Scope
 -----
-Not covered: quantile and conditional ADF (17.4.2.4-5); the Brown-Durbin-Evans
-critical boundaries (not given in the book text, so no p-values are returned for
+Not covered: the Brown-Durbin-Evans critical boundaries (not given in the book text, so no p-values are returned for
 the CUSUM path); multi-bubble and sub/super-martingale variants; and the parallel
 SADF implementation of ch. 20.
 """
@@ -76,6 +77,8 @@ __all__ = [
     "csw_critical_value",
     "adf_stat",
     "sadf",
+    "qadf",
+    "cadf",
     "chow_dfc",
     "sdfc",
 ]
@@ -695,10 +698,104 @@ def _sadf_kernel(
     return out, arg
 
 
+@jit
+def _quantile_sorted(vals: np.ndarray, q: float) -> float:
+    """Quantile of sorted ``vals`` by linear interpolation, as ``np.quantile`` (method "linear").
+
+    The blend takes the form numpy uses, measured from the nearer end. At ``q = 1`` the
+    result is the largest value exactly.
+    """
+    n = vals.shape[0]
+    h = (n - 1) * q
+    lo = int(math.floor(h))
+    frac = h - lo
+    if frac == 0.0 or lo >= n - 1:
+        return vals[lo]
+    a = vals[lo]
+    b = vals[lo + 1]
+    if a == b:
+        return a
+    diff = b - a
+    if frac >= 0.5:
+        return b - diff * (1.0 - frac)
+    return a + diff * frac
+
+
+@jit
+def _adf_set_kernel(
+    y: np.ndarray, min_length: int, lag: int, const: int, q: float, q_lo: float, q_hi: float
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Quantiles and tail mean of the ADF set ``A_t`` at every end point.
+
+    ``A_t`` holds the same statistics whose maximum is ``SADF_t`` (windows of at least
+    ``min_length`` levels). Returns ``QADF`` at ``q``, at ``q_lo`` and at ``q_hi``, and
+    ``CADF``, the mean of the elements of ``A_t`` that are at least ``QADF_{t,q}``.
+    """
+    n_obs = y.shape[0]
+    out_q = np.full(n_obs, np.nan)
+    out_lo = np.full(n_obs, np.nan)
+    out_hi = np.full(n_obs, np.nan)
+    out_c = np.full(n_obs, np.nan)
+    for e in range(min_length - 1, n_obs):
+        n_win = e - min_length + 2
+        taus = np.empty(n_win)
+        k = 0
+        for s in range(0, n_win):
+            tau = _adf_tau(y, s, e, lag, const)
+            if not np.isnan(tau):
+                taus[k] = tau
+                k += 1
+        if k == 0:
+            continue
+        vals = np.sort(taus[:k])
+        qv = _quantile_sorted(vals, q)
+        out_q[e] = qv
+        out_lo[e] = _quantile_sorted(vals, q_lo)
+        out_hi[e] = _quantile_sorted(vals, q_hi)
+        total = 0.0
+        cnt = 0
+        for i in range(k):
+            if vals[i] >= qv:
+                total += vals[i]
+                cnt += 1
+        if cnt > 0:
+            out_c[e] = total / cnt
+    return out_q, out_lo, out_hi, out_c
+
+
 def _constant_code(constant: str) -> int:
     if constant not in _CONSTANT_CODES:
         raise ValueError(f"constant must be one of {sorted(_CONSTANT_CODES)}, got {constant!r}.")
     return _CONSTANT_CODES[constant]
+
+
+def _window_inputs(
+    series: Any, min_length: Any, lag: Any, constant: str, lag_name: str
+) -> tuple[np.ndarray, pd.Index | None, int, int, int]:
+    """Validate the arguments shared by sadf, qadf and cadf.
+
+    Returns the levels, the index, the integer lag, the constant code and the integer
+    ``min_length``. ``lag_name`` is the argument name used in messages (sadf says ``lags``).
+    """
+    y, index = _as_float_vector(series)
+    if y.size > 0 and np.all(y == y[0]):
+        # A constant series is refused here, as adf_stat refuses it.
+        raise ValueError("series has no variation (it is constant), so the ADF regression is singular.")
+    _require_integer(lag, f"{lag_name} must be an integer.")
+    _require_integer(min_length, "min_length must be an integer.")
+    if lag < 0:
+        raise ValueError(f"{lag_name} must be >= 0.")
+    code = _constant_code(constant)
+    n_det = _n_deterministic(code)
+    min_required = 2 * lag + n_det + 3  # rows = len - 1 - lag must exceed p = 1 + lag + n_det
+    if min_length < min_required:
+        raise ValueError(
+            f"min_length={min_length} too small for {lag_name}={lag}, constant={constant!r}; "
+            f"need >= {min_required}."
+        )
+    if min_length > y.shape[0]:
+        raise ValueError("min_length exceeds the series length.")
+    return y, index, int(lag), code, int(min_length)
 
 
 def adf_stat(series: Any, lag: int, constant: str = "c") -> float:
@@ -775,27 +872,118 @@ def sadf(
     outer end-point loop and the inner start-point loop are both compiled with
     numba. ``lags`` and ``constant`` follow the arguments of Snippet 17.1.
     """
-    y, index = _as_float_vector(series)
-    if y.size > 0 and np.all(y == y[0]):
-        # A constant series is refused here, as adf_stat refuses it.
-        raise ValueError("series has no variation (it is constant), so the ADF regression is singular.")
-    _require_integer(lags, "lags must be an integer.")
-    _require_integer(min_length, "min_length must be an integer.")
-    if lags < 0:
-        raise ValueError("lags must be >= 0.")
-    code = _constant_code(constant)
-    n_det = _n_deterministic(code)
-    min_required = 2 * lags + n_det + 3  # rows = len - 1 - lags must exceed p = 1 + lags + n_det
-    if min_length < min_required:
-        raise ValueError(
-            f"min_length={min_length} too small for lags={lags}, constant={constant!r}; "
-            f"need >= {min_required}."
-        )
-    if min_length > y.shape[0]:
-        raise ValueError("min_length exceeds the series length.")
+    y, index, lags, code, min_length = _window_inputs(series, min_length, lags, constant, "lags")
     # Rescale as adf_stat does, so windows of values near 1e200 do not silently give NaN.
-    out, _ = _sadf_kernel(_center_for_adf(_rescale_for_adf(y), code), int(min_length), int(lags), code)
+    out, _ = _sadf_kernel(_center_for_adf(_rescale_for_adf(y), code), min_length, lags, code)
     return _wrap(out, index)
+
+
+def qadf(
+    series: Any,
+    min_length: int,
+    lag: int,
+    q: float = 0.95,
+    constant: str = "c",
+    v: float | None = None,
+) -> Any:
+    """Quantile ADF series (AFML 17.4.2).
+
+    For each end point ``t`` (0-based), let ``A_t`` be the ADF statistics over the same
+    start points as :func:`sadf`, so that ``max(A_t) = SADF_t``. Then ``QADF_{t,q}`` is the
+    ``q``-quantile of ``A_t``.
+
+    Parameters
+    ----------
+    series : array-like or pd.Series
+        Levels ``y_t`` in time order (log prices, per the book).
+    min_length : int
+        Smallest window (number of levels), as in :func:`sadf`.
+    lag : int
+        ADF lag order ``L``.
+    q : float, default 0.95
+        Quantile level in ``[0, 1]``.
+    constant : {'nc', 'c', 'ct', 'ctt'}, default 'c'
+        Deterministic terms. See :func:`adf_stat`.
+    v : float, optional
+        Half-width of the dispersion band, with ``v > 0``, ``q - v >= 0`` and
+        ``q + v <= 1``. When given, the dispersion ``QADF_{t,q+v} - QADF_{t,q-v}`` is
+        returned as well.
+
+    Returns
+    -------
+    pd.Series or np.ndarray
+        ``QADF_{t,q}`` for every end point, NaN before ``min_length - 1``. Without ``v`` this
+        is the whole result. With ``v`` the result is the tuple ``(qadf, dispersion)``, each
+        in the same style. A ``pd.Series`` is returned for a Series input.
+
+    Notes
+    -----
+    Quantiles are linear interpolations between order statistics, the rule of
+    ``np.quantile`` with its default ``method="linear"``. At ``q = 1`` the result equals
+    :func:`sadf` exactly. The cost is that of :func:`sadf` plus a sort of ``A_t`` at each
+    end point.
+    """
+    y, index, lag, code, min_length = _window_inputs(series, min_length, lag, constant, "lag")
+    q = _require_real_in(q, "q", 0.0, 1.0)
+    if v is None:
+        q_lo = q_hi = q
+    else:
+        v = _require_real_in(v, "v", 0.0, 1.0, low_open=True)
+        if q - v < 0.0 or q + v > 1.0:
+            raise ValueError(f"v={v!r} puts q - v or q + v outside [0, 1] for q={q!r}.")
+        q_lo, q_hi = q - v, q + v
+    out_q, out_lo, out_hi, _ = _adf_set_kernel(
+        _center_for_adf(_rescale_for_adf(y), code), min_length, lag, code, q, q_lo, q_hi
+    )
+    if v is None:
+        return _wrap(out_q, index)
+    return _wrap(out_q, index), _wrap(out_hi - out_lo, index)
+
+
+def cadf(
+    series: Any,
+    min_length: int,
+    lag: int,
+    q: float = 0.95,
+    constant: str = "c",
+) -> Any:
+    """Conditional ADF series (AFML 17.4.2).
+
+    For each end point ``t`` (0-based), ``CADF_{t,q}`` is the mean of the elements of ``A_t``
+    (the ADF statistics of :func:`sadf`) that are at least ``QADF_{t,q}``.
+
+    Parameters
+    ----------
+    series : array-like or pd.Series
+        Levels ``y_t`` in time order (log prices, per the book).
+    min_length : int
+        Smallest window (number of levels), as in :func:`sadf`.
+    lag : int
+        ADF lag order ``L``.
+    q : float, default 0.95
+        Quantile level in ``[0, 1]`` that sets the tail.
+    constant : {'nc', 'c', 'ct', 'ctt'}, default 'c'
+        Deterministic terms. See :func:`adf_stat`.
+
+    Returns
+    -------
+    pd.Series or np.ndarray
+        ``CADF_{t,q}`` for every end point, NaN before ``min_length - 1``. A ``pd.Series``
+        is returned for a Series input.
+
+    Notes
+    -----
+    The tail is ``{a in A_t : a >= QADF_{t,q}}``. The conditional dispersion, the standard
+    deviation of that tail, is not returned. At ``q = 1`` the tail is the
+    maximum alone, so the result equals :func:`sadf`, except when several elements tie
+    exactly at the maximum. Then the mean may differ from the maximum by rounding.
+    """
+    y, index, lag, code, min_length = _window_inputs(series, min_length, lag, constant, "lag")
+    q = _require_real_in(q, "q", 0.0, 1.0)
+    _, _, _, out_c = _adf_set_kernel(
+        _center_for_adf(_rescale_for_adf(y), code), min_length, lag, code, q, q, q
+    )
+    return _wrap(out_c, index)
 
 
 # ---------------------------------------------------------------------------

@@ -14,10 +14,12 @@ import pytest
 
 from finlab.structural_breaks import (
     adf_stat,
+    cadf,
     chow_dfc,
     chu_stinchcombe_white,
     csw_critical_value,
     cusum_test,
+    qadf,
     sadf,
     sdfc,
 )
@@ -808,3 +810,140 @@ def test_sdfc_refuses_descending_index():
     s = pd.Series(np.random.default_rng(3).standard_normal(40).cumsum(), index=idx)
     with pytest.raises(ValueError, match="ascending"):
         sdfc(s)
+
+
+# ---------------------------------------------------------------------------
+# Quantile and conditional ADF (AFML 17.4.2)
+# ---------------------------------------------------------------------------
+
+
+def naive_adf_set(y, min_length, lag, const, e):
+    """The ADF statistics whose maximum is SADF at end point e (windows of >= min_length levels)."""
+    return [naive_adf(y[s : e + 1], lag, const) for s in range(0, e - min_length + 2)]
+
+
+def naive_qadf(y, min_length, lag, const, q):
+    out = np.full(len(y), np.nan)
+    for e in range(min_length - 1, len(y)):
+        out[e] = np.quantile(naive_adf_set(y, min_length, lag, const, e), q)
+    return out
+
+
+def naive_cadf(y, min_length, lag, const, q):
+    out = np.full(len(y), np.nan)
+    for e in range(min_length - 1, len(y)):
+        taus = naive_adf_set(y, min_length, lag, const, e)
+        threshold = np.quantile(taus, q)
+        out[e] = np.mean([tau for tau in taus if tau >= threshold])
+    return out
+
+
+@pytest.mark.parametrize("const", ["c", "ct"])
+@pytest.mark.parametrize("q", [0.5, 0.9])
+def test_qadf_matches_naive_quantile(const, q):
+    y = np.random.default_rng(21).standard_normal(45).cumsum()
+    np.testing.assert_allclose(
+        qadf(y, 15, 1, q=q, constant=const), naive_qadf(y, 15, 1, const, q), rtol=1e-8, equal_nan=True
+    )
+
+
+@pytest.mark.parametrize("const", ["c", "ct"])
+@pytest.mark.parametrize("q", [0.5, 0.9])
+def test_cadf_matches_naive_tail_mean(const, q):
+    y = np.random.default_rng(22).standard_normal(45).cumsum()
+    np.testing.assert_allclose(
+        cadf(y, 15, 1, q=q, constant=const), naive_cadf(y, 15, 1, const, q), rtol=1e-8, equal_nan=True
+    )
+
+
+def test_qadf_and_cadf_at_q_one_equal_sadf_exactly():
+    y = np.random.default_rng(21).standard_normal(45).cumsum()
+    base = sadf(y, min_length=15, lags=1)
+    np.testing.assert_array_equal(qadf(y, 15, 1, q=1.0), base)
+    np.testing.assert_array_equal(cadf(y, 15, 1, q=1.0), base)
+
+
+def test_quantile_rule_is_numpy_linear():
+    from finlab.structural_breaks import _quantile_sorted
+
+    rng = np.random.default_rng(8)
+    for n in [1, 2, 3, 7, 40]:
+        vals = np.sort(rng.standard_normal(n))
+        for q in [0.0, 0.05, 0.25, 0.5, 0.73, 0.95, 1.0]:
+            assert _quantile_sorted(vals, q) == pytest.approx(np.quantile(vals, q), rel=1e-12, abs=1e-15)
+
+
+def test_qadf_dispersion_matches_naive_band():
+    y = np.random.default_rng(23).standard_normal(45).cumsum()
+    level, dispersion = qadf(y, 15, 1, q=0.9, v=0.05)
+    np.testing.assert_allclose(
+        level, naive_qadf(y, 15, 1, "c", 0.9), rtol=1e-8, equal_nan=True
+    )
+    expected = naive_qadf(y, 15, 1, "c", 0.95) - naive_qadf(y, 15, 1, "c", 0.85)
+    np.testing.assert_allclose(dispersion, expected, rtol=1e-8, equal_nan=True)
+    assert np.all(dispersion[14:] >= -1e-12)
+
+
+def test_qadf_is_nondecreasing_in_q_and_cadf_is_bracketed():
+    y = np.random.default_rng(24).standard_normal(60).cumsum()
+    grid = [0.1, 0.5, 0.9, 0.95, 1.0]
+    values = np.vstack([qadf(y, 20, 1, q=q) for q in grid])
+    finite = np.all(np.isfinite(values[:, 19:]), axis=0)
+    assert np.all(np.diff(values[:, 19:][:, finite], axis=0) >= 0)
+    upper = np.asarray(sadf(y, min_length=20, lags=1))
+    for q in [0.5, 0.9]:
+        c = cadf(y, 20, 1, q=q)
+        lower = qadf(y, 20, 1, q=q)
+        ok = np.isfinite(c)
+        assert np.all(c[ok] >= lower[ok] - 1e-12)
+        assert np.all(c[ok] <= upper[ok] + 1e-12)
+
+
+def test_qadf_and_cadf_pandas_index_and_numpy_agree():
+    idx = pd.date_range("2021-01-01", periods=60, freq="D")
+    s = pd.Series(np.random.default_rng(25).standard_normal(60).cumsum(), index=idx)
+    for fn in (qadf, cadf):
+        out = fn(s, 20, 1, q=0.9)
+        assert isinstance(out, pd.Series)
+        assert out.index.equals(idx)
+        np.testing.assert_allclose(out.to_numpy(), fn(s.to_numpy(), 20, 1, q=0.9), rtol=1e-12, equal_nan=True)
+    level, dispersion = qadf(s, 20, 1, q=0.9, v=0.05)
+    assert isinstance(level, pd.Series) and isinstance(dispersion, pd.Series)
+
+
+@pytest.mark.parametrize("bad", [-0.1, 1.1, float("nan"), True, "0.9"])
+def test_qadf_and_cadf_reject_q_outside_unit_interval(bad):
+    y = np.random.default_rng(26).standard_normal(60).cumsum()
+    with pytest.raises(ValueError, match="q must"):
+        qadf(y, 20, 1, q=bad)
+    with pytest.raises(ValueError, match="q must"):
+        cadf(y, 20, 1, q=bad)
+
+
+@pytest.mark.parametrize(
+    "q, v, message",
+    [(0.9, 0.0, "v must"), (0.9, -0.05, "v must"), (0.02, 0.05, "outside"), (0.98, 0.05, "outside")],
+)
+def test_qadf_rejects_bad_dispersion_band(q, v, message):
+    y = np.random.default_rng(27).standard_normal(60).cumsum()
+    with pytest.raises(ValueError, match=message):
+        qadf(y, 20, 1, q=q, v=v)
+
+
+def test_qadf_and_cadf_reject_short_window_and_bad_lag():
+    y = np.random.default_rng(28).standard_normal(60).cumsum()
+    with pytest.raises(ValueError, match="lag=2"):
+        qadf(y, 5, 2)
+    with pytest.raises(ValueError, match="lag must be an integer"):
+        cadf(y, 20, 1.5)
+    with pytest.raises(ValueError, match="lag must be >= 0"):
+        qadf(y, 20, -1)
+    with pytest.raises(ValueError, match="constant"):
+        cadf(y, 20, 1, constant="trend")
+
+
+def test_qadf_and_cadf_refuse_constant_series():
+    with pytest.raises(ValueError, match="constant"):
+        qadf(np.full(40, 1.0), 15, 1)
+    with pytest.raises(ValueError, match="constant"):
+        cadf(np.full(40, 1.0), 15, 1)

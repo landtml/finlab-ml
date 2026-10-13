@@ -292,3 +292,67 @@ The functions return statistics with no p-values and no rejection rule.
 break date in this sample. The path is nearly flat over the post-break range, so the statistic
 measures the explosive regime, not its start date. These are single seeded runs, not a size or
 power study.
+
+---
+
+## 6. Quantile and conditional ADF (AFML 17.4.2)
+
+### 6.1 Definitions **[claimed from the book only (not verified against the text)]**
+
+For end point `t`, with `A_t` the set of ADF statistics defined in 6.2:
+
+    QADF_{t,q} = q-quantile of A_t,
+    dispersion = QADF_{t,q+v} - QADF_{t,q-v},
+    CADF_{t,q} = mean of { a in A_t : a >= QADF_{t,q} },
+    conditional dispersion = standard deviation of that same set.
+
+The section number is not verified. The conditional dispersion is not returned by `cadf`.
+
+### 6.2 The set A_t **[proved here, as a definition]**
+
+`A_t = { ADF(y[s..t]) : s in [0, t - m + 1] }` for minimum window `m`, as in section 3.3.
+`max A_t = SADF_t` by definition. Using start points `0..t-m` would drop the shortest
+admissible window, so `max A_t` would not equal `SADF_t` in general. The code uses the
+section 3.3 range.
+
+### 6.3 Quantile rule **[proved here, as a definition]**
+
+For sorted values `a_(1) <= ... <= a_(n)` and `h = (n-1) q`, with `lo = floor(h)` and
+`gamma = h - lo`, the code returns `a_(lo+1) + gamma (a_(lo+2) - a_(lo+1))`. This is the rule
+of `np.quantile` with `method="linear"`. The code evaluates the blend from the nearer end,
+which is the form numpy's `_lerp` uses (read from the installed numpy 2.5.4 source). Two
+consequences:
+
+- `q = 1` gives `h = n - 1`, so the result is `a_(n)`, the maximum, exactly.
+- `QADF_{t,q}` is nondecreasing in `q`, because the interpolation of sorted values is.
+  So the dispersion `QADF_{t,q+v} - QADF_{t,q-v}` is nonnegative.
+
+### 6.4 Bounds and identities **[proved here]**
+
+Every element of the tail is at least `QADF_{t,q}`, and every element of `A_t` is at most
+`max A_t = SADF_t`. Hence
+
+    QADF_{t,q} <= CADF_{t,q} <= SADF_t.
+
+At `q = 1`, `QADF_{t,1} = SADF_t` by 6.3. The tail is then the set of elements equal to the
+maximum. With no ties it is the maximum alone, so `CADF_{t,1} = SADF_t` exactly. With exact
+ties, the mean of equal floats can differ from the maximum by rounding.
+
+### 6.5 Test status **[checked by test]**
+
+- `test_qadf_matches_naive_quantile` and `test_cadf_matches_naive_tail_mean` compare both
+  series with literal loops built on `np.quantile` and `naive_adf`, for two constants and two
+  levels of `q`.
+- `test_qadf_and_cadf_at_q_one_equal_sadf_exactly` checks equality, not closeness, at `q = 1`.
+- `test_quantile_rule_is_numpy_linear` compares the interpolation with `np.quantile` for
+  sizes 1 to 40 and several `q`.
+- `test_qadf_dispersion_matches_naive_band` covers the band. `test_qadf_is_nondecreasing_in_q_and_cadf_is_bracketed`
+  checks the monotonicity and the bounds in 6.4.
+- Refusal tests cover `q`, the band `v`, the window length, the lag, the constant and
+  constant input. `test_qadf_and_cadf_pandas_index_and_numpy_agree` covers index handling.
+
+**Measured [a shared 4-vCPU machine, 2026-10-13, `PYTHONPATH=src python benchmarks/bench_structural_breaks.py`]**:
+at `n = 300`, `min_length = 30`, `lag = 1`, `q = 0.95`, the literal loop takes 5.6927 s and
+the numba kernel takes 0.111150 s (best of 3), a 51x speedup. The same run gives 5.7630 s and
+0.111788 s for `sadf`. At `n = 1000` with `min_length = 50`, `qadf` takes 4.064 s and `sadf`
+takes 4.002 s. These are single runs on a shared machine, so the timings carry some noise.
