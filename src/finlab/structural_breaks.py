@@ -11,13 +11,21 @@ Implements, following the book's notation:
   AFML 17.4.2 on a single window.
 * :func:`sadf` -- the Supremum Augmented Dickey-Fuller series (AFML 17.4.2,
   Snippet 17.1 inner loop wrapped in the outer end-point loop).
+* :func:`qadf` and :func:`cadf` -- the quantile and conditional ADF series over the
+  same ADF statistics that :func:`sadf` maximises (AFML 17.4.2).
+* :func:`chow_dfc` and :func:`sdfc` -- the Chow-type Dickey-Fuller statistic at
+  one break fraction, and its supremum over admissible breaks (AFML ch. 17).
+* :func:`smt` -- the sub- and super-martingale test statistic, the supremum over
+  start points of a curvature or growth coefficient (AFML 17.4.3).
 
 Sign and input conventions
 --------------------------
-* Explosiveness tests (CSW and SADF) are one-sided and look for *upward*
-  departures: a large positive statistic means the series grew faster than a
+* Explosiveness tests (CSW, SADF, QADF, CADF and SDFC) are one-sided and look for
+  *upward* departures: a large positive statistic means the series grew faster than a
   random walk. The ADF slope ``beta`` is tested with ``H0: beta <= 0`` against
   ``H1: beta > 0``, so SADF uses ``tau = beta_hat / se(beta_hat)`` unchanged.
+* :func:`smt` takes the absolute value of its t-statistic, so it flags upward and
+  downward curvature alike and is not one-sided.
 * The book applies these tests to **log prices** (AFML 17.4.2.1). The functions
   here do not take logs for you; pass ``np.log(prices)`` if you want the book's
   setting.
@@ -46,11 +54,8 @@ Literal readings and deviations
 
 Scope
 -----
-Not covered: the Chow-type ``DFC`` / ``SDFC`` tests (17.4.1); quantile and
-conditional ADF (17.4.2.4-5); the Brown-Durbin-Evans critical boundaries (not
-given in the book text, so no p-values are returned for the CUSUM path);
-multi-bubble and sub/super-martingale variants; and the parallel SADF
-implementation of ch. 20.
+Not covered: the Brown-Durbin-Evans critical boundaries (not given in the book text, so no p-values are returned for
+the CUSUM path); multi-bubble variants; and the parallel SADF implementation of ch. 20.
 """
 
 from __future__ import annotations
@@ -69,11 +74,17 @@ from ._jit import jit
 __all__ = [
     "CusumResult",
     "CSWResult",
+    "SDFCResult",
     "cusum_test",
     "chu_stinchcombe_white",
     "csw_critical_value",
     "adf_stat",
     "sadf",
+    "qadf",
+    "cadf",
+    "chow_dfc",
+    "sdfc",
+    "smt",
 ]
 
 _CONSTANT_CODES = {"nc": 0, "c": 1, "ct": 2, "ctt": 3}
@@ -94,6 +105,28 @@ def _require_integer(value: Any, message: str) -> None:
         raise ValueError(message)
     if value != int(value):
         raise ValueError(message)
+
+
+def _require_real_in(
+    value: Any,
+    name: str,
+    low: float,
+    high: float,
+    *,
+    low_open: bool = False,
+    high_open: bool = False,
+) -> float:
+    # bool is refused by name, as in _require_integer; NaN and inf fail the finiteness test.
+    if isinstance(value, (bool, np.bool_)) or not isinstance(value, numbers.Real) or not math.isfinite(value):
+        raise ValueError(f"{name} must be a finite number, got {value!r}.")
+    v = float(value)
+    below = v <= low if low_open else v < low
+    above = v >= high if high_open else v > high
+    if below or above:
+        left = "(" if low_open else "["
+        right = ")" if high_open else "]"
+        raise ValueError(f"{name} must be in {left}{low}, {high}{right}, got {value!r}.")
+    return v
 
 
 def _as_float_vector(series: Any) -> tuple[np.ndarray, pd.Index | None]:
@@ -669,10 +702,104 @@ def _sadf_kernel(
     return out, arg
 
 
+@jit
+def _quantile_sorted(vals: np.ndarray, q: float) -> float:
+    """Quantile of sorted ``vals`` by linear interpolation, as ``np.quantile`` (method "linear").
+
+    The blend takes the form numpy uses, measured from the nearer end. At ``q = 1`` the
+    result is the largest value exactly.
+    """
+    n = vals.shape[0]
+    h = (n - 1) * q
+    lo = int(math.floor(h))
+    frac = h - lo
+    if frac == 0.0 or lo >= n - 1:
+        return vals[lo]
+    a = vals[lo]
+    b = vals[lo + 1]
+    if a == b:
+        return a
+    diff = b - a
+    if frac >= 0.5:
+        return b - diff * (1.0 - frac)
+    return a + diff * frac
+
+
+@jit
+def _adf_set_kernel(
+    y: np.ndarray, min_length: int, lag: int, const: int, q: float, q_lo: float, q_hi: float
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Quantiles and tail mean of the ADF set ``A_t`` at every end point.
+
+    ``A_t`` holds the same statistics whose maximum is ``SADF_t`` (windows of at least
+    ``min_length`` levels). Returns ``QADF`` at ``q``, at ``q_lo`` and at ``q_hi``, and
+    ``CADF``, the mean of the elements of ``A_t`` that are at least ``QADF_{t,q}``.
+    """
+    n_obs = y.shape[0]
+    out_q = np.full(n_obs, np.nan)
+    out_lo = np.full(n_obs, np.nan)
+    out_hi = np.full(n_obs, np.nan)
+    out_c = np.full(n_obs, np.nan)
+    for e in range(min_length - 1, n_obs):
+        n_win = e - min_length + 2
+        taus = np.empty(n_win)
+        k = 0
+        for s in range(0, n_win):
+            tau = _adf_tau(y, s, e, lag, const)
+            if not np.isnan(tau):
+                taus[k] = tau
+                k += 1
+        if k == 0:
+            continue
+        vals = np.sort(taus[:k])
+        qv = _quantile_sorted(vals, q)
+        out_q[e] = qv
+        out_lo[e] = _quantile_sorted(vals, q_lo)
+        out_hi[e] = _quantile_sorted(vals, q_hi)
+        total = 0.0
+        cnt = 0
+        for i in range(k):
+            if vals[i] >= qv:
+                total += vals[i]
+                cnt += 1
+        if cnt > 0:
+            out_c[e] = total / cnt
+    return out_q, out_lo, out_hi, out_c
+
+
 def _constant_code(constant: str) -> int:
     if constant not in _CONSTANT_CODES:
         raise ValueError(f"constant must be one of {sorted(_CONSTANT_CODES)}, got {constant!r}.")
     return _CONSTANT_CODES[constant]
+
+
+def _window_inputs(
+    series: Any, min_length: Any, lag: Any, constant: str, lag_name: str
+) -> tuple[np.ndarray, pd.Index | None, int, int, int]:
+    """Validate the arguments shared by sadf, qadf and cadf.
+
+    Returns the levels, the index, the integer lag, the constant code and the integer
+    ``min_length``. ``lag_name`` is the argument name used in messages (sadf says ``lags``).
+    """
+    y, index = _as_float_vector(series)
+    if y.size > 0 and np.all(y == y[0]):
+        # A constant series is refused here, as adf_stat refuses it.
+        raise ValueError("series has no variation (it is constant), so the ADF regression is singular.")
+    _require_integer(lag, f"{lag_name} must be an integer.")
+    _require_integer(min_length, "min_length must be an integer.")
+    if lag < 0:
+        raise ValueError(f"{lag_name} must be >= 0.")
+    code = _constant_code(constant)
+    n_det = _n_deterministic(code)
+    min_required = 2 * lag + n_det + 3  # rows = len - 1 - lag must exceed p = 1 + lag + n_det
+    if min_length < min_required:
+        raise ValueError(
+            f"min_length={min_length} too small for {lag_name}={lag}, constant={constant!r}; "
+            f"need >= {min_required}."
+        )
+    if min_length > y.shape[0]:
+        raise ValueError("min_length exceeds the series length.")
+    return y, index, int(lag), code, int(min_length)
 
 
 def adf_stat(series: Any, lag: int, constant: str = "c") -> float:
@@ -749,24 +876,460 @@ def sadf(
     outer end-point loop and the inner start-point loop are both compiled with
     numba. ``lags`` and ``constant`` follow the arguments of Snippet 17.1.
     """
+    y, index, lags, code, min_length = _window_inputs(series, min_length, lags, constant, "lags")
+    # Rescale as adf_stat does, so windows of values near 1e200 do not silently give NaN.
+    out, _ = _sadf_kernel(_center_for_adf(_rescale_for_adf(y), code), min_length, lags, code)
+    return _wrap(out, index)
+
+
+def qadf(
+    series: Any,
+    min_length: int,
+    lag: int,
+    q: float = 0.95,
+    constant: str = "c",
+    v: float | None = None,
+) -> Any:
+    """Quantile ADF series (AFML 17.4.2).
+
+    For each end point ``t`` (0-based), let ``A_t`` be the ADF statistics over the same
+    start points as :func:`sadf`, so that ``max(A_t) = SADF_t``. Then ``QADF_{t,q}`` is the
+    ``q``-quantile of ``A_t``.
+
+    Parameters
+    ----------
+    series : array-like or pd.Series
+        Levels ``y_t`` in time order (log prices, per the book).
+    min_length : int
+        Smallest window (number of levels), as in :func:`sadf`.
+    lag : int
+        ADF lag order ``L``.
+    q : float, default 0.95
+        Quantile level in ``[0, 1]``.
+    constant : {'nc', 'c', 'ct', 'ctt'}, default 'c'
+        Deterministic terms. See :func:`adf_stat`.
+    v : float, optional
+        Half-width of the dispersion band, with ``v > 0``, ``q - v >= 0`` and
+        ``q + v <= 1``. When given, the dispersion ``QADF_{t,q+v} - QADF_{t,q-v}`` is
+        returned as well.
+
+    Returns
+    -------
+    pd.Series or np.ndarray
+        ``QADF_{t,q}`` for every end point, NaN before ``min_length - 1``. Without ``v`` this
+        is the whole result. With ``v`` the result is the tuple ``(qadf, dispersion)``, each
+        in the same style. A ``pd.Series`` is returned for a Series input.
+
+    Notes
+    -----
+    Quantiles are linear interpolations between order statistics, the rule of
+    ``np.quantile`` with its default ``method="linear"``. At ``q = 1`` the result equals
+    :func:`sadf` exactly. The cost is that of :func:`sadf` plus a sort of ``A_t`` at each
+    end point.
+    """
+    y, index, lag, code, min_length = _window_inputs(series, min_length, lag, constant, "lag")
+    q = _require_real_in(q, "q", 0.0, 1.0)
+    if v is None:
+        q_lo = q_hi = q
+    else:
+        v = _require_real_in(v, "v", 0.0, 1.0, low_open=True)
+        if q - v < 0.0 or q + v > 1.0:
+            raise ValueError(f"v={v!r} puts q - v or q + v outside [0, 1] for q={q!r}.")
+        q_lo, q_hi = q - v, q + v
+    out_q, out_lo, out_hi, _ = _adf_set_kernel(
+        _center_for_adf(_rescale_for_adf(y), code), min_length, lag, code, q, q_lo, q_hi
+    )
+    if v is None:
+        return _wrap(out_q, index)
+    return _wrap(out_q, index), _wrap(out_hi - out_lo, index)
+
+
+def cadf(
+    series: Any,
+    min_length: int,
+    lag: int,
+    q: float = 0.95,
+    constant: str = "c",
+) -> Any:
+    """Conditional ADF series (AFML 17.4.2).
+
+    For each end point ``t`` (0-based), ``CADF_{t,q}`` is the mean of the elements of ``A_t``
+    (the ADF statistics of :func:`sadf`) that are at least ``QADF_{t,q}``.
+
+    Parameters
+    ----------
+    series : array-like or pd.Series
+        Levels ``y_t`` in time order (log prices, per the book).
+    min_length : int
+        Smallest window (number of levels), as in :func:`sadf`.
+    lag : int
+        ADF lag order ``L``.
+    q : float, default 0.95
+        Quantile level in ``[0, 1]`` that sets the tail.
+    constant : {'nc', 'c', 'ct', 'ctt'}, default 'c'
+        Deterministic terms. See :func:`adf_stat`.
+
+    Returns
+    -------
+    pd.Series or np.ndarray
+        ``CADF_{t,q}`` for every end point, NaN before ``min_length - 1``. A ``pd.Series``
+        is returned for a Series input.
+
+    Notes
+    -----
+    The tail is ``{a in A_t : a >= QADF_{t,q}}``. The conditional dispersion, the standard
+    deviation of that tail, is not returned. At ``q = 1`` the tail is the
+    maximum alone, so the result equals :func:`sadf`, except when several elements tie
+    exactly at the maximum. Then the mean may differ from the maximum by rounding.
+    """
+    y, index, lag, code, min_length = _window_inputs(series, min_length, lag, constant, "lag")
+    q = _require_real_in(q, "q", 0.0, 1.0)
+    _, _, _, out_c = _adf_set_kernel(
+        _center_for_adf(_rescale_for_adf(y), code), min_length, lag, code, q, q, q
+    )
+    return _wrap(out_c, index)
+
+
+# ---------------------------------------------------------------------------
+# Sub- and super-martingale tests (AFML 17.4.3)
+# ---------------------------------------------------------------------------
+
+# Kind codes: 0 = poly1 (levels, quadratic in t), 1 = poly2 (logs, quadratic in t),
+# 2 = exp (logs, linear in t), 3 = power (logs, linear in log t).
+_SMT_KINDS = {"poly1": 0, "poly2": 1, "exp": 2, "power": 3}
+
+
+@jit
+def _smt_tstat(yv: np.ndarray, base: np.ndarray, s: int, e: int, kind: int) -> float:
+    """t-statistic of the tested coefficient on the window ``s..e`` (0-based, inclusive).
+
+    The tested coefficient is the quadratic term for kinds 0 and 1, and the slope for kinds 2
+    and 3. The regressors are built from ``base`` centred on the window mean. Centring leaves
+    the tested coefficient and its standard error unchanged, because only the intercept and
+    the other coefficient move. It keeps the Gram matrix well conditioned far from the origin.
+    """
+    n_rows = e - s + 1
+    quad = kind <= 1
+    p = 3 if quad else 2
+    if n_rows <= p:
+        return np.nan
+    mean = 0.0
+    for r in range(s, e + 1):
+        mean += base[r]
+    mean /= n_rows
+    x = np.empty((n_rows, p))
+    yy = np.empty(n_rows)
+    for r in range(n_rows):
+        z = base[s + r] - mean
+        x[r, 0] = 1.0
+        x[r, 1] = z
+        if quad:
+            x[r, 2] = z * z
+        yy[r] = yv[s + r]
+    gram = np.zeros((p, p))
+    xty = np.zeros(p)
+    for r in range(n_rows):
+        for i in range(p):
+            xty[i] += x[r, i] * yy[r]
+            for j in range(p):
+                gram[i, j] += x[r, i] * x[r, j]
+    inv = _invert_small(gram)
+    if np.isnan(inv[0, 0]):
+        return np.nan
+    beta = np.zeros(p)
+    for i in range(p):
+        for j in range(p):
+            beta[i] += inv[i, j] * xty[j]
+    ssr = 0.0
+    for r in range(n_rows):
+        fitted = 0.0
+        for i in range(p):
+            fitted += x[r, i] * beta[i]
+        resid = yy[r] - fitted
+        ssr += resid * resid
+    k = 2 if quad else 1
+    var_b = ssr / (n_rows - p) * inv[k, k]
+    if var_b <= 0.0:
+        if beta[k] == 0.0:
+            return 0.0
+        return math.copysign(np.inf, beta[k])
+    return beta[k] / math.sqrt(var_b)
+
+
+@jit
+def _smt_kernel(
+    yv: np.ndarray, base: np.ndarray, min_length: int, kind: int, phi: float
+) -> np.ndarray:
+    n_obs = yv.shape[0]
+    out = np.full(n_obs, np.nan)
+    for e in range(min_length - 1, n_obs):
+        best = -np.inf
+        found = False
+        for s in range(0, e - min_length + 2):
+            tt = _smt_tstat(yv, base, s, e, kind)
+            if np.isnan(tt):
+                continue
+            val = abs(tt) / (float(e - s) ** phi)
+            if val > best:
+                best = val
+                found = True
+        if found:
+            out[e] = best
+    return out
+
+
+def smt(
+    series: Any,
+    min_length: int,
+    kind: str = "poly1",
+    phi: float = 0.0,
+) -> Any:
+    """Sub- and super-martingale test statistic ``SMT_t`` (AFML 17.4.3).
+
+    For each end point ``t`` (0-based), and each start point ``t0`` with the window
+    ``[t0, t]`` of at least ``min_length`` levels, an OLS fit on the window gives the
+    coefficient ``b`` and its standard error. Then
+
+        SMT_t = sup_{t0} |b_hat| / (se(b_hat) * (t - t0) ** phi).
+
+    Parameters
+    ----------
+    series : array-like or pd.Series
+        Levels ``y_t`` in time order. The log kinds need strictly positive values.
+    min_length : int
+        Smallest window (number of levels). It must leave at least one residual degree of
+        freedom: at least 4 for ``'poly1'`` and ``'poly2'``, and at least 3 for ``'exp'`` and
+        ``'power'``.
+    kind : {'poly1', 'poly2', 'exp', 'power'}, default 'poly1'
+        Regression on the window ``[t0, t]``:
+
+        - ``'poly1'``: ``y_t = a + g t + b t^2 + e``, the statistic is on ``b``.
+        - ``'poly2'``: ``log y_t = a + g t + b t^2 + e``, the statistic is on ``b``.
+        - ``'exp'``: ``log y_t = log(a) + b t + e``, the statistic is on ``b``.
+        - ``'power'``: ``log y_t = log(a) + b log(t) + e``, the statistic is on ``b``.
+    phi : float, default 0.0
+        Exponent in ``[0, 1]`` that down-weights long windows. ``phi = 0`` gives the plain
+        supremum of the absolute t-statistic.
+
+    Returns
+    -------
+    pd.Series or np.ndarray
+        ``SMT_t`` for every end point, NaN before ``min_length - 1``. A ``pd.Series`` is
+        returned for a Series input.
+
+    Notes
+    -----
+    Time is the 1-based position in the full series, so ``t`` ranges over ``1..T``. The
+    1-based convention keeps ``log(t)`` defined for ``'power'``. The window set is the one of
+    :func:`sadf`, with start points ``0..t - min_length + 1``, so that ``min_length`` means the
+    same thing in every function of this module. The standard error uses
+    ``sigma^2 = SSR / (n - p)``. The statistic takes the absolute value, so both upward and
+    downward curvature are flagged. The cost is O(T^2) fits.
+    """
     y, index = _as_float_vector(series)
-    if y.size > 0 and np.all(y == y[0]):
-        # A constant series is refused here, as adf_stat refuses it.
-        raise ValueError("series has no variation (it is constant), so the ADF regression is singular.")
-    _require_integer(lags, "lags must be an integer.")
+    if isinstance(kind, str) and kind in _SMT_KINDS:
+        code = _SMT_KINDS[kind]
+    else:
+        raise ValueError(f"kind must be one of {sorted(_SMT_KINDS)}, got {kind!r}.")
     _require_integer(min_length, "min_length must be an integer.")
-    if lags < 0:
-        raise ValueError("lags must be >= 0.")
-    code = _constant_code(constant)
-    n_det = _n_deterministic(code)
-    min_required = 2 * lags + n_det + 3  # rows = len - 1 - lags must exceed p = 1 + lags + n_det
-    if min_length < min_required:
-        raise ValueError(
-            f"min_length={min_length} too small for lags={lags}, constant={constant!r}; "
-            f"need >= {min_required}."
-        )
+    phi = _require_real_in(phi, "phi", 0.0, 1.0)
+    p = 3 if code <= 1 else 2
+    if min_length < p + 1:
+        raise ValueError(f"min_length={min_length} too small for kind={kind!r}; need >= {p + 1}.")
     if min_length > y.shape[0]:
         raise ValueError("min_length exceeds the series length.")
-    # Rescale as adf_stat does, so windows of values near 1e200 do not silently give NaN.
-    out, _ = _sadf_kernel(_center_for_adf(_rescale_for_adf(y), code), int(min_length), int(lags), code)
+    if code == 0:
+        # The statistic is a ratio, so the scale cancels. Rescale as the ADF code does, so the
+        # squares in the Gram matrix stay finite.
+        yv = _rescale_for_adf(y)
+    else:
+        n_bad = int(np.sum(y <= 0.0))
+        if n_bad:
+            raise ValueError(
+                f"kind={kind!r} takes log(series), so every value must be strictly positive; "
+                f"found {n_bad} value(s) <= 0."
+            )
+        yv = np.log(y)
+    positions = np.arange(1, y.shape[0] + 1, dtype=np.float64)
+    base = np.log(positions) if code == 3 else positions
+    out = _smt_kernel(yv, base, int(min_length), code, phi)
     return _wrap(out, index)
+
+
+# ---------------------------------------------------------------------------
+# Chow-type Dickey-Fuller tests (AFML ch. 17)
+# ---------------------------------------------------------------------------
+
+
+def _break_index(tau: float, n_obs: int) -> int:
+    """First post-break position ``ceil(tau * T)``: ``D_t = 1`` for ``t >= ceil(tau * T)``.
+
+    The product is rounded to 9 decimals first. Without that, ``0.07 * 100`` exceeds 7 in
+    floating point, and the break would move one step later.
+    """
+    return math.ceil(round(tau * n_obs, 9))
+
+
+def _chow_inputs(series: Any) -> np.ndarray:
+    y, _ = _as_float_vector(series)
+    if y.size < 3:
+        raise ValueError("need at least three observations for the Chow-type DF test.")
+    if np.all(y == y[0]):
+        raise ValueError("series has no variation (it is constant), so the DFC regression is degenerate.")
+    # DFC is a ratio of residual sums to sigma, so it is scale-invariant. The rescaling keeps
+    # the squares finite, as in adf_stat.
+    return _rescale_for_adf(y)
+
+
+@jit
+def _dfc_at(y: np.ndarray, brk: int) -> float:
+    """DFC at break index ``brk``: OLS of ``dy_t`` on ``y_{t-1} * 1{t >= brk}``, no intercept.
+
+    Rows run over ``t = 1..T-1``. Pre-break rows have a zero regressor, so they add to the
+    residual sum of squares only. The standard error uses ``sigma^2 = SSR / (T - 2)``, the
+    same guard as ``_adf_tau``. Returns NaN when every post-break ``y_{t-1}`` is zero.
+    """
+    n_obs = y.shape[0]
+    if n_obs - 2 < 1:
+        return np.nan
+    sxx = 0.0
+    sxy = 0.0
+    for t in range(max(brk, 1), n_obs):
+        x = y[t - 1]
+        sxx += x * x
+        sxy += x * (y[t] - y[t - 1])
+    if sxx == 0.0:
+        return np.nan
+    delta = sxy / sxx
+    ssr = 0.0
+    for t in range(1, n_obs):
+        fitted = delta * y[t - 1] if t >= brk else 0.0
+        e = (y[t] - y[t - 1]) - fitted
+        ssr += e * e
+    var0 = ssr / (n_obs - 2) / sxx
+    if var0 <= 0.0:
+        if delta == 0.0:
+            return 0.0
+        return math.copysign(np.inf, delta)
+    return delta / math.sqrt(var0)
+
+
+@jit
+def _dfc_path(y: np.ndarray, b_lo: int, b_hi: int) -> np.ndarray:
+    out = np.empty(b_hi - b_lo + 1)
+    for k in range(out.shape[0]):
+        out[k] = _dfc_at(y, b_lo + k)
+    return out
+
+
+def chow_dfc(series: Any, tau: float) -> float:
+    """Chow-type Dickey-Fuller statistic ``DFC(tau)`` for a break at fraction ``tau``.
+
+    Fits by OLS, with no intercept and no lags, ``dy_t = delta * y_{t-1} * D_t + eps_t``, where
+    ``D_t = 0`` for ``t < ceil(tau * T)`` and ``D_t = 1`` from there on. Returns
+    ``delta_hat / se(delta_hat)``.
+
+    Parameters
+    ----------
+    series : array-like or pd.Series
+        Levels ``y_t`` in time order (log prices, per the book). Refused if it has
+        fewer than three values, a non-finite value, or no variation.
+    tau : float
+        Break fraction in the open interval (0, 1).
+
+    Returns
+    -------
+    float
+        ``DFC(tau)``. Large positive values indicate explosive behaviour after the
+        break, the direction :func:`sdfc` takes its supremum over.
+
+    Notes
+    -----
+    Convention: the break index is ``b = ceil(tau * T)`` (computed after rounding
+    ``tau * T`` to 9 decimals), and the 0-based observation ``t`` is post-break when
+    ``t >= b``. A ``b`` of 0 is the same model as 1, because there is no regressor at
+    ``t = 0``. The regression runs on all ``T - 1`` rows, so the pre-break rows enter the
+    residual variance.
+
+    The statistic is invariant to scaling ``series``. Refused, by name, when no
+    observation lies after the break, or when every post-break ``y_{t-1}`` is zero.
+    """
+    y = _chow_inputs(series)
+    tau = _require_real_in(tau, "tau", 0.0, 1.0, low_open=True, high_open=True)
+    n_obs = y.shape[0]
+    brk = max(_break_index(tau, n_obs), 1)
+    if brk > n_obs - 1:
+        raise ValueError(f"tau={tau!r} places the break after the last observation (T={n_obs}).")
+    value = _dfc_at(y, brk)
+    if math.isnan(value):
+        raise ValueError("DFC is undefined: every y_{t-1} after the break is zero.")
+    return float(value)
+
+
+@dataclass(frozen=True)
+class SDFCResult:
+    """Output of :func:`sdfc`.
+
+    Attributes
+    ----------
+    statistic : float
+        ``SDFC``, the maximum of ``DFC`` over the admissible break indices.
+    break_index : int
+        Argmax break index ``b*``, the 0-based first post-break position. The break
+        fraction is ``b* / T``.
+    breaks : np.ndarray
+        The admissible break indices ``b_lo, ..., b_hi`` (inclusive).
+    dfc : np.ndarray
+        ``DFC`` at each entry of ``breaks``. NaN where every post-break ``y_{t-1}`` is zero.
+    """
+
+    statistic: float
+    break_index: int
+    breaks: np.ndarray
+    dfc: np.ndarray
+
+
+def sdfc(series: Any, tau0: float = 0.15) -> SDFCResult:
+    """Supremum Chow-type Dickey-Fuller statistic (AFML ch. 17).
+
+    ``SDFC = sup_{tau in [tau0, 1 - tau0]} DFC(tau)``. The supremum runs over the
+    distinct break indices ``b = ceil(tau * T)`` in that range, so it is a finite maximum.
+
+    Parameters
+    ----------
+    series : array-like or pd.Series
+        Levels ``y_t`` in time order (log prices, per the book).
+    tau0 : float, default 0.15
+        Trimming fraction in the open interval (0, 0.5). Breaks are searched in
+        ``[tau0, 1 - tau0]``.
+
+    Returns
+    -------
+    SDFCResult
+        The supremum, its argmax break index, and the full ``DFC`` path over the
+        admissible breaks. The argmax is an index into the series, not a label. For a
+        ``pd.Series`` input, use ``series.index[result.break_index]``.
+
+    Notes
+    -----
+    The break index rounding is the one documented in :func:`chow_dfc`. The path is
+    computed with a numba kernel, and the cost is O(T^2) in the rows. The lower and upper
+    indices are clamped to ``[1, T - 1]``, so every break leaves an observation after it.
+    """
+    y = _chow_inputs(series)
+    tau0 = _require_real_in(tau0, "tau0", 0.0, 0.5, low_open=True, high_open=True)
+    n_obs = y.shape[0]
+    b_lo = max(_break_index(tau0, n_obs), 1)
+    b_hi = min(_break_index(1.0 - tau0, n_obs), n_obs - 1)
+    if b_lo > b_hi:
+        raise ValueError(f"tau0={tau0!r} leaves no admissible break for T={n_obs}.")
+    dfc = _dfc_path(y, b_lo, b_hi)
+    if np.all(np.isnan(dfc)):
+        raise ValueError("DFC is undefined at every admissible break: every y_{t-1} after each break is zero.")
+    k = int(np.nanargmax(dfc))
+    return SDFCResult(
+        statistic=float(dfc[k]),
+        break_index=b_lo + k,
+        breaks=np.arange(b_lo, b_hi + 1),
+        dfc=dfc,
+    )
