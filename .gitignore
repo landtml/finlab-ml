@@ -8,3 +8,6 @@ dist/
 *.nbi
 *.nbc
 .venv/
+.ruff_cache/
+.ipynb_checkpoints/
+.coverage
