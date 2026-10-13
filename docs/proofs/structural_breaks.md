@@ -222,8 +222,8 @@ They do not take logs, and the docstrings say so.
 ### 5.1 Model **[claimed from the book only (not verified against the text)]**
 
 `dy_t = delta * y_{t-1} * D_t + eps_t` with no intercept and no lags, where `D_t = 0` for
-`t < tau* T` and `D_t = 1` after. The section number is not verified: section 2 of this note
-already cites 17.3.2 for Chu-Stinchcombe-White.
+`t < tau* T` and `D_t = 1` after. The section number within chapter 17 is not cited here,
+because it was not checked against the text.
 
 ### 5.2 Break convention **[proved here, as a definition]**
 
