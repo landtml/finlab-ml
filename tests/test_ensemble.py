@@ -621,3 +621,147 @@ def test_predict_refuses_rows_with_non_finite_base_probabilities() -> None:
     with pytest.raises(ValueError, match="non-finite probabilities for 1 of 4 rows"):
         m.predict(Xt)
     assert m.predict(X[:4]).shape == (4,)
+
+
+class _ConstantProba:
+    """Gives every row the same class-1 probability, so each bag's vote is one number."""
+
+    def __init__(self, p1):
+        self.p1 = p1
+
+    def fit(self, X, y, sample_weight=None):
+        self.classes_ = np.unique(y)
+        return self
+
+    def predict_proba(self, X):
+        return np.tile([1.0 - self.p1, self.p1], (len(X), 1))
+
+
+def _factory_from(values):
+    it = iter(values)
+    return lambda: _ConstantProba(next(it))
+
+
+def _fixed_draws(monkeypatch, draws):
+    it = iter(draws)
+    monkeypatch.setattr(
+        "finlab.ensemble.sequential_bootstrap", lambda ind, n_samples, seed: np.array(next(it))
+    )
+
+
+def test_oob_hand_case_with_fixed_draws(monkeypatch):
+    # Bag draws, chosen so the out-of-bag sets are read off by eye:
+    #   row 0 is out of bag only in bag 1; row 1 is drawn by every bag; row 2 is out of bag only in bag 0.
+    _fixed_draws(monkeypatch, [[0, 0, 1], [1, 2, 2], [0, 1, 2]])
+    X = np.arange(6, dtype=float).reshape(3, 2)
+    y = np.array([0, 1, 0])
+    t1 = make_t1(pd.date_range("2020-01-01", periods=3, freq="D"), 2)
+
+    with pytest.warns(UserWarning, match="1 of 3 samples"):
+        bag = SequentialBootstrapBagging(_factory_from([0.2, 0.6, 0.9]), n_estimators=3, oob_score=True)
+        bag.fit(X, y, t1=t1)
+    np.testing.assert_allclose(bag.oob_decision_function_, [[0.4, 0.6], [np.nan, np.nan], [0.8, 0.2]])
+    # Row 0 is predicted 1 (wrong), row 2 is predicted 0 (right): accuracy 1/2.
+    assert bag.oob_score_ == pytest.approx(0.5)
+
+    # Weights 1, 100, 3: the row drawn by every bag carries weight 100 but must not count.
+    _fixed_draws(monkeypatch, [[0, 0, 1], [1, 2, 2], [0, 1, 2]])
+    with pytest.warns(UserWarning, match="1 of 3 samples"):
+        weighted = SequentialBootstrapBagging(_factory_from([0.2, 0.6, 0.9]), n_estimators=3, oob_score=True)
+        weighted.fit(X, y, t1=t1, sample_weight=[1.0, 100.0, 3.0])
+    # (1 * 0 + 3 * 1) / (1 + 3) = 0.75.
+    assert weighted.oob_score_ == pytest.approx(0.75)
+
+
+def test_oob_with_no_out_of_bag_row_gives_nan_score(monkeypatch):
+    _fixed_draws(monkeypatch, [[0, 1, 2], [2, 0, 1]])
+    X = np.arange(6, dtype=float).reshape(3, 2)
+    y = np.array([0, 1, 0])
+    t1 = make_t1(pd.date_range("2020-01-01", periods=3, freq="D"), 2)
+    with pytest.warns(UserWarning) as record:
+        bag = SequentialBootstrapBagging(_factory_from([0.3, 0.7]), n_estimators=2, oob_score=True)
+        bag.fit(X, y, t1=t1)
+    assert np.isnan(bag.oob_decision_function_).all()
+    assert np.isnan(bag.oob_score_)
+    messages = [str(r.message) for r in record]
+    assert any("3 of 3 samples" in m for m in messages)
+    assert any("oob_score_ is NaN" in m for m in messages)
+
+
+@pytest.mark.filterwarnings("ignore:.*every bag:UserWarning")
+@pytest.mark.parametrize("sequential", [True, False])
+def test_oob_decision_function_matches_slow_reference(sequential):
+    X, y, t1 = _data(120, seed=15, horizon=10)
+    bag = SequentialBootstrapBagging(
+        NearestCentroid, n_estimators=8, sequential=sequential, seed=4, oob_score=True
+    ).fit(X, y, t1=t1)
+    n, k = len(y), len(bag.classes_)
+    # Reference written from the formula: for each row, average the bags that did not draw it.
+    ref = np.full((n, k), np.nan)
+    for i in range(n):
+        rows = []
+        for est, draws in zip(bag.estimators_, bag.draws_):
+            if i in draws:
+                continue
+            full = np.zeros((1, k))
+            full[:, np.searchsorted(bag.classes_, est.classes_)] = est.predict_proba(X[i : i + 1])
+            rows.append(full[0])
+        if rows:
+            ref[i] = np.mean(rows, axis=0)
+    assert bag.oob_decision_function_.shape == (n, k)
+    np.testing.assert_allclose(bag.oob_decision_function_, ref)
+    has = ~np.isnan(ref[:, 0])
+    pred = bag.classes_[ref[has].argmax(axis=1)]
+    assert bag.oob_score_ == pytest.approx((pred == y[has]).mean())
+
+
+@pytest.mark.filterwarnings("ignore:.*every bag:UserWarning")
+def test_oob_score_leaves_bags_and_predictions_unchanged():
+    X, y, t1 = _data(120, seed=13)
+    Xt = _data(20, seed=14)[0]
+    off = SequentialBootstrapBagging(NearestCentroid, 6, seed=21).fit(X, y, t1=t1)
+    on = SequentialBootstrapBagging(NearestCentroid, 6, seed=21, oob_score=True).fit(X, y, t1=t1)
+    for a, b in zip(off.draws_, on.draws_):
+        np.testing.assert_array_equal(a, b)
+    np.testing.assert_array_equal(off.predict_proba(Xt), on.predict_proba(Xt))
+    np.testing.assert_array_equal(off.predict(Xt), on.predict(Xt))
+    assert not hasattr(off, "oob_score_")
+    assert not hasattr(off, "oob_decision_function_")
+
+
+@pytest.mark.filterwarnings("ignore:.*every bag:UserWarning")
+def test_refit_without_oob_drops_the_earlier_oob_attributes():
+    X, y, t1 = _data(120, seed=18)
+    bag = SequentialBootstrapBagging(NearestCentroid, 4, seed=2, oob_score=True).fit(X, y, t1=t1)
+    assert hasattr(bag, "oob_score_")
+    bag.oob_score = False
+    bag.fit(X, y, t1=t1)
+    assert not hasattr(bag, "oob_score_")
+    assert not hasattr(bag, "oob_decision_function_")
+
+
+def test_oob_refuses_base_without_predict_proba_by_name():
+    X, y, t1 = _data(60, seed=16)
+    bag = SequentialBootstrapBagging(NoProba, n_estimators=3, seed=1, oob_score=True)
+    with pytest.raises(ValueError, match="oob_score=True.*NoProba"):
+        bag.fit(X, y, t1=t1)
+    assert not hasattr(bag, "estimators_")
+
+
+class _NaNProba(NearestCentroid):
+    def predict_proba(self, X):
+        return np.full((len(X), len(self.classes_)), np.nan)
+
+
+def test_oob_refuses_non_finite_out_of_bag_probabilities():
+    X, y, t1 = _data(60, seed=17)
+    bag = SequentialBootstrapBagging(_NaNProba, n_estimators=3, seed=1, oob_score=True)
+    with pytest.raises(ValueError, match="non-finite probabilities"):
+        bag.fit(X, y, t1=t1)
+    assert not hasattr(bag, "oob_decision_function_")
+
+
+@pytest.mark.parametrize("value", ["yes", 1, None])
+def test_oob_score_must_be_a_bool(value):
+    with pytest.raises(TypeError, match="oob_score"):
+        SequentialBootstrapBagging(NearestCentroid, oob_score=value)

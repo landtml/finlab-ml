@@ -80,6 +80,10 @@ class SequentialBootstrapBagging:
         book's advice of subsampling to the effective sample size.
     seed : int, optional
         Seed for reproducible bags.
+    oob_score : bool, default False
+        Compute the out-of-bag estimate in :meth:`fit`, scoring each row with the
+        bags that did not draw it (see Notes). Needs ``predict_proba`` on the base
+        estimator. With False, fit draws the same bags and the same predictions.
 
     Attributes
     ----------
@@ -89,6 +93,22 @@ class SequentialBootstrapBagging:
         Row positions drawn for each bag.
     classes_ : np.ndarray
         Sorted unique labels seen in ``fit``.
+    oob_decision_function_ : np.ndarray
+        Only with ``oob_score=True``. Shape ``(n_samples, n_classes)``: the mean
+        ``predict_proba`` over the bags whose draws exclude each row. A row that
+        every bag drew is NaN.
+    oob_score_ : float
+        Only with ``oob_score=True``. Accuracy of ``classes_[argmax(oob_decision_function_)]``
+        on the rows that have an estimate, weighted by ``sample_weight`` when weights
+        were given. NaN when no such row has positive weight.
+
+    Notes
+    -----
+    Labels that overlap in time leak between in-bag and out-of-bag samples, so the
+    OOB score is optimistic for overlapping labels and is no substitute for purged
+    cross-validation. Claimed from the book only (not verified against the text).
+    Rows that every bag drew have no out-of-bag estimate. They are left out of
+    ``oob_score_``, and ``fit`` warns with their count.
     """
 
     def __init__(
@@ -98,14 +118,18 @@ class SequentialBootstrapBagging:
         sequential: bool = True,
         max_samples: int | None = None,
         seed: int | None = 0,
+        oob_score: bool = False,
     ) -> None:
         if n_estimators < 1:
             raise ValueError(f"n_estimators must be >= 1, got {n_estimators!r}.")
+        if not isinstance(oob_score, (bool, np.bool_)):
+            raise TypeError(f"oob_score must be a bool, got {oob_score!r}.")
         self.base_factory = base_factory
         self.n_estimators = n_estimators
         self.sequential = sequential
         self.max_samples = max_samples
         self.seed = seed
+        self.oob_score = oob_score
 
     def fit(
         self,
@@ -239,6 +263,9 @@ class SequentialBootstrapBagging:
         self.classes_ = np.unique(ya)
         self.estimators_: list[Any] = []
         self.draws_: list[np.ndarray] = []
+        # Out-of-bag values from an earlier fit must not outlive a refit that did not ask for them.
+        self.__dict__.pop("oob_decision_function_", None)
+        self.__dict__.pop("oob_score_", None)
         try:
             for _ in range(self.n_estimators):
                 seed_b = int(rng.integers(0, 2**31 - 1))
@@ -247,6 +274,12 @@ class SequentialBootstrapBagging:
                 else:
                     draws = np.random.default_rng(seed_b).integers(0, n, size=size)
                 est = self.base_factory()
+                if self.oob_score and not hasattr(est, "predict_proba"):
+                    # Checked before the first bag trains, so a base that cannot score costs no fit.
+                    raise ValueError(
+                        "oob_score=True needs predict_proba on the base estimator, but "
+                        f"{type(est).__name__} has none. Set oob_score=False or use a base with predict_proba."
+                    )
                 if w is None:
                     # Some bases (KNeighborsClassifier) take no sample_weight keyword at all.
                     est.fit(Xa[draws], ya[draws])
@@ -263,12 +296,76 @@ class SequentialBootstrapBagging:
                         )
                 self.estimators_.append(est)
                 self.draws_.append(draws)
+            if self.oob_score:
+                self._compute_oob(Xa, ya, w)
         except Exception:
             # A half-built ensemble would let predict run silently on a subset of bags.
-            for name in ("classes_", "estimators_", "draws_", "columns_"):
+            for name in (
+                "classes_",
+                "estimators_",
+                "draws_",
+                "columns_",
+                "oob_decision_function_",
+                "oob_score_",
+            ):
                 self.__dict__.pop(name, None)
             raise
         return self
+
+    def _compute_oob(self, Xa: np.ndarray, ya: np.ndarray, w: np.ndarray | None) -> None:
+        """Set ``oob_decision_function_`` and ``oob_score_`` from the bags' own draws."""
+        n = Xa.shape[0]
+        k = self.classes_.shape[0]
+        total = np.zeros((n, k))
+        n_bags = np.zeros(n, dtype=int)
+        for b, (est, draws) in enumerate(zip(self.estimators_, self.draws_)):
+            in_bag = np.zeros(n, dtype=bool)
+            in_bag[draws] = True
+            oob = np.flatnonzero(~in_bag)
+            if oob.size == 0:
+                continue
+            p = np.asarray(est.predict_proba(Xa[oob]))
+            bad = ~np.isfinite(p).all(axis=1)
+            if bad.any():
+                # A NaN would reach the average and be scored as a class, so refuse it as predict does.
+                raise ValueError(
+                    f"bag {b} returned non-finite probabilities for {int(bad.sum())} out-of-bag rows; "
+                    "oob_decision_function_ cannot average them."
+                )
+            block = np.zeros((oob.size, k))
+            block[:, self._proba_columns(est)] = p
+            total[oob] += block
+            n_bags[oob] += 1
+        has = n_bags > 0
+        odf = np.full((n, k), np.nan)
+        odf[has] = total[has] / n_bags[has, None]
+        n_missing = int((~has).sum())
+        if n_missing:
+            warnings.warn(
+                f"{n_missing} of {n} samples were in every bag, so they have no out-of-bag estimate. "
+                "Their oob_decision_function_ rows are NaN and oob_score_ leaves them out.",
+                UserWarning,
+                stacklevel=3,
+            )
+        pred = self.classes_[odf[has].argmax(axis=1)]
+        correct = (pred == ya[has]).astype(float)
+        weights = np.ones(correct.shape[0]) if w is None else w[has]
+        denom = weights.sum()
+        if denom > 0:
+            score = float((weights * correct).sum() / denom)
+        else:
+            score = float("nan")
+            warnings.warn(
+                "oob_score_ is NaN: no sample has an out-of-bag estimate with positive weight.",
+                UserWarning,
+                stacklevel=3,
+            )
+        self.oob_decision_function_ = odf
+        self.oob_score_ = score
+
+    def _proba_columns(self, est: Any) -> np.ndarray:
+        """Positions in ``self.classes_`` of the columns ``est.predict_proba`` returns."""
+        return np.searchsorted(self.classes_, getattr(est, "classes_", self.classes_))
 
     def _check_fitted(self) -> None:
         if not getattr(self, "estimators_", None):
@@ -310,9 +407,7 @@ class SequentialBootstrapBagging:
             if not hasattr(est, "predict_proba"):
                 raise AttributeError("base estimator has no predict_proba.")
             p = np.asarray(est.predict_proba(Xa))
-            est_classes = getattr(est, "classes_", self.classes_)
-            cols = np.searchsorted(self.classes_, est_classes)
-            total[:, cols] += p
+            total[:, self._proba_columns(est)] += p
         return total / self.n_estimators
 
     def predict(self, X: npt.ArrayLike | pd.DataFrame) -> np.ndarray:
