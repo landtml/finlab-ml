@@ -34,7 +34,6 @@ print("train accuracy", (bag.predict(X) == y).mean().round(3))
 
 With `oob_score=True`, `fit` also scores each row with the bags that did not draw it.
 The base estimator needs `predict_proba`; without it, `fit` refuses by name before training.
-The example is self-contained, because each page's blocks run in their own namespace.
 
 ```python
 import numpy as np
