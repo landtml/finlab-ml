@@ -1,4 +1,6 @@
-"""Benchmark: naive reference vs jitted kernels in finlab.microstructure.
+"""Benchmark: naive reference vs the fast paths in finlab.microstructure.
+
+The fast paths are jitted kernels, except hasbrouck_lambda, which uses numpy dot products.
 
 Not run by CI. Usage::
 
@@ -19,8 +21,13 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tests"))
 
-from finlab.microstructure import corwin_schultz_spread, tick_rule, vpin  # noqa: E402
-from test_microstructure import naive_corwin_schultz, naive_tick_rule, naive_vpin  # noqa: E402
+from finlab.microstructure import corwin_schultz_spread, hasbrouck_lambda, tick_rule, vpin  # noqa: E402
+from test_microstructure import (  # noqa: E402
+    naive_corwin_schultz,
+    naive_hasbrouck_lambda,
+    naive_tick_rule,
+    naive_vpin,
+)
 
 
 def best_of(fn, repeats: int = 3) -> float:
@@ -60,6 +67,15 @@ def main() -> None:
     hl, ll = high.tolist(), low.tolist()
     t_naive = best_of(lambda: naive_corwin_schultz(hl, ll, 1), repeats=1)
     report("corwin_schultz", t_naive, t_fast, n)
+
+    # Hasbrouck lambda (numpy dot products over the bars; no jitted kernel on this path)
+    n = 200_000
+    close = 100 * np.exp(np.cumsum(rng.normal(scale=0.01, size=n)))
+    srdv = rng.choice([-1.0, 1.0], size=n) * rng.uniform(0.5, 50.0, size=n)
+    t_fast = best_of(lambda: hasbrouck_lambda(close, srdv))
+    cl, sl = close.tolist(), srdv.tolist()
+    t_naive = best_of(lambda: naive_hasbrouck_lambda(cl, sl), repeats=1)
+    report("hasbrouck_lambda", t_naive, t_fast, n)
 
     # VPIN (per-bucket fill kernel). The naive reference expands trade units
     # and is much slower, so use a smaller n.

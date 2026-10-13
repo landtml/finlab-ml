@@ -134,24 +134,28 @@ def naive_vpin(
     return out
 
 
-def naive_hasbrouck(bar_close: list[float], srdv: list[float]) -> tuple[float, float]:
-    """Loop over bars straight from the OLS formulas; returns ``(lambda, t)``."""
-    xs: list[float] = []
-    ys: list[float] = []
-    for tau in range(1, len(bar_close)):
-        ys.append(math.log(bar_close[tau]) - math.log(bar_close[tau - 1]))
-        xs.append(srdv[tau])
+def naive_hasbrouck_lambda(bar_close: list[float], srdv: list[float]) -> float:
+    """Loop over bars: ``sum(x y) / sum(x^2)`` with ``y`` the log-price change into each bar."""
     sxx = 0.0
     sxy = 0.0
-    for i in range(len(xs)):
-        sxx += xs[i] * xs[i]
-        sxy += xs[i] * ys[i]
-    lam = sxy / sxx
+    for tau in range(1, len(bar_close)):
+        y = math.log(bar_close[tau]) - math.log(bar_close[tau - 1])
+        sxx += srdv[tau] * srdv[tau]
+        sxy += srdv[tau] * y
+    return sxy / sxx
+
+
+def naive_hasbrouck(bar_close: list[float], srdv: list[float]) -> tuple[float, float]:
+    """Loop over bars straight from the OLS formulas; returns ``(lambda, t)``."""
+    lam = naive_hasbrouck_lambda(bar_close, srdv)
     ssr = 0.0
-    for i in range(len(xs)):
-        e = ys[i] - lam * xs[i]
+    sxx = 0.0
+    for tau in range(1, len(bar_close)):
+        y = math.log(bar_close[tau]) - math.log(bar_close[tau - 1])
+        e = y - lam * srdv[tau]
         ssr += e * e
-    se = math.sqrt(ssr / (len(xs) - 1) / sxx)
+        sxx += srdv[tau] * srdv[tau]
+    se = math.sqrt(ssr / (len(bar_close) - 2) / sxx)
     return lam, lam / se
 
 
