@@ -356,3 +356,103 @@ at `n = 300`, `min_length = 30`, `lag = 1`, `q = 0.95`, the literal loop takes 5
 the numba kernel takes 0.111150 s (best of 3), a 51x speedup. The same run gives 5.7630 s and
 0.111788 s for `sadf`. At `n = 1000` with `min_length = 50`, `qadf` takes 4.064 s and `sadf`
 takes 4.002 s. These are single runs on a shared machine, so the timings carry some noise.
+
+---
+
+## 7. Sub- and super-martingale tests (AFML 17.4.3)
+
+### 7.1 Definitions **[claimed from the book only (not verified against the text)]**
+
+For end point `t` and start point `t0`, fit by OLS on the window `[t0, t]`:
+
+- `poly1`: `y_t = a + g t + b t^2 + e`,
+- `poly2`: `log y_t = a + g t + b t^2 + e`,
+- `exp`: `log y_t = log(a) + b t + e`,
+- `power`: `log y_t = log(a) + b log(t) + e`.
+
+The statistic is `SMT_t = sup_{t0} |b_hat| / (se(b_hat) (t - t0)^phi)` with `phi` in `[0, 1]`.
+The section number is not verified. The absolute value in the statistic is the form stated for
+this module. Whether the book's test is signed is not verified.
+
+### 7.2 Time index and window set **[proved here, as definitions]**
+
+Time is the 1-based position in the full series, so `t` runs over `1..T`. The 1-based convention
+keeps `log(t)` defined for `power`. The start points are `t0 in [0, t - m + 1]`, the set of
+section 3.3, so that `m` (the minimum window in levels) means the same thing in every function
+of the module. The code uses `t - t0` as the difference of positions, which equals the number
+of steps in the window.
+
+### 7.3 Centring the time regressor **[proved here]**
+
+The code centres the regressor on the window mean, `z = t - c`, with `c` the mean of `t` (or of
+`log t` for `power`) over the window. Centring does not change the tested coefficient or its
+standard error:
+
+- For the quadratic kinds, `t = z + c` gives `a + g t + b t^2 = (a + g c + b c^2) + (g + 2 b c) z + b z^2`.
+  The coefficient of `z^2` is `b`. The design matrix changes by a unit upper-triangular `M`
+  with `M^{-1}` having last row `(0, 0, 1)`, so `[(X'X)^{-1}]_{33}` is unchanged. The residuals,
+  the SSR and `sigma_hat^2` are unchanged as well.
+- For the linear kinds the same argument applies to the slope.
+
+The power kind is centred in `log t`, not in `t`. The positions are the global 1-based ones
+before centring, so the regression is the one in 7.1.
+
+### 7.4 Scale invariance **[proved here]**
+
+For `poly1`, replacing `y` by `c y` scales `b_hat` and `se(b_hat)` by `c`, so the ratio is
+unchanged. The code rescales `y` as the ADF code does. For the log kinds, `log(c y) = log y + log c`
+only shifts the intercept, so `b_hat` and its standard error are unchanged.
+
+### 7.5 Effect of `phi` **[proved here]**
+
+Each window has `t - t0 >= m - 1 >= 1` steps, so `(t - t0)^phi >= 1` for `phi >= 0`. Hence
+`SMT_t(phi) <= SMT_t(0)` for every `phi` in `[0, 1]`.
+
+### 7.6 Pure exponential growth and the choice of kind **[proved here]**
+
+For `y_t = exp(c t)`, `log y_t = c t` is linear in `t`, so the quadratic coefficient of the
+`poly2` fit is zero in exact arithmetic. The `poly2` test therefore has no signal from pure
+exponential growth. The `exp` kind is the test designed for it. The measured values below
+show the difference.
+
+### 7.7 Test status **[checked by test]**
+
+- `test_smt_matches_naive_loop_with_raw_positions` compares every kind, with `phi` 0 and 0.5,
+  against a loop that uses `np.linalg.lstsq` on the raw 1-based positions. The match confirms
+  the centring in 7.3. The largest difference in a run on 2026-10-13 was 3.2e-11.
+- `test_smt_is_scale_invariant` checks 7.4 at `1e200` and `1e-200`.
+- `test_smt_with_phi_one_is_no_larger_than_phi_zero` checks 7.5.
+- `test_smt_exponential_growth_exceeds_random_walk_for_exp_kind` and
+  `test_smt_poly2_does_not_flag_pure_exponential_growth` pin the seed-0 values below.
+- Refusal tests cover the kind, `phi`, the window length for each kind, a non-integer or
+  oversized `min_length`, and non-positive values under the log kinds, which name the kind and
+  the count. `test_smt_pandas_index_and_nan_prefix` covers index handling.
+
+### 7.8 Measured values **[measured, a shared 4-vCPU machine, 2026-10-13]**
+
+Seeded series of length 200 with `min_length = 30` and `phi = 0`. The exponential series is
+`exp(0.01 t) (1 + 0.01 eps)` with seed 0. The walk is `exp(cumsum(0.01 eps))` with seed 100.
+
+| Kind | Growth series, end point | Growth series, max | Walk, max |
+|---|---|---|---|
+| `exp` | 845.1877 | 845.1877 | 32.8009 |
+| `poly1` | 74.4752 | 75.5309 | 16.0536 |
+| `poly2` | 1.7761 | 4.0016 | 15.8933 |
+| `power` | 118.379 | 119.0495 | 30.1005 |
+
+The walk column is the same walk (seed 100) for every kind, so each row compares the growth
+series with the walk under one kind. Seeds 1 and 2 give the same ordering for `exp` and `poly1`
+(growth maxima 877.6 and 843.9 for `exp`, against walk maxima 42.4 and 29.1). For `poly2` the
+growth maximum is below the walk maximum for all three seeds: 2.10 to 4.00 for the growth series
+against 15.9 to 18.4 for the walk. These are single seeded runs, not a size or power study. No
+critical values are derived.
+
+**Benchmark [measured, a shared 4-vCPU machine, 2026-10-13, `PYTHONPATH=src python benchmarks/bench_structural_breaks.py`]**:
+at `n = 200`, `min_length = 30`, kind `poly1`, the literal loop takes 0.5590 s and the numba kernel
+takes 0.016012 s (best of 3), a 35x speedup. At `n = 1000` with `min_length = 50`, `smt` takes
+1.787 s. Single runs on a shared machine, so the timings carry some noise.
+
+### 7.9 Not implemented **[not implemented]**
+
+The null distribution and critical values of `SMT` are not derived here. The functions return
+statistics with no rejection rule.

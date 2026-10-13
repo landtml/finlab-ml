@@ -15,13 +15,17 @@ Implements, following the book's notation:
   same ADF statistics that :func:`sadf` maximises (AFML 17.4.2).
 * :func:`chow_dfc` and :func:`sdfc` -- the Chow-type Dickey-Fuller statistic at
   one break fraction, and its supremum over admissible breaks (AFML ch. 17).
+* :func:`smt` -- the sub- and super-martingale test statistic, the supremum over
+  start points of a curvature or growth coefficient (AFML 17.4.3).
 
 Sign and input conventions
 --------------------------
-* Explosiveness tests (CSW and SADF) are one-sided and look for *upward*
-  departures: a large positive statistic means the series grew faster than a
+* Explosiveness tests (CSW, SADF, QADF, CADF and SDFC) are one-sided and look for
+  *upward* departures: a large positive statistic means the series grew faster than a
   random walk. The ADF slope ``beta`` is tested with ``H0: beta <= 0`` against
   ``H1: beta > 0``, so SADF uses ``tau = beta_hat / se(beta_hat)`` unchanged.
+* :func:`smt` takes the absolute value of its t-statistic, so it flags upward and
+  downward curvature alike and is not one-sided.
 * The book applies these tests to **log prices** (AFML 17.4.2.1). The functions
   here do not take logs for you; pass ``np.log(prices)`` if you want the book's
   setting.
@@ -51,8 +55,7 @@ Literal readings and deviations
 Scope
 -----
 Not covered: the Brown-Durbin-Evans critical boundaries (not given in the book text, so no p-values are returned for
-the CUSUM path); multi-bubble and sub/super-martingale variants; and the parallel
-SADF implementation of ch. 20.
+the CUSUM path); multi-bubble variants; and the parallel SADF implementation of ch. 20.
 """
 
 from __future__ import annotations
@@ -81,6 +84,7 @@ __all__ = [
     "cadf",
     "chow_dfc",
     "sdfc",
+    "smt",
 ]
 
 _CONSTANT_CODES = {"nc": 0, "c": 1, "ct": 2, "ctt": 3}
@@ -984,6 +988,172 @@ def cadf(
         _center_for_adf(_rescale_for_adf(y), code), min_length, lag, code, q, q, q
     )
     return _wrap(out_c, index)
+
+
+# ---------------------------------------------------------------------------
+# Sub- and super-martingale tests (AFML 17.4.3)
+# ---------------------------------------------------------------------------
+
+# Kind codes: 0 = poly1 (levels, quadratic in t), 1 = poly2 (logs, quadratic in t),
+# 2 = exp (logs, linear in t), 3 = power (logs, linear in log t).
+_SMT_KINDS = {"poly1": 0, "poly2": 1, "exp": 2, "power": 3}
+
+
+@jit
+def _smt_tstat(yv: np.ndarray, base: np.ndarray, s: int, e: int, kind: int) -> float:
+    """t-statistic of the tested coefficient on the window ``s..e`` (0-based, inclusive).
+
+    The tested coefficient is the quadratic term for kinds 0 and 1, and the slope for kinds 2
+    and 3. The regressors are built from ``base`` centred on the window mean. Centring leaves
+    the tested coefficient and its standard error unchanged, because only the intercept and
+    the other coefficient move. It keeps the Gram matrix well conditioned far from the origin.
+    """
+    n_rows = e - s + 1
+    quad = kind <= 1
+    p = 3 if quad else 2
+    if n_rows <= p:
+        return np.nan
+    mean = 0.0
+    for r in range(s, e + 1):
+        mean += base[r]
+    mean /= n_rows
+    x = np.empty((n_rows, p))
+    yy = np.empty(n_rows)
+    for r in range(n_rows):
+        z = base[s + r] - mean
+        x[r, 0] = 1.0
+        x[r, 1] = z
+        if quad:
+            x[r, 2] = z * z
+        yy[r] = yv[s + r]
+    gram = np.zeros((p, p))
+    xty = np.zeros(p)
+    for r in range(n_rows):
+        for i in range(p):
+            xty[i] += x[r, i] * yy[r]
+            for j in range(p):
+                gram[i, j] += x[r, i] * x[r, j]
+    inv = _invert_small(gram)
+    if np.isnan(inv[0, 0]):
+        return np.nan
+    beta = np.zeros(p)
+    for i in range(p):
+        for j in range(p):
+            beta[i] += inv[i, j] * xty[j]
+    ssr = 0.0
+    for r in range(n_rows):
+        fitted = 0.0
+        for i in range(p):
+            fitted += x[r, i] * beta[i]
+        resid = yy[r] - fitted
+        ssr += resid * resid
+    k = 2 if quad else 1
+    var_b = ssr / (n_rows - p) * inv[k, k]
+    if var_b <= 0.0:
+        if beta[k] == 0.0:
+            return 0.0
+        return math.copysign(np.inf, beta[k])
+    return beta[k] / math.sqrt(var_b)
+
+
+@jit
+def _smt_kernel(
+    yv: np.ndarray, base: np.ndarray, min_length: int, kind: int, phi: float
+) -> np.ndarray:
+    n_obs = yv.shape[0]
+    out = np.full(n_obs, np.nan)
+    for e in range(min_length - 1, n_obs):
+        best = -np.inf
+        found = False
+        for s in range(0, e - min_length + 2):
+            tt = _smt_tstat(yv, base, s, e, kind)
+            if np.isnan(tt):
+                continue
+            val = abs(tt) / (float(e - s) ** phi)
+            if val > best:
+                best = val
+                found = True
+        if found:
+            out[e] = best
+    return out
+
+
+def smt(
+    series: Any,
+    min_length: int,
+    kind: str = "poly1",
+    phi: float = 0.0,
+) -> Any:
+    """Sub- and super-martingale test statistic ``SMT_t`` (AFML 17.4.3).
+
+    For each end point ``t`` (0-based), and each start point ``t0`` with the window
+    ``[t0, t]`` of at least ``min_length`` levels, an OLS fit on the window gives the
+    coefficient ``b`` and its standard error. Then
+
+        SMT_t = sup_{t0} |b_hat| / (se(b_hat) * (t - t0) ** phi).
+
+    Parameters
+    ----------
+    series : array-like or pd.Series
+        Levels ``y_t`` in time order. The log kinds need strictly positive values.
+    min_length : int
+        Smallest window (number of levels). It must leave at least one residual degree of
+        freedom: at least 4 for ``'poly1'`` and ``'poly2'``, and at least 3 for ``'exp'`` and
+        ``'power'``.
+    kind : {'poly1', 'poly2', 'exp', 'power'}, default 'poly1'
+        Regression on the window ``[t0, t]``:
+
+        - ``'poly1'``: ``y_t = a + g t + b t^2 + e``, the statistic is on ``b``.
+        - ``'poly2'``: ``log y_t = a + g t + b t^2 + e``, the statistic is on ``b``.
+        - ``'exp'``: ``log y_t = log(a) + b t + e``, the statistic is on ``b``.
+        - ``'power'``: ``log y_t = log(a) + b log(t) + e``, the statistic is on ``b``.
+    phi : float, default 0.0
+        Exponent in ``[0, 1]`` that down-weights long windows. ``phi = 0`` gives the plain
+        supremum of the absolute t-statistic.
+
+    Returns
+    -------
+    pd.Series or np.ndarray
+        ``SMT_t`` for every end point, NaN before ``min_length - 1``. A ``pd.Series`` is
+        returned for a Series input.
+
+    Notes
+    -----
+    Time is the 1-based position in the full series, so ``t`` ranges over ``1..T``. The
+    1-based convention keeps ``log(t)`` defined for ``'power'``. The window set is the one of
+    :func:`sadf`, with start points ``0..t - min_length + 1``, so that ``min_length`` means the
+    same thing in every function of this module. The standard error uses
+    ``sigma^2 = SSR / (n - p)``. The statistic takes the absolute value, so both upward and
+    downward curvature are flagged. The cost is O(T^2) fits.
+    """
+    y, index = _as_float_vector(series)
+    if isinstance(kind, str) and kind in _SMT_KINDS:
+        code = _SMT_KINDS[kind]
+    else:
+        raise ValueError(f"kind must be one of {sorted(_SMT_KINDS)}, got {kind!r}.")
+    _require_integer(min_length, "min_length must be an integer.")
+    phi = _require_real_in(phi, "phi", 0.0, 1.0)
+    p = 3 if code <= 1 else 2
+    if min_length < p + 1:
+        raise ValueError(f"min_length={min_length} too small for kind={kind!r}; need >= {p + 1}.")
+    if min_length > y.shape[0]:
+        raise ValueError("min_length exceeds the series length.")
+    if code == 0:
+        # The statistic is a ratio, so the scale cancels. Rescale as the ADF code does, so the
+        # squares in the Gram matrix stay finite.
+        yv = _rescale_for_adf(y)
+    else:
+        n_bad = int(np.sum(y <= 0.0))
+        if n_bad:
+            raise ValueError(
+                f"kind={kind!r} takes log(series), so every value must be strictly positive; "
+                f"found {n_bad} value(s) <= 0."
+            )
+        yv = np.log(y)
+    positions = np.arange(1, y.shape[0] + 1, dtype=np.float64)
+    base = np.log(positions) if code == 3 else positions
+    out = _smt_kernel(yv, base, int(min_length), code, phi)
+    return _wrap(out, index)
 
 
 # ---------------------------------------------------------------------------

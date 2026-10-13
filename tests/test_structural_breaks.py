@@ -22,6 +22,7 @@ from finlab.structural_breaks import (
     qadf,
     sadf,
     sdfc,
+    smt,
 )
 
 # ---------------------------------------------------------------------------
@@ -947,3 +948,150 @@ def test_qadf_and_cadf_refuse_constant_series():
         qadf(np.full(40, 1.0), 15, 1)
     with pytest.raises(ValueError, match="constant"):
         cadf(np.full(40, 1.0), 15, 1)
+
+
+# ---------------------------------------------------------------------------
+# Sub- and super-martingale tests (AFML 17.4.3)
+# ---------------------------------------------------------------------------
+
+
+def naive_smt_tstat(y, t0, t1, kind):
+    """OLS on the window [t0, t1] (0-based) with raw 1-based positions and lstsq."""
+    pos = np.arange(t0, t1 + 1) + 1.0
+    yy = y[t0 : t1 + 1]
+    if kind in ("poly2", "exp", "power"):
+        yy = np.log(yy)
+    if kind in ("poly1", "poly2"):
+        x, k = np.column_stack([np.ones_like(pos), pos, pos**2]), 2
+    elif kind == "exp":
+        x, k = np.column_stack([np.ones_like(pos), pos]), 1
+    else:
+        x, k = np.column_stack([np.ones_like(pos), np.log(pos)]), 1
+    beta = np.linalg.lstsq(x, yy, rcond=None)[0]
+    resid = yy - x @ beta
+    n, p = x.shape
+    cov = (resid @ resid / (n - p)) * np.linalg.inv(x.T @ x)
+    return beta[k] / math.sqrt(cov[k, k])
+
+
+def naive_smt(y, min_length, kind, phi):
+    out = np.full(len(y), np.nan)
+    for e in range(min_length - 1, len(y)):
+        out[e] = max(
+            abs(naive_smt_tstat(y, s, e, kind)) / (e - s) ** phi for s in range(0, e - min_length + 2)
+        )
+    return out
+
+
+def _positive_growth_series(n: int = 80, seed: int = 3) -> np.ndarray:
+    rng = np.random.default_rng(seed)
+    return np.exp(0.01 * np.arange(n) + 0.05 * rng.standard_normal(n))
+
+
+@pytest.mark.parametrize("kind", ["poly1", "poly2", "exp", "power"])
+@pytest.mark.parametrize("phi", [0.0, 0.5])
+def test_smt_matches_naive_loop_with_raw_positions(kind, phi):
+    # The naive loop uses the raw 1-based positions, so this also checks the window centring.
+    y = _positive_growth_series()
+    np.testing.assert_allclose(
+        smt(y, 12, kind, phi), naive_smt(y, 12, kind, phi), rtol=1e-7, equal_nan=True
+    )
+
+
+@pytest.mark.parametrize("kind", ["poly1", "poly2", "exp", "power"])
+def test_smt_is_scale_invariant(kind):
+    y = _positive_growth_series(n=60, seed=4)
+    base = np.asarray(smt(y, 12, kind))
+    for factor in (1e200, 1e-200):
+        np.testing.assert_allclose(np.asarray(smt(y * factor, 12, kind)), base, rtol=1e-7, equal_nan=True)
+
+
+@pytest.mark.parametrize("kind", ["poly1", "poly2", "exp", "power"])
+def test_smt_with_phi_one_is_no_larger_than_phi_zero(kind):
+    y = _positive_growth_series(n=60, seed=5)
+    plain = np.asarray(smt(y, 12, kind, 0.0))
+    damped = np.asarray(smt(y, 12, kind, 1.0))
+    ok = np.isfinite(plain)
+    assert np.all(damped[ok] <= plain[ok] + 1e-12)
+
+
+def test_smt_exponential_growth_exceeds_random_walk_for_exp_kind():
+    # Measured on seed 0 (see docs/proofs/structural_breaks.md, section 7). Pinned values.
+    rng = np.random.default_rng(0)
+    expo = np.exp(0.01 * np.arange(200)) * (1.0 + 0.01 * rng.standard_normal(200))
+    walk = np.exp(np.cumsum(0.01 * np.random.default_rng(100).standard_normal(200)))
+    exp_kind = np.asarray(smt(expo, 30, "exp"))
+    walk_kind = np.asarray(smt(walk, 30, "exp"))
+    assert float(exp_kind[-1]) == pytest.approx(845.1877, rel=1e-4)
+    assert float(np.nanmax(walk_kind)) == pytest.approx(32.8009, rel=1e-4)
+    assert np.nanmax(exp_kind) > 20.0 * np.nanmax(walk_kind)
+
+
+def test_smt_poly2_does_not_flag_pure_exponential_growth():
+    # A pure exponential is linear in logs, so the quadratic term of the log fit is near zero.
+    rng = np.random.default_rng(0)
+    expo = np.exp(0.01 * np.arange(200)) * (1.0 + 0.01 * rng.standard_normal(200))
+    walk = np.exp(np.cumsum(0.01 * np.random.default_rng(100).standard_normal(200)))
+    poly2_expo = np.asarray(smt(expo, 30, "poly2"))
+    assert float(np.nanmax(poly2_expo)) == pytest.approx(4.0016, rel=1e-4)
+    assert np.nanmax(poly2_expo) < np.nanmax(np.asarray(smt(walk, 30, "poly2")))
+
+
+def test_smt_poly1_accepts_negative_values_and_log_kinds_refuse_them():
+    y = np.random.default_rng(6).standard_normal(60)
+    assert np.any(y <= 0.0)
+    assert np.isfinite(np.asarray(smt(y, 12, "poly1"))[11:]).all()
+    for kind in ("poly2", "exp", "power"):
+        with pytest.raises(ValueError, match=f"kind={kind!r}.*strictly positive"):
+            smt(y, 12, kind)
+
+
+@pytest.mark.parametrize("kind", ["poly2", "exp", "power"])
+def test_smt_log_kinds_refuse_zero_by_name(kind):
+    y = _positive_growth_series(n=40)
+    y[7] = 0.0
+    with pytest.raises(ValueError, match="found 1 value"):
+        smt(y, 12, kind)
+
+
+def test_smt_pandas_index_and_nan_prefix():
+    idx = pd.date_range("2021-01-01", periods=60, freq="D")
+    s = pd.Series(_positive_growth_series(n=60, seed=8), index=idx)
+    out = smt(s, 12, "exp", 0.5)
+    assert isinstance(out, pd.Series)
+    assert out.index.equals(idx)
+    assert out.iloc[:11].isna().all()
+    assert out.iloc[11:].notna().all()
+    np.testing.assert_allclose(out.to_numpy(), smt(s.to_numpy(), 12, "exp", 0.5), rtol=1e-12, equal_nan=True)
+
+
+@pytest.mark.parametrize("bad", ["linear", None, 1, "POLY1"])
+def test_smt_refuses_unknown_kind(bad):
+    with pytest.raises(ValueError, match="kind must be one of"):
+        smt(_positive_growth_series(n=40), 12, bad)
+
+
+@pytest.mark.parametrize("bad", [-0.1, 1.5, float("nan"), True, "0.5"])
+def test_smt_refuses_phi_outside_unit_interval(bad):
+    with pytest.raises(ValueError, match="phi"):
+        smt(_positive_growth_series(n=40), 12, "exp", bad)
+
+
+def test_smt_refuses_min_length_too_small_for_the_regressors():
+    y = _positive_growth_series(n=40)
+    with pytest.raises(ValueError, match="too small for kind='poly1'"):
+        smt(y, 3, "poly1")
+    with pytest.raises(ValueError, match="too small for kind='exp'"):
+        smt(y, 2, "exp")
+    assert np.isfinite(np.asarray(smt(y, 3, "exp"))[2:]).all()
+
+
+@pytest.mark.parametrize("bad", [30.5, float("nan")])
+def test_smt_refuses_non_integer_min_length(bad):
+    with pytest.raises(ValueError, match="min_length must be an integer"):
+        smt(_positive_growth_series(n=40), bad, "exp")
+
+
+def test_smt_refuses_min_length_beyond_the_series():
+    with pytest.raises(ValueError, match="exceeds the series length"):
+        smt(_positive_growth_series(n=40), 41, "exp")
