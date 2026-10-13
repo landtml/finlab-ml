@@ -1,0 +1,37 @@
+name: Commit policy
+
+# Fails when a commit in the change adds a co-author trailer or has an author
+# outside the allow-list. The rules live in tools/check_commit_policy.py.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  commit-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check the commits in the change
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          # A push that creates the branch sends an all-zeros "before" SHA, and a
+          # force-push can leave it unreachable. Check the whole history then.
+          if [[ "$BASE" =~ ^0+$ ]] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            BASE="$(git rev-list --max-parents=0 "$HEAD_SHA" | tail -n 1)"
+          fi
+          python tools/check_commit_policy.py --range "$BASE..$HEAD_SHA"
