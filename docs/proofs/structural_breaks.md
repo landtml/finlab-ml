@@ -214,3 +214,81 @@ They do not take logs, and the docstrings say so.
 | SADF definition, regression count `(T-m+1)(T-m+2)/2` | proved here |
 | Explosive tau diverges | claimed from the book only (PWY 2011) |
 | Fast kernels equal literal references | checked by test (`test_cusum_matches_naive_mean_model`, `test_csw_sup_matches_naive`, `test_adf_matches_naive`, `test_sadf_matches_naive`) |
+
+---
+
+## 5. Chow-type Dickey-Fuller DFC and SDFC (AFML ch. 17)
+
+### 5.1 Model **[claimed from the book only (not verified against the text)]**
+
+`dy_t = delta * y_{t-1} * D_t + eps_t` with no intercept and no lags, where `D_t = 0` for
+`t < tau* T` and `D_t = 1` after. The section number is not verified: section 2 of this note
+already cites 17.3.2 for Chu-Stinchcombe-White.
+
+### 5.2 Break convention **[proved here, as a definition]**
+
+The code sets the first post-break position to `b = ceil(tau T)`, with `T` the series length
+and `t` the 0-based index. `D_t = 1` exactly when `t >= b`. This is the literal reading of
+`D_t = 0` for `t < tau T`. Before the ceiling, `tau T` is rounded to 9 decimals, because the
+float product `0.07 * 100` is slightly above 7, and a plain ceiling would move the break
+from 7 to 8. `b = 0` is the same model as `b = 1`, since there is no regressor at `t = 0`.
+
+### 5.3 DFC as an OLS t-statistic **[proved here, textbook OLS]**
+
+Rows run over `t = 1..T-1`. Let `x_t = y_{t-1} 1{t >= b}` and `dy_t = y_t - y_{t-1}`. With one
+regressor and no intercept, `(X'X)^{-1} = 1 / sum x_t^2`, so
+
+    delta_hat = sum x_t dy_t / sum x_t^2,
+    sigma_hat^2 = SSR / (T - 2),          SSR = sum (dy_t - delta_hat x_t)^2,
+    se(delta_hat) = sqrt(sigma_hat^2 / sum x_t^2),
+    DFC(tau) = delta_hat / se(delta_hat).
+
+The pre-break rows have `x_t = 0`. They add to the residual sum of squares only, so the
+residual variance uses all `T - 1` rows. This is our reading of the model as written.
+The kernel `_dfc_at` computes these sums directly. It uses the same variance guard as
+`_adf_tau`.
+
+### 5.4 Scale invariance **[proved here]**
+
+Replace `y` by `c y`. Then `x_t` and `dy_t` scale by `c`, so `delta_hat` is unchanged,
+`SSR` scales by `c^2`, `sigma_hat` by `c`, and `sqrt(sum x_t^2)` by `c`. Hence
+`se(delta_hat)` is unchanged and `DFC` is invariant. The code rescales with the ADF guard
+`_rescale_for_adf`, so the sums stay finite for `|y|` outside `[1e-100, 1e100]`.
+
+### 5.5 SDFC as a finite maximum **[proved here, as a definition]**
+
+`DFC(tau)` depends on `tau` only through `b = ceil(tau T)`. So
+`sup_{tau in [tau0, 1 - tau0]} DFC(tau)` is the maximum of `DFC(b)` over the integers
+`b in [b_lo, b_hi]`, with `b_lo = max(ceil(tau0 T), 1)` and `b_hi = min(ceil((1 - tau0) T), T - 1)`.
+The clamp keeps at least one post-break observation. The maximum exists because the set is
+finite.
+
+### 5.6 Null distribution and rejection rule **[not implemented]**
+
+The null distribution of `DFC` and `SDFC`, and their critical values, are not derived here.
+The functions return statistics with no p-values and no rejection rule.
+
+### 5.7 Test status **[checked by test]**
+
+- `test_chow_dfc_break_is_ceil_of_tau_times_t` checks five `(T, tau)` pairs against a literal
+  `np.linalg.lstsq` regression. It includes the float case `0.07 * 100`. It also checks that
+  the break one step later gives a different value.
+- `test_chow_dfc_matches_direct_ols_at_mid_break` and `test_chow_dfc_is_scale_invariant` cover
+  the closed form and section 5.4.
+- `test_sdfc_equals_max_of_direct_loop` compares every admissible break with the literal loop,
+  and checks the argmax index. `test_sdfc_bounds_a_fine_tau_grid_and_is_attained_at_its_argmax`
+  checks that a 701-point `tau` grid never exceeds the supremum.
+- `test_sdfc_is_larger_for_a_regime_switch_to_explosive_growth` compares a random walk with a
+  series that grows at 1.01 per step after `t = 150`.
+- `test_sdfc_undefined_breaks_are_nan_and_skipped`, `test_sdfc_refuses_when_every_admissible_break_is_undefined`
+  and `test_chow_dfc_undefined_when_no_post_break_level_is_nonzero` cover the undefined case.
+  The refusal tests cover `tau0`, `tau`, a break after the last observation, short, constant
+  and descending-index inputs.
+
+**Measured [a shared 4-vCPU machine, 2026-10-13]**: running the body of
+`test_sdfc_is_larger_for_a_regime_switch_to_explosive_growth` (seed 7, `n = 300`, switch at
+`t = 150`) gives `SDFC = 11.5959` with argmax `b = 96`. The same shocks with `rho = 1` give
+`SDFC = 1.4516`. `DFC` at the true break `b = 150` is `11.51`. The argmax does not locate the
+break date in this sample. The path is nearly flat over the post-break range, so the statistic
+measures the explosive regime, not its start date. These are single seeded runs, not a size or
+power study.

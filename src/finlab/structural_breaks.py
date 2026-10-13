@@ -11,6 +11,8 @@ Implements, following the book's notation:
   AFML 17.4.2 on a single window.
 * :func:`sadf` -- the Supremum Augmented Dickey-Fuller series (AFML 17.4.2,
   Snippet 17.1 inner loop wrapped in the outer end-point loop).
+* :func:`chow_dfc` and :func:`sdfc` -- the Chow-type Dickey-Fuller statistic at
+  one break fraction, and its supremum over admissible breaks (AFML ch. 17).
 
 Sign and input conventions
 --------------------------
@@ -46,11 +48,10 @@ Literal readings and deviations
 
 Scope
 -----
-Not covered: the Chow-type ``DFC`` / ``SDFC`` tests (17.4.1); quantile and
-conditional ADF (17.4.2.4-5); the Brown-Durbin-Evans critical boundaries (not
-given in the book text, so no p-values are returned for the CUSUM path);
-multi-bubble and sub/super-martingale variants; and the parallel SADF
-implementation of ch. 20.
+Not covered: quantile and conditional ADF (17.4.2.4-5); the Brown-Durbin-Evans
+critical boundaries (not given in the book text, so no p-values are returned for
+the CUSUM path); multi-bubble and sub/super-martingale variants; and the parallel
+SADF implementation of ch. 20.
 """
 
 from __future__ import annotations
@@ -69,11 +70,14 @@ from ._jit import jit
 __all__ = [
     "CusumResult",
     "CSWResult",
+    "SDFCResult",
     "cusum_test",
     "chu_stinchcombe_white",
     "csw_critical_value",
     "adf_stat",
     "sadf",
+    "chow_dfc",
+    "sdfc",
 ]
 
 _CONSTANT_CODES = {"nc": 0, "c": 1, "ct": 2, "ctt": 3}
@@ -94,6 +98,28 @@ def _require_integer(value: Any, message: str) -> None:
         raise ValueError(message)
     if value != int(value):
         raise ValueError(message)
+
+
+def _require_real_in(
+    value: Any,
+    name: str,
+    low: float,
+    high: float,
+    *,
+    low_open: bool = False,
+    high_open: bool = False,
+) -> float:
+    # bool is refused by name, as in _require_integer; NaN and inf fail the finiteness test.
+    if isinstance(value, (bool, np.bool_)) or not isinstance(value, numbers.Real) or not math.isfinite(value):
+        raise ValueError(f"{name} must be a finite number, got {value!r}.")
+    v = float(value)
+    below = v <= low if low_open else v < low
+    above = v >= high if high_open else v > high
+    if below or above:
+        left = "(" if low_open else "["
+        right = ")" if high_open else "]"
+        raise ValueError(f"{name} must be in {left}{low}, {high}{right}, got {value!r}.")
+    return v
 
 
 def _as_float_vector(series: Any) -> tuple[np.ndarray, pd.Index | None]:
@@ -770,3 +796,182 @@ def sadf(
     # Rescale as adf_stat does, so windows of values near 1e200 do not silently give NaN.
     out, _ = _sadf_kernel(_center_for_adf(_rescale_for_adf(y), code), int(min_length), int(lags), code)
     return _wrap(out, index)
+
+
+# ---------------------------------------------------------------------------
+# Chow-type Dickey-Fuller tests (AFML ch. 17)
+# ---------------------------------------------------------------------------
+
+
+def _break_index(tau: float, n_obs: int) -> int:
+    """First post-break position ``ceil(tau * T)``: ``D_t = 1`` for ``t >= ceil(tau * T)``.
+
+    The product is rounded to 9 decimals first. Without that, ``0.07 * 100`` exceeds 7 in
+    floating point, and the break would move one step later.
+    """
+    return math.ceil(round(tau * n_obs, 9))
+
+
+def _chow_inputs(series: Any) -> np.ndarray:
+    y, _ = _as_float_vector(series)
+    if y.size < 3:
+        raise ValueError("need at least three observations for the Chow-type DF test.")
+    if np.all(y == y[0]):
+        raise ValueError("series has no variation (it is constant), so the DFC regression is degenerate.")
+    # DFC is a ratio of residual sums to sigma, so it is scale-invariant. The rescaling keeps
+    # the squares finite, as in adf_stat.
+    return _rescale_for_adf(y)
+
+
+@jit
+def _dfc_at(y: np.ndarray, brk: int) -> float:
+    """DFC at break index ``brk``: OLS of ``dy_t`` on ``y_{t-1} * 1{t >= brk}``, no intercept.
+
+    Rows run over ``t = 1..T-1``. Pre-break rows have a zero regressor, so they add to the
+    residual sum of squares only. The standard error uses ``sigma^2 = SSR / (T - 2)``, the
+    same guard as ``_adf_tau``. Returns NaN when every post-break ``y_{t-1}`` is zero.
+    """
+    n_obs = y.shape[0]
+    if n_obs - 2 < 1:
+        return np.nan
+    sxx = 0.0
+    sxy = 0.0
+    for t in range(max(brk, 1), n_obs):
+        x = y[t - 1]
+        sxx += x * x
+        sxy += x * (y[t] - y[t - 1])
+    if sxx == 0.0:
+        return np.nan
+    delta = sxy / sxx
+    ssr = 0.0
+    for t in range(1, n_obs):
+        fitted = delta * y[t - 1] if t >= brk else 0.0
+        e = (y[t] - y[t - 1]) - fitted
+        ssr += e * e
+    var0 = ssr / (n_obs - 2) / sxx
+    if var0 <= 0.0:
+        if delta == 0.0:
+            return 0.0
+        return math.copysign(np.inf, delta)
+    return delta / math.sqrt(var0)
+
+
+@jit
+def _dfc_path(y: np.ndarray, b_lo: int, b_hi: int) -> np.ndarray:
+    out = np.empty(b_hi - b_lo + 1)
+    for k in range(out.shape[0]):
+        out[k] = _dfc_at(y, b_lo + k)
+    return out
+
+
+def chow_dfc(series: Any, tau: float) -> float:
+    """Chow-type Dickey-Fuller statistic ``DFC(tau)`` for a break at fraction ``tau``.
+
+    Fits by OLS, with no intercept and no lags, ``dy_t = delta * y_{t-1} * D_t + eps_t``, where
+    ``D_t = 0`` for ``t < ceil(tau * T)`` and ``D_t = 1`` from there on. Returns
+    ``delta_hat / se(delta_hat)``.
+
+    Parameters
+    ----------
+    series : array-like or pd.Series
+        Levels ``y_t`` in time order (log prices, per the book). Refused if it has
+        fewer than three values, a non-finite value, or no variation.
+    tau : float
+        Break fraction in the open interval (0, 1).
+
+    Returns
+    -------
+    float
+        ``DFC(tau)``. Large positive values indicate explosive behaviour after the
+        break, the direction :func:`sdfc` takes its supremum over.
+
+    Notes
+    -----
+    Convention: the break index is ``b = ceil(tau * T)`` (computed after rounding
+    ``tau * T`` to 9 decimals), and the 0-based observation ``t`` is post-break when
+    ``t >= b``. A ``b`` of 0 is the same model as 1, because there is no regressor at
+    ``t = 0``. The regression runs on all ``T - 1`` rows, so the pre-break rows enter the
+    residual variance.
+
+    The statistic is invariant to scaling ``series``. Refused, by name, when no
+    observation lies after the break, or when every post-break ``y_{t-1}`` is zero.
+    """
+    y = _chow_inputs(series)
+    tau = _require_real_in(tau, "tau", 0.0, 1.0, low_open=True, high_open=True)
+    n_obs = y.shape[0]
+    brk = max(_break_index(tau, n_obs), 1)
+    if brk > n_obs - 1:
+        raise ValueError(f"tau={tau!r} places the break after the last observation (T={n_obs}).")
+    value = _dfc_at(y, brk)
+    if math.isnan(value):
+        raise ValueError("DFC is undefined: every y_{t-1} after the break is zero.")
+    return float(value)
+
+
+@dataclass(frozen=True)
+class SDFCResult:
+    """Output of :func:`sdfc`.
+
+    Attributes
+    ----------
+    statistic : float
+        ``SDFC``, the maximum of ``DFC`` over the admissible break indices.
+    break_index : int
+        Argmax break index ``b*``, the 0-based first post-break position. The break
+        fraction is ``b* / T``.
+    breaks : np.ndarray
+        The admissible break indices ``b_lo, ..., b_hi`` (inclusive).
+    dfc : np.ndarray
+        ``DFC`` at each entry of ``breaks``. NaN where every post-break ``y_{t-1}`` is zero.
+    """
+
+    statistic: float
+    break_index: int
+    breaks: np.ndarray
+    dfc: np.ndarray
+
+
+def sdfc(series: Any, tau0: float = 0.15) -> SDFCResult:
+    """Supremum Chow-type Dickey-Fuller statistic (AFML ch. 17).
+
+    ``SDFC = sup_{tau in [tau0, 1 - tau0]} DFC(tau)``. The supremum runs over the
+    distinct break indices ``b = ceil(tau * T)`` in that range, so it is a finite maximum.
+
+    Parameters
+    ----------
+    series : array-like or pd.Series
+        Levels ``y_t`` in time order (log prices, per the book).
+    tau0 : float, default 0.15
+        Trimming fraction in the open interval (0, 0.5). Breaks are searched in
+        ``[tau0, 1 - tau0]``.
+
+    Returns
+    -------
+    SDFCResult
+        The supremum, its argmax break index, and the full ``DFC`` path over the
+        admissible breaks. The argmax is an index into the series, not a label. For a
+        ``pd.Series`` input, use ``series.index[result.break_index]``.
+
+    Notes
+    -----
+    The break index rounding is the one documented in :func:`chow_dfc`. The path is
+    computed with a numba kernel, and the cost is O(T^2) in the rows. The lower and upper
+    indices are clamped to ``[1, T - 1]``, so every break leaves an observation after it.
+    """
+    y = _chow_inputs(series)
+    tau0 = _require_real_in(tau0, "tau0", 0.0, 0.5, low_open=True, high_open=True)
+    n_obs = y.shape[0]
+    b_lo = max(_break_index(tau0, n_obs), 1)
+    b_hi = min(_break_index(1.0 - tau0, n_obs), n_obs - 1)
+    if b_lo > b_hi:
+        raise ValueError(f"tau0={tau0!r} leaves no admissible break for T={n_obs}.")
+    dfc = _dfc_path(y, b_lo, b_hi)
+    if np.all(np.isnan(dfc)):
+        raise ValueError("DFC is undefined at every admissible break: every y_{t-1} after each break is zero.")
+    k = int(np.nanargmax(dfc))
+    return SDFCResult(
+        statistic=float(dfc[k]),
+        break_index=b_lo + k,
+        breaks=np.arange(b_lo, b_hi + 1),
+        dfc=dfc,
+    )

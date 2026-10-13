@@ -14,10 +14,12 @@ import pytest
 
 from finlab.structural_breaks import (
     adf_stat,
+    chow_dfc,
     chu_stinchcombe_white,
     csw_critical_value,
     cusum_test,
     sadf,
+    sdfc,
 )
 
 # ---------------------------------------------------------------------------
@@ -672,3 +674,137 @@ def test_sadf_is_invariant_to_a_large_level_shift():
     shifted = sadf(base + 1e6, min_length=30, lags=1)
     assert not np.isinf(shifted).any()
     assert np.allclose(shifted, sadf(base, min_length=30, lags=1), atol=1e-8, equal_nan=True)
+
+
+# ---------------------------------------------------------------------------
+# Chow-type Dickey-Fuller DFC and SDFC (AFML ch. 17)
+# ---------------------------------------------------------------------------
+
+
+def naive_dfc(y, brk):
+    """Literal OLS of dy_t on y_{t-1} * 1{t >= brk}, no intercept, rows t = 1..T-1."""
+    t_idx = np.arange(1, len(y))
+    dy = y[t_idx] - y[t_idx - 1]
+    x = (y[t_idx - 1] * (t_idx >= brk)).reshape(-1, 1)
+    beta, *_ = np.linalg.lstsq(x, dy, rcond=None)
+    resid = dy - x @ beta
+    n, p = x.shape
+    cov = (resid @ resid / (n - p)) * np.linalg.inv(x.T @ x)
+    return beta[0] / math.sqrt(cov[0, 0])
+
+
+@pytest.mark.parametrize(
+    "n_obs, tau, brk",
+    [(100, 0.07, 7), (120, 0.15, 18), (120, 0.4, 48), (100, 0.29, 29), (50, 0.5, 25)],
+)
+def test_chow_dfc_break_is_ceil_of_tau_times_t(n_obs, tau, brk):
+    # 0.07 * 100 is slightly above 7 in floats, so the rounding decides between 7 and 8.
+    y = np.random.default_rng(n_obs).standard_normal(n_obs).cumsum()
+    assert chow_dfc(y, tau) == pytest.approx(naive_dfc(y, brk), rel=1e-9)
+    assert not math.isclose(naive_dfc(y, brk + 1), naive_dfc(y, brk), rel_tol=1e-6)
+
+
+def test_chow_dfc_matches_direct_ols_at_mid_break():
+    y = np.random.default_rng(42).standard_normal(120).cumsum()
+    assert chow_dfc(y, 0.5) == pytest.approx(naive_dfc(y, 60), rel=1e-9)
+
+
+def test_chow_dfc_is_scale_invariant():
+    y = np.random.default_rng(5).standard_normal(90).cumsum()
+    base = chow_dfc(y, 0.4)
+    assert chow_dfc(y * 1e200, 0.4) == pytest.approx(base, rel=1e-9)
+    assert chow_dfc(y * 1e-200, 0.4) == pytest.approx(base, rel=1e-9)
+
+
+def test_chow_dfc_pandas_and_numpy_agree():
+    idx = pd.date_range("2021-01-01", periods=80, freq="D")
+    s = pd.Series(np.random.default_rng(6).standard_normal(80).cumsum(), index=idx)
+    assert chow_dfc(s, 0.5) == chow_dfc(s.to_numpy(), 0.5)
+
+
+def test_sdfc_equals_max_of_direct_loop():
+    y = np.random.default_rng(11).standard_normal(120).cumsum()
+    res = sdfc(y, tau0=0.15)
+    breaks = np.arange(18, 103)  # ceil(0.15 * 120) = 18 and ceil(0.85 * 120) = 102
+    ref = np.array([naive_dfc(y, b) for b in breaks])
+    np.testing.assert_array_equal(res.breaks, breaks)
+    np.testing.assert_allclose(res.dfc, ref, rtol=1e-9)
+    assert res.statistic == pytest.approx(ref.max(), rel=1e-9)
+    assert res.break_index == breaks[int(np.argmax(ref))]
+    assert isinstance(res.dfc, np.ndarray)
+
+
+def test_sdfc_bounds_a_fine_tau_grid_and_is_attained_at_its_argmax():
+    y = np.random.default_rng(11).standard_normal(120).cumsum()
+    res = sdfc(y, tau0=0.15)
+    grid = [chow_dfc(y, tau) for tau in np.linspace(0.15, 0.85, 701)]
+    assert max(grid) <= res.statistic + 1e-12
+    assert chow_dfc(y, res.break_index / len(y)) == pytest.approx(res.statistic, rel=1e-9)
+
+
+def test_sdfc_is_larger_for_a_regime_switch_to_explosive_growth():
+    rng = np.random.default_rng(7)
+    n = 300
+    shocks = rng.standard_normal(n)
+    switch = np.empty(n)
+    switch[0] = 0.0
+    for t in range(1, n):
+        rho = 1.0 if t < 150 else 1.01
+        switch[t] = rho * switch[t - 1] + shocks[t]
+    walk = np.cumsum(shocks)
+    assert sdfc(switch).statistic > sdfc(walk).statistic + 2.0
+
+
+def test_sdfc_undefined_breaks_are_nan_and_skipped():
+    # y_{t-1} = 0 for every t >= 21, so DFC is NaN for each break b >= 21 and finite below it.
+    y = np.r_[np.arange(1.0, 21.0), np.zeros(20)]
+    res = sdfc(y, tau0=0.15)
+    assert np.isnan(res.dfc[res.breaks >= 21]).all()
+    assert np.isfinite(res.dfc[res.breaks <= 20]).all()
+    assert res.break_index <= 20
+
+
+def test_sdfc_refuses_when_every_admissible_break_is_undefined():
+    y = np.r_[1.0, np.zeros(29)]
+    with pytest.raises(ValueError, match="undefined"):
+        sdfc(y, tau0=0.15)
+
+
+def test_chow_dfc_undefined_when_no_post_break_level_is_nonzero():
+    y = np.r_[np.arange(1.0, 21.0), np.zeros(20)]
+    with pytest.raises(ValueError, match="undefined"):
+        chow_dfc(y, 0.6)
+
+
+@pytest.mark.parametrize("bad", [0.0, 0.5, 0.6, -0.1, float("nan"), True, "0.2"])
+def test_sdfc_rejects_tau0_outside_open_interval(bad):
+    with pytest.raises(ValueError, match="tau0"):
+        sdfc(np.random.default_rng(1).standard_normal(60).cumsum(), tau0=bad)
+
+
+@pytest.mark.parametrize("bad", [0.0, 1.0, 1.5, float("nan"), True])
+def test_chow_dfc_rejects_tau_outside_open_interval(bad):
+    with pytest.raises(ValueError, match="tau"):
+        chow_dfc(np.random.default_rng(1).standard_normal(60).cumsum(), bad)
+
+
+def test_chow_dfc_refuses_break_after_the_last_observation():
+    y = np.random.default_rng(2).standard_normal(50).cumsum()
+    with pytest.raises(ValueError, match="after the last observation"):
+        chow_dfc(y, 0.999)  # ceil(49.95) = 50 > T - 1
+
+
+def test_chow_dfc_and_sdfc_refuse_short_and_constant_series():
+    with pytest.raises(ValueError, match="three observations"):
+        chow_dfc([1.0, 2.0], 0.5)
+    with pytest.raises(ValueError, match="constant"):
+        chow_dfc(np.ones(30), 0.5)
+    with pytest.raises(ValueError, match="constant"):
+        sdfc(np.full(30, 2.0))
+
+
+def test_sdfc_refuses_descending_index():
+    idx = pd.date_range("2021-01-01", periods=40, freq="D")[::-1]
+    s = pd.Series(np.random.default_rng(3).standard_normal(40).cumsum(), index=idx)
+    with pytest.raises(ValueError, match="ascending"):
+        sdfc(s)
