@@ -623,16 +623,19 @@ class ReturnConcentration:
     time: float
 
 
-def return_concentration(returns: pd.Series, freq: str = "ME") -> ReturnConcentration:
+def return_concentration(
+    returns: pd.Series, freq: str | pd.DateOffset | None = None
+) -> ReturnConcentration:
     """Concentration of returns by sign and over time (AFML Snippet 14.3).
 
     Parameters
     ----------
     returns : pd.Series
         Period returns indexed by a DatetimeIndex. Finite values only.
-    freq : str, default "ME"
-        Calendar period for the time component, passed to ``pd.Grouper``. The book
-        writes "M". pandas 3 refuses "M" with a ValueError and takes "ME" (month end).
+    freq : str, DateOffset or None, default None
+        Calendar period for the time component, passed to ``pd.Grouper``. None means
+        month end (``pd.offsets.MonthEnd()``), the book's "M". The offset object is used
+        because pandas 2.0 and 2.1 spell month end "M", and pandas 3 accepts only "ME".
 
     Returns
     -------
@@ -662,7 +665,8 @@ def return_concentration(returns: pd.Series, freq: str = "ME") -> ReturnConcentr
             f"returns must be indexed by a DatetimeIndex, got {type(returns.index).__name__}."
         )
     values = _finite_returns(returns)
-    counts = pd.Series(values, index=index).groupby(pd.Grouper(freq=freq)).count()
+    period = pd.offsets.MonthEnd() if freq is None else freq
+    counts = pd.Series(values, index=index).groupby(pd.Grouper(freq=period)).count()
     return ReturnConcentration(
         positive=_concentration_or_nan(values[values >= 0.0]),
         negative=_concentration_or_nan(values[values < 0.0]),

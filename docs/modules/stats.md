@@ -61,8 +61,8 @@ row. `holding_period` averages the days each closed unit was held, weighted by i
 float days; a position still open at the end adds nothing. `hhi_concentration` returns the
 Herfindahl-Hirschman index of a return series, 0 for equal returns and 1 for a single
 non-zero return. `return_concentration` applies it to the positive returns, the negative
-returns and the number of returns per calendar period (`freq="ME"`, month end). In pandas 3,
-`freq="M"` is refused. `drawdown_time_under_water` returns the drawdown of each high-water
+returns and the number of returns per calendar period (month end by default; pass `freq`
+for another period). `drawdown_time_under_water` returns the drawdown of each high-water
 mark that is followed by a loss (`dd`, as a fraction or in pnl units), and the time under
 water between consecutive such marks in years of 365.25 days (`tuw`).
 

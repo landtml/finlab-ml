@@ -301,7 +301,7 @@ w = (2, -1, 0), so h = 5 and HHI = (5 - 1/3) / (2/3) = 7.
 **Convention (not from the book).** `positive` takes returns >= 0, so zeros count as positive. A
 component is NaN when its sub-series has two or fewer values, or sums to zero. A positive sub-series
 sums to zero only when every value is zero. The time component uses calendar periods of `freq`,
-default "ME", and counts periods with no returns as zero.
+month end by default (`pd.offsets.MonthEnd()`), and counts periods with no returns as zero.
 
 **Measured.** `pd.Series([1.0], index=pd.DatetimeIndex(["2024-01-01"])).groupby(pd.Grouper(freq="M")).count()`
 raises `ValueError: Invalid frequency: M` on pandas 3.0.6, checked 2026-10-13 on a shared 4-vCPU
