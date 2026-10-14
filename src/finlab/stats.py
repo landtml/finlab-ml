@@ -825,21 +825,29 @@ def _sums_to_zero(x: np.ndarray) -> bool:
     return bool(abs(float(np.sum(x))) <= 1e-12 * float(np.sum(np.abs(x))))
 
 
+def _unit_scale(x: np.ndarray) -> np.ndarray:
+    """Return ``x`` divided by its largest magnitude, so that sums of it cannot overflow."""
+    # The HHI is scale-free. Without this, three returns of 1e308 sum to inf and look like a zero sum.
+    m = float(np.max(np.abs(x))) if x.size else 0.0
+    return x / m if m > 0.0 else x
+
+
 def _hhi(x: np.ndarray) -> float:
     """HHI of a finite 1-D array; NaN for two or fewer values, refused when the sum is zero."""
     n = x.size
     if n <= 2:
         return float("nan")
-    if _sums_to_zero(x):
+    z = _unit_scale(x)
+    if _sums_to_zero(z):
         raise ValueError("returns sum to zero, so the HHI weights r / sum(r) are undefined.")
-    w = x / float(np.sum(x))
+    w = z / float(np.sum(z))
     h = float(np.sum(w * w))
     return (h - 1.0 / n) / (1.0 - 1.0 / n)
 
 
 def _concentration_or_nan(x: np.ndarray) -> float:
     """HHI of a sub-series; NaN when it is too short or sums to zero, where HHI is undefined."""
-    if x.size <= 2 or _sums_to_zero(x):
+    if x.size <= 2 or _sums_to_zero(_unit_scale(x)):
         return float("nan")
     return _hhi(x)
 

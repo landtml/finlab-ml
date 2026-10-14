@@ -902,6 +902,12 @@ def test_return_concentration_all_zero_side_is_nan() -> None:
     assert math.isnan(res.time)
 
 
+def test_return_concentration_equal_huge_gains_give_zero_not_nan() -> None:
+    # Three equal gains of 1e308 sum to inf. Equal gains have HHI 0, so NaN would be wrong.
+    res = return_concentration(_daily([1e308, 1e308, 1e308]))
+    assert res.positive == pytest.approx(0.0, abs=1e-12)
+
+
 def test_return_concentration_empty_series_is_all_nan() -> None:
     res = return_concentration(pd.Series([], index=pd.DatetimeIndex([]), dtype=float))
     assert all(math.isnan(v) for v in (res.positive, res.negative, res.time))
