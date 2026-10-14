@@ -111,7 +111,9 @@ def ou_phi(half_life: float) -> float:
     Returns
     -------
     float
-        phi = 2 ** (-1 / half_life), in (0, 1).
+        phi = 2 ** (-1 / half_life), in [0, 1]. The value rounds to 0 for a half-life below
+        about 9.3e-4 and to 1 for one above about 1.25e16. :func:`ou_half_life` accepts only
+        the open interval (0, 1).
 
     Raises
     ------

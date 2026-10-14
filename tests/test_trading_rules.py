@@ -395,3 +395,15 @@ def test_scalar_arguments_accept_zero_dimensional_arrays() -> None:
         otr_grid(np.array(0.0), np.array(5.0), sigma=np.array(1.0), start=np.array(0.0), **kwargs),
         otr_grid(0.0, 5.0, sigma=1.0, start=0.0, **kwargs),
     )
+
+
+def test_ou_phi_rounds_to_endpoints_for_extreme_half_lives() -> None:
+    # 2 ** (-1 / half_life) rounds to 0 below a half-life of about 9.3e-4 and to 1 above about
+    # 1.25e16. ou_phi documents the closed interval, and otr_grid still simulates both cases.
+    assert ou_phi(1e-6) == 0.0
+    assert ou_phi(1e-3) > 0.0
+    assert ou_phi(1e16) < 1.0
+    assert ou_phi(1e17) == 1.0
+    for half_life in (1e-6, 1e17):
+        grid = otr_grid(0.0, half_life, n_iter=20, profit_taking=[1.0], stop_loss=[1.0], max_hp=3)
+        assert np.isfinite(grid.loc[0, "mean"])
