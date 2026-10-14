@@ -272,7 +272,7 @@ class SequentialBootstrapBagging:
                 if self.sequential:
                     draws = sequential_bootstrap(ind, n_samples=size, seed=seed_b)
                 else:
-                    draws = np.random.default_rng(seed_b).integers(0, n, size=size)
+                    draws = np.asarray(np.random.default_rng(seed_b).integers(0, n, size=size))
                 est = self.base_factory()
                 if self.oob_score and not hasattr(est, "predict_proba"):
                     # Checked before the first bag trains, so a base that cannot score costs no fit.

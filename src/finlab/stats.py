@@ -50,7 +50,7 @@ import math
 import numbers
 import warnings
 from dataclasses import dataclass
-from typing import Union
+from typing import Any, Union
 
 import numpy as np
 import pandas as pd
@@ -779,7 +779,7 @@ def _holding_kernel(pos: np.ndarray, tdiff: np.ndarray) -> tuple[float, float]:
     return weighted, closed
 
 
-def _timed_values(name: str, series: object) -> tuple[np.ndarray, pd.DatetimeIndex]:
+def _timed_values(name: str, series: Any) -> tuple[np.ndarray, pd.DatetimeIndex]:
     """Return the float values and the DatetimeIndex of a time-indexed series.
 
     The rows must be in time order, because the bet and drawdown rules read the order of
