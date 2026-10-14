@@ -718,8 +718,8 @@ def drawdown_time_under_water(
 
     Time under water runs from an HWM to the next HWM that has a drawdown, not to the
     next HWM. If an HWM with no later drawdown falls in between, the interval runs past
-    the true recovery. With pnl ``[0, 1, 0.5, 2, 3, 2, 4]`` the HWM at row 1 gets 3 days,
-    but pnl is back above 1 at row 3, so the true time is 2 days.
+    the true recovery. With ``dollars=True`` and pnl ``[0, 1, 0.5, 2, 3, 2, 4]`` on consecutive
+    days, the HWM at row 1 gets 3 days, but pnl is back above 1 at row 3, so the true time is 2 days.
     """
     if not isinstance(dollars, bool):
         raise TypeError(f"dollars must be a bool, got {type(dollars).__name__}.")

@@ -333,7 +333,7 @@ one-pass scan).
 
 **Known property of the rule.** Time under water runs from a reported HWM to the next reported
 HWM, not to the next HWM. A mark with no later drawdown in between is skipped, so the interval can
-pass the recovery. Pnl 0, 1, 0.5, 2, 3, 2, 4 on consecutive days gives 3 days for the mark at day 1.
+pass the recovery. Pnl 0, 1, 0.5, 2, 3, 2, 4 on consecutive days, with `dollars=True`, gives 3 days for the mark at day 1.
 Pnl is back above 1 at day 3, so the recovery took 2 days. The rule is Snippet 14.4 as implemented here, claimed from the book only (not verified against the text). The 3-day value
 is checked by test.
 
