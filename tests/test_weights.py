@@ -13,6 +13,7 @@ import pandas as pd
 import pytest
 
 import finlab.weights as weights
+from finlab._jit import jit
 from finlab.weights import (
     average_uniqueness,
     indicator_matrix,
@@ -333,6 +334,123 @@ def test_sequential_bootstrap_has_higher_average_uniqueness_than_standard():
         std = rng.integers(0, n, size=n)
         std_scores.append(sample_avg_uniqueness(m, std))
     assert np.mean(seq_scores) > np.mean(std_scores)
+
+
+# ---------------------------------------------------------------------------
+# Sequential bootstrap: draws equal a reference kernel that recomputes every weight
+# ---------------------------------------------------------------------------
+
+
+@jit
+def _reference_seq_bootstrap_kernel(
+    n_bars: int,
+    ptr: np.ndarray,
+    rows: np.ndarray,
+    colsum: np.ndarray,
+    uniforms: np.ndarray,
+) -> np.ndarray:
+    """Reference kernel: recomputes every label's weight on every draw.
+
+    The comparisons below test ``sequential_bootstrap`` against this fixed copy of the
+    arithmetic. Do not edit it; a change here would weaken every comparison.
+    """
+    n_ev = ptr.shape[0] - 1
+    n_draw = uniforms.shape[0]
+    c = np.zeros(n_bars, dtype=np.float64)
+    avg = np.zeros(n_ev, dtype=np.float64)
+    draws = np.empty(n_draw, dtype=np.int64)
+    for k in range(n_draw):
+        total = 0.0
+        for j in range(n_ev):
+            acc = 0.0
+            if colsum[j] > 0.0:
+                for q in range(ptr[j], ptr[j + 1]):
+                    acc += 1.0 / (1.0 + c[rows[q]])
+                acc = acc / colsum[j]
+            avg[j] = acc
+            total += acc
+        target = uniforms[k] * total
+        acc = 0.0
+        pick = -1
+        last_pos = -1
+        for j in range(n_ev):
+            if avg[j] > 0.0:
+                last_pos = j
+                acc += avg[j]
+                if acc > target:
+                    pick = j
+                    break
+        if pick < 0:
+            pick = last_pos
+        draws[k] = pick
+        for q in range(ptr[pick], ptr[pick + 1]):
+            c[rows[q]] += 1.0
+    return draws
+
+
+def _reference_draws(m: np.ndarray, n_samples: int | None, seed: int) -> np.ndarray:
+    """Draws of the reference kernel, with CSC arrays and uniforms built as sequential_bootstrap builds them."""
+    n_ev = m.shape[1]
+    j_idx, t_idx = np.nonzero((m != 0.0).T)
+    colsum = np.bincount(j_idx, minlength=n_ev).astype(np.float64)
+    ptr = np.zeros(n_ev + 1, dtype=np.int64)
+    ptr[1:] = np.cumsum(colsum.astype(np.int64))
+    n_draw = n_ev if n_samples is None else n_samples
+    uniforms = np.random.default_rng(seed).random(n_draw)
+    return _reference_seq_bootstrap_kernel(m.shape[0], ptr, t_idx.astype(np.int64), colsum, uniforms)
+
+
+SEQ_SHAPES = (
+    "sparse_spans",
+    "dense_spans",
+    "random_binary",
+    "one_event",
+    "identical_spans",
+    "open_ended",
+    "empty_column",
+)
+
+
+def _seq_shape(shape: str, seed: int) -> np.ndarray:
+    """Bars-by-labels 0/1 matrix for one of SEQ_SHAPES."""
+    rng = np.random.default_rng(seed)
+    if shape == "random_binary":
+        return (rng.random((60, 25)) < 0.15).astype(np.float64)
+    if shape == "identical_spans":
+        m = np.zeros((30, 12))
+        start = int(rng.integers(0, 10))
+        m[start : start + 1 + int(rng.integers(0, 15)), :] = 1.0
+        return m
+    if shape == "sparse_spans":
+        index, t1 = _random_labels(400, 120, max_span=5, seed=seed)
+    elif shape == "dense_spans":
+        index, t1 = _random_labels(200, 60, max_span=80, seed=seed)
+    elif shape == "one_event":
+        index, t1 = _random_labels(40, 1, max_span=10, seed=seed)
+    elif shape == "open_ended":
+        index, t1 = _random_labels(120, 40, max_span=12, seed=seed)
+        t1 = t1.copy()
+        t1.iloc[::3] = pd.NaT
+    elif shape == "empty_column":
+        index, t1 = _random_labels(100, 30, max_span=8, seed=seed)
+        m = np.array(indicator_matrix(index, t1), dtype=np.float64)
+        m[:, int(rng.integers(0, m.shape[1]))] = 0.0
+        return m
+    else:
+        raise ValueError(f"unknown shape {shape!r}")
+    return indicator_matrix(index, t1).to_numpy()
+
+
+@pytest.mark.parametrize("shape", SEQ_SHAPES)
+@pytest.mark.parametrize("seed", range(20))
+def test_sequential_bootstrap_draws_equal_reference_kernel(shape, seed):
+    m = _seq_shape(shape, seed)
+    n_ev = m.shape[1]
+    for n_samples in (None, 1, max(1, n_ev // 2), n_ev, 2 * n_ev + 3):
+        got = sequential_bootstrap(m, n_samples=n_samples, seed=seed)
+        ref = _reference_draws(m, n_samples, seed)
+        assert got.dtype == ref.dtype, (shape, seed, n_samples)
+        assert np.array_equal(got, ref), (shape, seed, n_samples)
 
 
 # ---------------------------------------------------------------------------
