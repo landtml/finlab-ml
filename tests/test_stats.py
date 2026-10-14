@@ -716,6 +716,42 @@ def test_bet_timing_refuses_bad_input() -> None:
         bet_timing(pd.Series([1.0, 0.0], index=pd.DatetimeIndex(["2024-01-01", "2024-01-01"])))
 
 
+def test_bet_timing_sees_flips_between_tiny_positions() -> None:
+    # The product of two opposite positions of 1e-200 underflows to -0.0, which is not < 0.
+    # A flip must be read from the signs, so the flips on rows 1 and 3 are both reported.
+    got = bet_timing(_daily([1e-200, -1e-200, -1e-200, 1e-200]))
+    assert list(got) == list(pd.date_range("2024-01-01", periods=4, freq="D")[[1, 3]])
+
+
+@pytest.mark.parametrize("scale", [1e-200, 1e-300])
+def test_bet_timing_is_unchanged_by_scaling_positions(scale: float) -> None:
+    rng = np.random.default_rng(11)
+    for _ in range(20):
+        values = rng.integers(-2, 3, 25).astype(float)
+        assert bet_timing(_daily(values * scale)).equals(bet_timing(_daily(values)))
+
+
+@pytest.mark.parametrize(
+    ("values", "expected"),
+    [([1.0, 0.5, 0.0, 0.0], 1.5), ([1.0, -1.0, 0.0, 0.0], 1.0)],
+)
+@pytest.mark.parametrize("scale", [1.0, 1e-200, 1e-300])
+def test_holding_period_closes_tiny_positions(values: list[float], expected: float, scale: float) -> None:
+    # Holding period does not depend on the unit of size. The tiny products used to read as an
+    # increase, so the closing row was dropped and the result was NaN.
+    assert holding_period(_daily(np.array(values) * scale)) == pytest.approx(expected, rel=1e-12)
+
+
+@pytest.mark.parametrize("scale", [1e-200, 1e-300])
+def test_holding_period_is_unchanged_by_scaling_random_positions(scale: float) -> None:
+    rng = np.random.default_rng(12)
+    for _ in range(20):
+        values = rng.integers(-2, 3, 25).astype(float)
+        assert holding_period(_daily(values * scale)) == pytest.approx(
+            holding_period(_daily(values)), rel=1e-12, nan_ok=True
+        )
+
+
 def test_holding_period_one_long_closed_after_three_days() -> None:
     # Opened on day 0 with size 1 and closed on day 3.
     assert holding_period(_daily([1, 1, 1, 0])) == pytest.approx(3.0, rel=1e-12)
@@ -801,6 +837,17 @@ def test_hhi_hand_computed_three_returns() -> None:
 def test_hhi_is_scale_invariant() -> None:
     r = np.array([0.02, -0.01, 0.0, 0.03, 0.01])
     assert hhi_concentration(10.0 * r) == pytest.approx(hhi_concentration(r), rel=1e-12)
+
+
+def test_hhi_equal_huge_returns_give_zero() -> None:
+    # The sum of three 1e308 overflows to inf. The HHI is scale-free, so it must not be refused.
+    assert hhi_concentration([1e308, 1e308, 1e308]) == pytest.approx(0.0, abs=1e-12)
+
+
+def test_hhi_refuses_a_scalar_by_name() -> None:
+    # A scalar is not a return series; it must not come back as NaN.
+    with pytest.raises(ValueError, match="returns"):
+        hhi_concentration(0.02)
 
 
 def test_hhi_single_signed_returns_stay_in_unit_interval() -> None:

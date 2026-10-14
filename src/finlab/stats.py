@@ -522,8 +522,9 @@ def bet_timing(positions: pd.Series) -> pd.DatetimeIndex:
     # The first row is treated as non-flat, the same as the NaN the book code compares.
     was_open = index[np.r_[True, values[:-1] != 0]]
     bets = flat_now.intersection(was_open)
-    products = values[1:] * values[:-1]
-    flips = index[1:][products < 0]
+    # Signs, not the product: the product of two tiny opposite positions underflows to -0.0.
+    signs = np.sign(values)
+    flips = index[1:][signs[1:] * signs[:-1] < 0]
     bets = bets.union(flips).sort_values()
     if index[-1] not in bets:
         bets = bets.append(index[-1:])
@@ -754,11 +755,13 @@ def _holding_kernel(pos: np.ndarray, tdiff: np.ndarray) -> tuple[float, float]:
     t_entry = 0.0
     for i in range(1, pos.shape[0]):
         p_diff = pos[i] - pos[i - 1]
-        if p_diff * pos[i - 1] >= 0.0:
+        # Same test as p_diff * pos[i-1] >= 0, written on signs: that product underflows to -0.0
+        # for tiny positions, which then read as an increase.
+        if pos[i - 1] == 0.0 or p_diff == 0.0 or (p_diff > 0.0) == (pos[i - 1] > 0.0):
             # Increased or unchanged: the entry time moves to the size-weighted mean.
             if pos[i] != 0.0:
                 t_entry = (t_entry * pos[i - 1] + tdiff[i] * p_diff) / pos[i]
-        elif pos[i] * pos[i - 1] < 0.0:
+        elif pos[i] != 0.0 and (pos[i] > 0.0) != (pos[i - 1] > 0.0):
             # Flip: the whole old position closes, and the new one opens at this row.
             size = abs(pos[i - 1])
             weighted += (tdiff[i] - t_entry) * size
