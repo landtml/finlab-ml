@@ -312,7 +312,8 @@ def probability_of_failure(returns: object, freq: float, target_sharpe: float) -
     Raises
     ------
     ValueError
-        If the non-positive returns are all zero, so ``rNeg`` is 0 and no bet loss exists.
+        If the non-positive returns are all zero, so ``rNeg`` is 0 and no bet loss exists. Also
+        if ``target_sharpe`` cannot be represented, as in :func:`implied_precision`.
 
     Notes
     -----
