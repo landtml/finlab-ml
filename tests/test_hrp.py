@@ -488,3 +488,15 @@ def test_hrp_weights_accepts_float32_rounded_correlation() -> None:
     assert float(np.sum(w)) == pytest.approx(1.0)
 
 
+
+
+def test_hrp_split_survives_variances_near_the_float64_maximum() -> None:
+    # Two cluster variances of 1e308 overflow their sum. The split depends only on their ratio,
+    # so equal variances must still give equal weights, and a 1:3 ratio the same weights as 1:3.
+    from finlab.hrp import hrp_weights
+
+    w = hrp_weights(np.array([[1e308, 0.0], [0.0, 1e308]]))
+    assert np.asarray(w) == pytest.approx([0.5, 0.5])
+    big = np.asarray(hrp_weights(np.array([[1e308, 0.0], [0.0, 1.7e308]])))
+    small = np.asarray(hrp_weights(np.array([[1.0, 0.0], [0.0, 1.7]])))
+    assert big == pytest.approx(small, rel=1e-12)

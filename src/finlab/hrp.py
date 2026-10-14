@@ -186,7 +186,12 @@ def _recursive_bisection(cov: np.ndarray) -> np.ndarray:
         v1 = _cluster_variance(cov, s, m)
         v2 = _cluster_variance(cov, m, e)
         tot = v1 + v2
-        if tot > 0.0:
+        if tot == np.inf and v1 < np.inf and v2 < np.inf:
+            # Two variances near the float64 maximum overflow their sum; the split depends only
+            # on their ratio, so scale both by the larger one.
+            big = max(v1, v2)
+            alpha = 1.0 - (v1 / big) / (v1 / big + v2 / big)
+        elif tot > 0.0:
             # A tiny negative eigenvalue can make v1 negative and push alpha past 1.
             alpha = min(max(1.0 - v1 / tot, 0.0), 1.0)  # split factor in [0, 1]
         else:
