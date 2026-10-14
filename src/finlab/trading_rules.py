@@ -291,6 +291,8 @@ def otr_grid(
 
 def _finite(name: str, value: object) -> float:
     """Return ``value`` as a finite float; refuse bools, non-real and non-finite values."""
+    if isinstance(value, np.ndarray) and value.ndim == 0:
+        value = value.item()
     if isinstance(value, (bool, np.bool_)) or not isinstance(value, numbers.Real):
         raise ValueError(f"{name} must be a real number, got {type(value).__name__}")
     x = float(value)

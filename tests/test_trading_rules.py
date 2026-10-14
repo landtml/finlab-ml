@@ -383,3 +383,15 @@ def test_otr_grid_refuses_exits_that_overflow_float64() -> None:
     # Barriers are finite here, but sigma * eps overflows on some draws, so an exit is inf.
     with pytest.raises(ValueError, match="sigma"):
         otr_grid(0.0, 5.0, sigma=1e308, profit_taking=[0.5], stop_loss=[0.5], n_iter=50, max_hp=100, seed=0)
+
+
+def test_scalar_arguments_accept_zero_dimensional_arrays() -> None:
+    # finlab.strategy_risk takes a 0-d array as a scalar, so this module does too.
+    assert ou_phi(np.array(5.0)) == ou_phi(5.0)
+    assert ou_half_life(np.array(0.5)) == ou_half_life(0.5)
+    assert fit_ou([1.0, 2.0, 0.0], np.array(0.0)).phi == fit_ou([1.0, 2.0, 0.0], 0.0).phi
+    kwargs = dict(n_iter=50, profit_taking=[1.0], stop_loss=[1.0], seed=1)
+    pd.testing.assert_frame_equal(
+        otr_grid(np.array(0.0), np.array(5.0), sigma=np.array(1.0), start=np.array(0.0), **kwargs),
+        otr_grid(0.0, 5.0, sigma=1.0, start=0.0, **kwargs),
+    )
