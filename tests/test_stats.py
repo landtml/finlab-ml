@@ -742,6 +742,15 @@ def test_holding_period_closes_tiny_positions(values: list[float], expected: flo
     assert holding_period(_daily(np.array(values) * scale)) == pytest.approx(expected, rel=1e-12)
 
 
+def test_holding_period_handles_sizes_near_1e306_over_a_long_history() -> None:
+    # Entry 3000 days after the first row with size 1e306: the product of that time and the size
+    # overflowed to inf, and the average came out as -inf. Entry on day 3000 and close on day 3002.
+    positions = np.zeros(3003)
+    positions[3000], positions[3001] = 1e306, 2e306
+    series = pd.Series(positions, index=pd.date_range("2000-01-01", periods=3003, freq="D"))
+    assert holding_period(series) == pytest.approx(1.5, rel=1e-9)
+
+
 @pytest.mark.parametrize("scale", [1e-200, 1e-300])
 def test_holding_period_is_unchanged_by_scaling_random_positions(scale: float) -> None:
     rng = np.random.default_rng(12)

@@ -565,6 +565,11 @@ def holding_period(positions: pd.Series) -> float:
     The loop runs in a numba kernel (``finlab._jit.jit``), with fastmath off.
     """
     values, index = _timed_values("positions", positions)
+    # The average is unchanged by a common scale of the sizes. Dividing by the largest size keeps
+    # time x size from overflowing over a long history (a size near 1e306 after 3000 days).
+    largest = float(np.max(np.abs(values)))
+    if largest > 0.0:
+        values = values / largest
     tdiff = np.asarray((index - index[0]) / pd.Timedelta(days=1), dtype=float)
     weighted, closed = _holding_kernel(np.ascontiguousarray(values), np.ascontiguousarray(tdiff))
     if closed > 0.0:
