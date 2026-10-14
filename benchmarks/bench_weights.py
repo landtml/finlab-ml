@@ -20,11 +20,13 @@ from finlab.weights import indicator_matrix, num_co_events, sequential_bootstrap
 
 REPEATS = 3
 
-# (label, bars, labels, lifespans drawn below max_span bars)
+# (label, bars, labels, lifespans drawn below max_span bars). "dense" is the worst case for the
+# gain: its lifespans cover much of the grid, so almost every pair of labels overlaps.
 SEQ_SIZES = (
     ("small", 400, 150, 40),
     ("medium", 1500, 500, 80),
     ("large", 4000, 1500, 120),
+    ("dense", 1500, 500, 900),
 )
 
 
