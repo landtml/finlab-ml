@@ -437,3 +437,10 @@ def test_probability_of_failure_is_invariant_to_tiny_return_scale() -> None:
     assert probability_of_failure(tiny, 52.0, 1.0) == pytest.approx(
         probability_of_failure([1.0, -1.0, 2.0, -2.0], 52.0, 1.0), rel=1e-9
     )
+
+
+def test_probability_of_failure_accepts_returns_near_float_max() -> None:
+    # Summing the positive returns overflows float64 at this scale, so the means need scaled values.
+    base = np.array([1.0, 1.5, -0.5])
+    expected = probability_of_failure(base, 52.0, 1.0)
+    assert probability_of_failure(base * 1e308, 52.0, 1.0) == pytest.approx(expected, rel=1e-9)

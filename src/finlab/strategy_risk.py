@@ -279,8 +279,11 @@ def probability_of_failure(returns: object, freq: float, target_sharpe: float) -
     freq = _check_freq(freq)
     target = _as_finite("target_sharpe", target_sharpe)
     positive = arr > 0.0
-    r_pos = float(arr[positive].mean())
-    r_neg = float(arr[~positive].mean())
+    # Averages of the scaled returns: summing values near 1e308 overflows float64.
+    scale = float(np.max(np.abs(arr)))
+    unit = arr / scale
+    r_pos = float(unit[positive].mean()) * scale
+    r_neg = float(unit[~positive].mean()) * scale
     p = float(positive.mean())
     if r_neg == 0.0:
         raise ValueError("returns: every non-positive return is zero, so the mean loss is 0")
