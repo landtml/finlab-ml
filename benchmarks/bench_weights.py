@@ -15,9 +15,17 @@ import time
 import numpy as np
 import pandas as pd
 
+from finlab import weights
 from finlab.weights import indicator_matrix, num_co_events, sequential_bootstrap
 
 REPEATS = 3
+
+# (label, bars, labels, lifespans drawn below max_span bars)
+SEQ_SIZES = (
+    ("small", 400, 150, 40),
+    ("medium", 1500, 500, 80),
+    ("large", 4000, 1500, 120),
+)
 
 
 def best_time(fn, repeats: int = REPEATS) -> float:
@@ -27,6 +35,24 @@ def best_time(fn, repeats: int = REPEATS) -> float:
         fn()
         best = min(best, time.perf_counter() - t0)
     return best
+
+
+def sequential_case(n_bars: int, n_lab: int, max_span: int, seed: int) -> pd.DataFrame:
+    """Indicator matrix of random labels with spans of up to max_span bars."""
+    rng = np.random.default_rng(seed)
+    grid = pd.RangeIndex(n_bars)
+    starts = np.sort(rng.choice(n_bars - max_span - 1, size=n_lab, replace=False))
+    ends = np.minimum(starts + rng.integers(0, max_span, size=n_lab), n_bars - 1)
+    return indicator_matrix(grid, pd.Series(grid[ends], index=grid[starts]))
+
+
+def csc_of(m: np.ndarray):
+    """CSC arrays (ptr, rows, colsum) of a 0/1 matrix, built as sequential_bootstrap builds them."""
+    j_idx, t_idx = np.nonzero((m != 0.0).T)
+    colsum = np.bincount(j_idx, minlength=m.shape[1]).astype(np.float64)
+    ptr = np.zeros(m.shape[1] + 1, dtype=np.int64)
+    ptr[1:] = np.cumsum(colsum.astype(np.int64))
+    return ptr, t_idx.astype(np.int64), colsum
 
 
 def naive_concurrency(n_bars, starts, ends):
@@ -97,6 +123,22 @@ def main() -> None:
     t_naive = best_time(lambda: naive_sequential(m, uniforms), repeats=1)
     print(f"sequential_boot.  : naive (dense loops) {t_naive * 1e3:9.1f} ms | "
           f"jitted kernel {t_jit * 1e3:8.2f} ms | speedup {t_naive / t_jit:7.1f}x")
+
+    # Sequential bootstrap at three sizes. The full-recompute kernel is the reference that
+    # sequential_bootstrap must match draw for draw; both are timed on the same CSC arrays.
+    print("sequential bootstrap, full-recompute kernel vs sequential_bootstrap (seed 1):")
+    for label, n_bars_s, n_lab_s, max_span in SEQ_SIZES:
+        m_df = sequential_case(n_bars_s, n_lab_s, max_span, seed=2)
+        ptr, rows, colsum = csc_of(m_df.to_numpy())
+        uniforms_s = np.random.default_rng(1).random(n_lab_s)
+        full_draws = weights._seq_bootstrap_kernel(n_bars_s, ptr, rows, colsum, uniforms_s)
+        if not np.array_equal(full_draws, sequential_bootstrap(m_df, seed=1)):
+            raise SystemExit(f"sequential_bootstrap draws differ from the reference at size {label}")
+        t_full = best_time(lambda: weights._seq_bootstrap_kernel(n_bars_s, ptr, rows, colsum, uniforms_s))
+        t_pub = best_time(lambda: sequential_bootstrap(m_df, seed=1))
+        print(f"  {label:<7} bars {n_bars_s:>5}  labels {n_lab_s:>5}  ones {rows.size:>8}  "
+              f"full kernel {t_full * 1e3:9.2f} ms | sequential_bootstrap {t_pub * 1e3:9.2f} ms | "
+              f"speedup {t_full / t_pub:6.2f}x")
 
 
 if __name__ == "__main__":
