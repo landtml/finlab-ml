@@ -373,6 +373,8 @@ def mixture_returns(
         raise ValueError(f"prob1 must be between 0 and 1, got {prob1}")
     n_obs = _as_count("n_obs", n_obs, minimum=1)
 
+    if seed is not None:
+        seed = _as_count("seed", seed, minimum=0)
     rng = np.random.default_rng(seed)
     n1 = int(round(n_obs * prob1))
     first = rng.normal(mu1, sigma1, size=n1)

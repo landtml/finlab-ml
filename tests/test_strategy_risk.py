@@ -480,3 +480,17 @@ def test_implied_precision_refuses_hit_rates_that_are_not_normal_floats_in_unit_
 def test_implied_frequency_refuses_frequencies_below_the_normal_float_range(target: float) -> None:
     with pytest.raises(ValueError, match="target_sharpe"):
         implied_frequency(-1.0, 1.0, 0.6, target)
+
+
+@pytest.mark.parametrize("seed", [True, -1, 1.5, "3"])
+def test_mixture_returns_refuses_bad_seed_by_name(seed: object) -> None:
+    # bool is not an int, and numpy's own messages for -1 and 1.5 do not say which argument is wrong.
+    with pytest.raises(ValueError, match="seed"):
+        mixture_returns(0.05, -0.1, 0.05, 0.1, 0.75, 10, seed=seed)  # type: ignore[arg-type]
+
+
+def test_mixture_returns_accepts_none_and_numpy_integer_seeds() -> None:
+    assert mixture_returns(0.0, 0.0, 1.0, 1.0, 0.5, 6, seed=None).shape == (6,)
+    a = mixture_returns(0.0, 0.0, 1.0, 1.0, 0.5, 6, seed=np.int64(3))
+    b = mixture_returns(0.0, 0.0, 1.0, 1.0, 0.5, 6, seed=3)
+    np.testing.assert_array_equal(a, b)
