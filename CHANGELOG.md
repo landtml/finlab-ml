@@ -5,6 +5,68 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-10-14
+
+### Added
+
+- `finlab.trading_rules` (AFML ch. 13): `ou_half_life`, `ou_phi`, `fit_ou` and `otr_grid`, the
+  profit-taking and stop-loss grid simulated on an Ornstein-Uhlenbeck price (Snippets 13.1 and
+  13.2). The grid runs in parallel and gives the same result for any thread count.
+- `finlab.stats` (AFML ch. 14): `bet_timing`, `holding_period`, `hhi_concentration`,
+  `return_concentration` and `drawdown_time_under_water` (Snippets 14.1 to 14.4).
+- `finlab.strategy_risk` (AFML ch. 15): `binomial_sharpe`, `implied_precision`,
+  `implied_frequency`, `probability_of_failure` and `mixture_returns` (Snippets 15.1 to 15.5).
+- `finlab.structural_breaks` (AFML ch. 17): `qadf`, `cadf`, `smt`, `chow_dfc` and `sdfc`. None
+  returns a p-value or a critical value.
+- `finlab.microstructure` (AFML ch. 19): `hasbrouck_lambda`, `hasbrouck_lambda_tstat` and
+  `signed_root_dollar_volume`.
+- `SequentialBootstrapBagging(oob_score=True)` sets `oob_decision_function_` and `oob_score_`.
+  A row that every bag drew has no estimate: it is NaN, and `fit` warns with the count.
+- MCP tools `binomial_sharpe`, `implied_precision`, `implied_frequency` and
+  `probability_of_failure`.
+- Module pages for `finlab.trials` and `finlab.plot`, and a proof note for `finlab.agent`.
+- `benchmarks/bench_stats.py`, `bench_tuning.py`, `bench_trading_rules.py`, and
+  `benchmarks/repro_uniqueness.py`, which reruns the sequential versus standard bootstrap
+  uniqueness comparison and prints 0.1963 and 0.1913.
+- Python 3.14 support. CI runs 3.10 to 3.14, type-checks with mypy, and runs the suite at the
+  minimum dependency versions (numpy 1.24, pandas 2.0, numba 0.59, scipy 1.10).
+
+### Changed
+
+- `sequential_bootstrap` recomputes only the weights a draw changes, or all of them when a draw
+  touches most of the matrix. Draws are unchanged for every seed. On 4000 bars and 1500 labels
+  it runs about 6x faster than the full recompute (`benchmarks/bench_weights.py`).
+- MCP replies from `hrp_weights` and `bet_size_from_probability` return `null` for a non-finite
+  value, as the other tools do.
+- The `dev` extra installs mypy.
+
+### Fixed
+
+- `plug_in_entropy`, `kontoyiannis_entropy` and the MCP entropy tools compile on numba 0.59,
+  the declared minimum. Results are bit-identical on newer numba.
+- `kyle_lambda` and `kyle_lambda_tstat` use the scaled regression when the sum of squared
+  regressors is subnormal (regressors below about 1e-154), where the t-statistic came out as 0.
+- `hrp_weights` splits two cluster variances near the float64 maximum by their ratio. For
+  `[[1e308, 0], [0, 1e308]]` the weights are `[0.5, 0.5]`.
+
+### Known limitations
+
+- `drawdown_time_under_water` measures time under water to the next high-water mark that is
+  followed by a drawdown, as Snippet 14.4 does, so it can exceed the time to recovery. The last
+  drawdown has no time-under-water entry.
+- `probability_of_failure` passes `p(1-p)` as the scale of the normal distribution, as Snippet
+  15.5 does. The sampling standard error of the hit rate is `sqrt(p(1-p)/n)`.
+- The out-of-bag score is optimistic for overlapping labels and does not replace purged
+  cross-validation.
+- The forms of the chapter 13, 15, 17 and 19 additions are claimed from the book only. Their
+  section and snippet numbers are not verified against the text.
+- Supported input is a monotonic `DatetimeIndex` with one timezone or none, at any single
+  resolution, with the same awareness across inputs. Object-dtype datetime indexes, mixed
+  zones in one index, strings or integers used as timestamps, and non-monotonic indexes are
+  refused.
+- `get_daily_vol` on daily bars uses the last bar strictly before `t` minus one day, which is
+  two trading days back for most bars. This matches AFML Snippet 3.1.
+
 ## [0.1.4] - 2026-10-11
 
 ### Added
@@ -234,7 +296,8 @@ Changes since 0.1.0.
 
 First tagged release. No changelog was kept for it. Its source is at the `v0.1.0` tag.
 
-[Unreleased]: https://github.com/landtml/finlab-ml/compare/v0.1.4...HEAD
+[Unreleased]: https://github.com/landtml/finlab-ml/compare/v0.1.5...HEAD
+[0.1.5]: https://github.com/landtml/finlab-ml/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/landtml/finlab-ml/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/landtml/finlab-ml/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/landtml/finlab-ml/compare/v0.1.1...v0.1.2

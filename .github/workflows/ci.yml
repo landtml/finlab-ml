@@ -12,7 +12,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v4
 
@@ -27,6 +27,11 @@ jobs:
 
       - name: Lint
         run: ruff check src tests tools benchmarks examples
+
+      - name: Type check
+        # One version is enough: the numpy and pandas stubs differ across the matrix.
+        if: matrix.python-version == '3.13'
+        run: mypy
 
       - name: Run test suite
         run: pytest -q
@@ -76,6 +81,26 @@ jobs:
           cp -r tests docs examples tools pyproject.toml "$suite/"
           cd "$suite"
           "$RUNNER_TEMP/venv/bin/python" -m pytest -q
+
+  minimum-versions:
+    # Runs the suite against the lowest dependency versions pyproject.toml allows, so a
+    # newer API cannot slip in while the declared floor stays the same.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+
+      - name: Install the minimum supported versions
+        run: |
+          pip install "numpy==1.24.*" "pandas==2.0.*" "numba==0.59.*" "scipy==1.10.*" "pytest>=7.4"
+          pip install --no-deps -e .
+
+      - name: Run test suite
+        run: pytest -q
 
   build:
     runs-on: ubuntu-latest

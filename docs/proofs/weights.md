@@ -189,6 +189,85 @@ order.
   a different design and settings, so it is not comparable with the Monte Carlo experiment. See
   [monte_carlo.md](monte_carlo.md) for its proofs, tests and measured gap.
 
+## 4a. Incremental sequential bootstrap (same draws)
+
+`sequential_bootstrap` runs `_seq_bootstrap_kernel_incremental`. Its draws equal those of
+`_seq_bootstrap_kernel`, which recomputes every label's weight on every draw. Write `W_j` for
+the weight `ū^{(k)}_j` as the kernel computes it: the sum of `1/(1 + c_t)` over the bars `t` of
+`L_j` in ascending order, divided by `|L_j|`.
+
+**Proposition 4a.1 (only overlapping labels change).** Suppose draw `d` changes `c_t` only for
+`t` in `L_d`. Then `W_j` changes only when `L_j` and `L_d` share a bar.
+
+*Proof.* `W_j` reads `c` only at the bars of `L_j`. If `L_j` and `L_d` share no bar, every value
+`W_j` reads is unchanged, so the same operations give the same result. *(Proved here.)*
+
+**Proposition 4a.2 (same bits).** A recomputed `W_j` equals, bit for bit, the value the full
+kernel computes from the same `c`.
+
+*Proof.* Both evaluate the same sequence of IEEE-754 double operations on the same inputs.
+This holds if the compiler keeps the source order of those operations. `finlab._jit` disables
+fastmath for that reason, and the argument assumes that setting. *(Proved here, given the
+no-fastmath setting. The compiler's behaviour is not checked here beyond the tests below.)*
+
+**Proposition 4a.3 (same draws).** For every sequence of uniforms, the two kernels return the same
+draws.
+
+*Proof.* Induct on the draw index `k`. Assume that after `k` draws the incremental kernel's
+`avg` array equals the full kernel's array entry by entry. Then the total, which sums `avg` in
+index order, and the cumulative scan use the same numbers, so both pick the same label. Before the
+next draw, the kernel recomputes the labels on its stale list. That list holds every label that
+shares a bar with the pick (Proposition 4a.1), or every label. Each recomputed entry equals the
+full kernel's entry (Proposition 4a.2). Every other entry is unchanged and already equal. The
+assumption therefore holds after `k + 1` draws. *(Proved here.)*
+
+**Proposition 4a.4 (the choice of path does not change the draws).** The marked list and the full
+list both contain every label whose weight changed, and both are recomputed by the same loop. So
+the choice between them leaves every entry as the full kernel computes it, and by Proposition 4a.3
+the draws do not change. *(Proved here.)*
+
+**Cost (proved here).** Let `I` be the number of labels and `nnz` the number of 1 entries. For the
+drawn label `d`, let `V_d` be its touch count: the number of (bar, label) entries that the marking
+pass visits. Each (bar, label) entry is visited at most once per draw, so `V_d <= nnz`. Let `W_d`
+be the total span length of the labels the marking pass marks. Each label is marked at most once,
+so `W_d <= nnz`. The marked path does `V_d + W_d` units of work. The full path does `nnz` units.
+Both paths do `O(I)` work for the total and the scan. The kernel takes the full path when
+`8 V_d >= nnz`. When it takes the marked path, `V_d < nnz / 8`, so the marked path does at most
+`nnz / 8` more units than the full path would. A draw therefore costs `O(I + nnz)` at most, and the
+bar index costs `O(T + nnz)` once. These are operation counts, not timings.
+
+*Remark.* A threshold of the form `V_d >= nnz + I` would never fire, because `V_d <= nnz`. The rule
+compares `V_d` with `nnz` because both paths pay the same `O(I)` term.
+
+* **Checked by test.** `test_sequential_bootstrap_draws_equal_reference_kernel` covers 7 matrix
+  shapes (sparse and dense spans, a random binary matrix, one label, identical spans, open-ended
+  labels, an empty column), 20 seeds each, and 5 sample sizes per shape (`None`, 1, `max(1, I // 2)`,
+  `I`, `2I + 3`). Each comparison is `np.array_equal` on the draws, plus a dtype check. The reference
+  is a verbatim copy of the full-recompute kernel in the test file.
+* **Checked by test.** `test_sequential_bootstrap_mixed_spans_take_both_update_paths_in_one_call`
+  (4 seeds) builds 30 labels of 1 or 2 bars and 6 labels of about 150 bars on one grid. Each call
+  takes both paths. The test checks the draws against the reference and checks that both kinds of
+  draw occur.
+* **Measured.** `PYTHONPATH=src python benchmarks/bench_weights.py`, run from the worktree root on
+  2026-10-14, a shared 4-vCPU machine, best of 3 per timing, two runs. The "full kernel" column is
+  `_seq_bootstrap_kernel` on the same CSC arrays. The "sequential_bootstrap" column is the public
+  function, which also builds those arrays.
+
+  | case | bars | labels | ones | full kernel, ms (run 1 / run 2) | sequential_bootstrap, ms (run 1 / run 2) | speedup (run 1 / run 2) |
+  |---|---|---|---|---|---|---|
+  | small | 400 | 150 | 3175 | 0.83 / 1.24 | 0.43 / 0.82 | 1.94x / 1.53x |
+  | medium | 1500 | 500 | 20215 | 18.57 / 25.05 | 4.71 / 6.73 | 3.94x / 3.72x |
+  | large | 4000 | 1500 | 87482 | 238.47 / 232.45 | 39.65 / 43.23 | 6.02x / 5.38x |
+  | dense | 1500 | 500 | 224847 | 200.27 / 206.88 | 166.70 / 162.92 | 1.20x / 1.27x |
+
+  Before any change, one run on the same date gave 245.33 ms for the large case through
+  `sequential_bootstrap`, and 221.38 ms for the full kernel. That run had no dense row.
+
+  The dense case now takes the full path for most draws, and it is 1.20x and 1.27x faster rather
+  than slower. The divisor 8 comes from a sweep over span lengths that is not in the repository.
+  In the dense case, always marking ran at 0.96x and always recomputing at 1.05x. The proofs above
+  hold for any divisor. Timings under 1 ms are noisy.
+
 ## 5. Return attribution (Snippet 4.10)
 
 Let `r_t = log p_t - log p_{t-1}` (0 at the first bar, as in the book's NaN skip).

@@ -169,7 +169,60 @@ The two are different statistics. We return the regression form by default
 
 **[checked by test: `test_amihud_regression_and_ratio_match_naive`]** Both forms match loop-based sums to 1e-12.
 
-## 7. Bulk volume classification and VPIN (AFML 19.5.2)
+## 7. Hasbrouck's regression (AFML 19.4.3)
+
+**Model.** Bars `tau = 1..B` have closing prices `p~_tau`. Let `x_tau = sum_{t in bar tau} b_t sqrt(p_t V_t)`
+be the per-bar sum over the trades in bar `tau`, with signs `b_t`, prices `p_t > 0` and volumes `V_t > 0`.
+The regression, without intercept, is
+
+    y_tau = log(p~_tau) - log(p~_{tau-1}) = lambda x_tau + e_tau,    tau = 2..B.
+
+Bar 1 has no prior close, so `x_1` is not used. `hasbrouck_lambda` takes the closes and the per-bar sums.
+
+**Proposition 7.1 [proved here].** Let `n = B - 1` and sum over `tau = 2..B`. Then
+
+    lambda_hat = sum(x y) / sum(x^2),    t = lambda_hat / se,
+    se = sqrt( SSR / ((n - 1) sum(x^2)) ),    SSR = sum (y - lambda_hat x)^2.
+
+*Proof.* This is Proposition 5.1 with `(x, y)` in place of `(x, dp)`. The slope and standard error
+are the same OLS formulas on the rows `tau = 2..B`. If `SSR = 0`, `t` is `+inf` for `lambda_hat > 0`,
+`-inf` for `lambda_hat < 0`, and NaN for `lambda_hat = 0`. ∎
+
+**Remark 7.2 [proved here] (root split).** For `p_t, V_t > 0`, `sqrt(p_t V_t) = sqrt(p_t) sqrt(V_t)`.
+The helper multiplies the two roots, so the regressor stays finite when the product `p_t V_t` exceeds the
+float64 range but its root does not. The regression then runs on the scaled values in `_ols_origin`
+when the squared sums overflow.
+
+**Claimed from the book only (not verified against the text).** The model form in section 19.4.3:
+a log-price change regressed on the per-bar sum of signed square-root dollar volume, with no intercept.
+The book's justification for the square root is not re-derived here.
+
+**[checked by test: `test_hasbrouck_lambda_recovers_known_slope_exactly`]** Log closes built from
+`lambda = 0.37` and noiseless regressors return `lambda` to 1e-10. Exp and log round each close, so the match is
+to rounding, not exact. The t-value is then huge (`> 1e6`), since the residuals are rounding noise.
+
+**[checked by test: `test_hasbrouck_lambda_matches_numpy_lstsq`, `test_hasbrouck_lambda_matches_naive_loop`]**
+On seeded noisy data, `lambda_hat` matches `numpy.linalg.lstsq` to 1e-10 and a loop over the formulas to 1e-10
+(`t` to 1e-9). The slope with true value 0.8 lies within four standard errors on seeds 0 to 2.
+
+**[checked by test: `test_hasbrouck_tstat_matches_hand_computation`]** With regressor `(1, 2, 3)` and response
+`(2, 3, 5)`: `sum(xy) = 23`, `sum(x^2) = 14`, `SSR = 3/14`, so `lambda = 23/14` and `t^2 = 1058/3`.
+The test asserts `t = sqrt(1058/3)` to 1e-12.
+
+**[checked by test: `test_hasbrouck_lambda_large_regressor_stays_finite`]** With regressor near `1e200`,
+the squared sums overflow and the scaled fallback returns `lambda = 3e-200` to 1e-9.
+
+**[checked by test: `test_hasbrouck_scales_with_a_tiny_regressor`]** With the regressor multiplied by 1e-160,
+its squares are subnormal. The regression then runs on scaled sums, and `t` equals the unscaled
+`sqrt(1058/3)` to 1e-12 and `lambda` scales by 1e160.
+
+**[checked by test: `test_signed_root_dollar_volume_hand_example`, `test_signed_root_dollar_volume_matches_naive`, `test_signed_root_dollar_volume_large_prices_stay_finite`, `test_hasbrouck_trade_level_matches_bar_reference`]**
+The helper's per-bar sums match a trade-by-trade loop that uses `sqrt(p V)` directly, to 1e-12 on random trades
+with zero signs. The hand example covers an empty bar, which gets 0. With prices and volumes of `1e200`, the
+output is `1e200`, where `p V` itself would overflow. The end-to-end check runs trades through the helper and
+then the bar regression.
+
+## 8. Bulk volume classification and VPIN (AFML 19.5.2)
 
 **Note on sources.** The book's text gives VPIN and its bucketed estimator, but
 it does not give a bulk-volume classifier. The BVC formula below is from Easley,
@@ -180,7 +233,7 @@ Lopez de Prado and O'Hara (2012). It is not part of AFML's text.
 deviation of price changes. For observation `t`, the buy volume is `V_t phi_t`
 and the sell volume is `V_t (1 - phi_t)`.
 
-**Proposition 7.1 [proved here].** `phi_t` is in `[0, 1]`. If the distribution of
+**Proposition 8.1 [proved here].** `phi_t` is in `[0, 1]`. If the distribution of
 `dp_t` is symmetric about zero, `E[phi_t] = 1/2`.
 
 *Proof.* `Phi` takes values in `[0, 1]`. If `dp` is symmetric, `z` and `-z` have
@@ -191,7 +244,7 @@ the same law, so `E[Phi(z)] = E[Phi(-z)] = E[1 - Phi(z)]`, which gives
 observation that straddles a boundary is split pro rata, so each bucket holds
 exactly `V` units.
 
-**Proposition 7.2 (VPIN identity and bound) [proved here].** Let `B_tau` and
+**Proposition 8.2 (VPIN identity and bound) [proved here].** Let `B_tau` and
 `S_tau` be the buy and sell volume in bucket `tau`, with `B_tau + S_tau = V`. Then
 
     |B_tau - S_tau| = V |2 v_tau - 1|,   v_tau = B_tau / V,
@@ -226,7 +279,7 @@ estimated.
 The straddle split is an approximation, because the buy fraction of a single
 observation is applied to every bucket it touches.
 
-## 8. Summary
+## 9. Summary
 
 | Result | Status |
 |---|---|
@@ -240,6 +293,9 @@ observation is applied to every bucket it touches.
 | Kyle OLS and t-statistic (Prop. 5.1) | proved here; checked by test (`test_kyle_lambda_recovers_known_slope_exactly`, `test_kyle_lambda_noisy_matches_lstsq`) |
 | Kyle equilibrium `lambda = (1/2) sqrt(Sigma/sigma_u^2)` | claimed from the book only |
 | Amihud regression closed form (Prop. 6.1) | proved here; checked by test (`test_amihud_regression_and_ratio_match_naive`) |
-| BVC buy fraction in `[0,1]`, mean 1/2 (Prop. 7.1) | proved here; source is Easley et al. (2012), not AFML |
-| VPIN identity and bound in `[0,1]` (Prop. 7.2) | proved here; checked by test (`test_vpin_matches_trade_level_reference`, `test_vpin_bounded_in_unit_interval`) |
+| Hasbrouck OLS and t-statistic (Prop. 7.1) | proved here; checked by test (`test_hasbrouck_lambda_matches_naive_loop`, `test_hasbrouck_tstat_matches_hand_computation`) |
+| Hasbrouck regression form, square-root regressor (section 19.4.3) | claimed from the book only (not verified against the text) |
+| Root split `sqrt(p V) = sqrt(p) sqrt(V)` (Remark 7.2) | proved here; checked by test (`test_signed_root_dollar_volume_large_prices_stay_finite`) |
+| BVC buy fraction in `[0,1]`, mean 1/2 (Prop. 8.1) | proved here; source is Easley et al. (2012), not AFML |
+| VPIN identity and bound in `[0,1]` (Prop. 8.2) | proved here; checked by test (`test_vpin_matches_trade_level_reference`, `test_vpin_bounded_in_unit_interval`) |
 | VPIN `E|V^B - V^S| ~ alpha mu` | claimed from the book only |

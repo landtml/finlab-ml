@@ -14,10 +14,15 @@ import pytest
 
 from finlab.structural_breaks import (
     adf_stat,
+    cadf,
+    chow_dfc,
     chu_stinchcombe_white,
     csw_critical_value,
     cusum_test,
+    qadf,
     sadf,
+    sdfc,
+    smt,
 )
 
 # ---------------------------------------------------------------------------
@@ -672,3 +677,421 @@ def test_sadf_is_invariant_to_a_large_level_shift():
     shifted = sadf(base + 1e6, min_length=30, lags=1)
     assert not np.isinf(shifted).any()
     assert np.allclose(shifted, sadf(base, min_length=30, lags=1), atol=1e-8, equal_nan=True)
+
+
+# ---------------------------------------------------------------------------
+# Chow-type Dickey-Fuller DFC and SDFC (AFML ch. 17)
+# ---------------------------------------------------------------------------
+
+
+def naive_dfc(y, brk):
+    """Literal OLS of dy_t on y_{t-1} * 1{t >= brk}, no intercept, rows t = 1..T-1."""
+    t_idx = np.arange(1, len(y))
+    dy = y[t_idx] - y[t_idx - 1]
+    x = (y[t_idx - 1] * (t_idx >= brk)).reshape(-1, 1)
+    beta, *_ = np.linalg.lstsq(x, dy, rcond=None)
+    resid = dy - x @ beta
+    n, p = x.shape
+    cov = (resid @ resid / (n - p)) * np.linalg.inv(x.T @ x)
+    return beta[0] / math.sqrt(cov[0, 0])
+
+
+@pytest.mark.parametrize(
+    "n_obs, tau, brk",
+    [(100, 0.07, 7), (120, 0.15, 18), (120, 0.4, 48), (100, 0.29, 29), (50, 0.5, 25)],
+)
+def test_chow_dfc_break_is_ceil_of_tau_times_t(n_obs, tau, brk):
+    # 0.07 * 100 is slightly above 7 in floats, so the rounding decides between 7 and 8.
+    y = np.random.default_rng(n_obs).standard_normal(n_obs).cumsum()
+    assert chow_dfc(y, tau) == pytest.approx(naive_dfc(y, brk), rel=1e-9)
+    assert not math.isclose(naive_dfc(y, brk + 1), naive_dfc(y, brk), rel_tol=1e-6)
+
+
+def test_chow_dfc_matches_direct_ols_at_mid_break():
+    y = np.random.default_rng(42).standard_normal(120).cumsum()
+    assert chow_dfc(y, 0.5) == pytest.approx(naive_dfc(y, 60), rel=1e-9)
+
+
+def test_chow_dfc_is_scale_invariant():
+    y = np.random.default_rng(5).standard_normal(90).cumsum()
+    base = chow_dfc(y, 0.4)
+    assert chow_dfc(y * 1e200, 0.4) == pytest.approx(base, rel=1e-9)
+    assert chow_dfc(y * 1e-200, 0.4) == pytest.approx(base, rel=1e-9)
+
+
+def test_chow_dfc_pandas_and_numpy_agree():
+    idx = pd.date_range("2021-01-01", periods=80, freq="D")
+    s = pd.Series(np.random.default_rng(6).standard_normal(80).cumsum(), index=idx)
+    assert chow_dfc(s, 0.5) == chow_dfc(s.to_numpy(), 0.5)
+
+
+def test_sdfc_equals_max_of_direct_loop():
+    y = np.random.default_rng(11).standard_normal(120).cumsum()
+    res = sdfc(y, tau0=0.15)
+    breaks = np.arange(18, 103)  # ceil(0.15 * 120) = 18 and ceil(0.85 * 120) = 102
+    ref = np.array([naive_dfc(y, b) for b in breaks])
+    np.testing.assert_array_equal(res.breaks, breaks)
+    np.testing.assert_allclose(res.dfc, ref, rtol=1e-9)
+    assert res.statistic == pytest.approx(ref.max(), rel=1e-9)
+    assert res.break_index == breaks[int(np.argmax(ref))]
+    assert isinstance(res.dfc, np.ndarray)
+
+
+def test_sdfc_bounds_a_fine_tau_grid_and_is_attained_at_its_argmax():
+    y = np.random.default_rng(11).standard_normal(120).cumsum()
+    res = sdfc(y, tau0=0.15)
+    grid = [chow_dfc(y, tau) for tau in np.linspace(0.15, 0.85, 701)]
+    assert max(grid) <= res.statistic + 1e-12
+    assert chow_dfc(y, res.break_index / len(y)) == pytest.approx(res.statistic, rel=1e-9)
+
+
+def test_sdfc_is_larger_for_a_regime_switch_to_explosive_growth():
+    rng = np.random.default_rng(7)
+    n = 300
+    shocks = rng.standard_normal(n)
+    switch = np.empty(n)
+    switch[0] = 0.0
+    for t in range(1, n):
+        rho = 1.0 if t < 150 else 1.01
+        switch[t] = rho * switch[t - 1] + shocks[t]
+    walk = np.cumsum(shocks)
+    assert sdfc(switch).statistic > sdfc(walk).statistic + 2.0
+
+
+def test_sdfc_undefined_breaks_are_nan_and_skipped():
+    # y_{t-1} = 0 for every t >= 21, so DFC is NaN for each break b >= 21 and finite below it.
+    y = np.r_[np.arange(1.0, 21.0), np.zeros(20)]
+    res = sdfc(y, tau0=0.15)
+    assert np.isnan(res.dfc[res.breaks >= 21]).all()
+    assert np.isfinite(res.dfc[res.breaks <= 20]).all()
+    assert res.break_index <= 20
+
+
+def test_sdfc_refuses_when_every_admissible_break_is_undefined():
+    y = np.r_[1.0, np.zeros(29)]
+    with pytest.raises(ValueError, match="undefined"):
+        sdfc(y, tau0=0.15)
+
+
+def test_chow_dfc_undefined_when_no_post_break_level_is_nonzero():
+    y = np.r_[np.arange(1.0, 21.0), np.zeros(20)]
+    with pytest.raises(ValueError, match="undefined"):
+        chow_dfc(y, 0.6)
+
+
+@pytest.mark.parametrize("bad", [0.0, 0.5, 0.6, -0.1, float("nan"), True, "0.2"])
+def test_sdfc_rejects_tau0_outside_open_interval(bad):
+    with pytest.raises(ValueError, match="tau0"):
+        sdfc(np.random.default_rng(1).standard_normal(60).cumsum(), tau0=bad)
+
+
+@pytest.mark.parametrize("bad", [0.0, 1.0, 1.5, float("nan"), True])
+def test_chow_dfc_rejects_tau_outside_open_interval(bad):
+    with pytest.raises(ValueError, match="tau"):
+        chow_dfc(np.random.default_rng(1).standard_normal(60).cumsum(), bad)
+
+
+def test_chow_dfc_refuses_break_after_the_last_observation():
+    y = np.random.default_rng(2).standard_normal(50).cumsum()
+    with pytest.raises(ValueError, match="after the last observation"):
+        chow_dfc(y, 0.999)  # ceil(49.95) = 50 > T - 1
+
+
+def test_chow_dfc_and_sdfc_refuse_short_and_constant_series():
+    with pytest.raises(ValueError, match="three observations"):
+        chow_dfc([1.0, 2.0], 0.5)
+    with pytest.raises(ValueError, match="constant"):
+        chow_dfc(np.ones(30), 0.5)
+    with pytest.raises(ValueError, match="constant"):
+        sdfc(np.full(30, 2.0))
+
+
+def test_sdfc_refuses_descending_index():
+    idx = pd.date_range("2021-01-01", periods=40, freq="D")[::-1]
+    s = pd.Series(np.random.default_rng(3).standard_normal(40).cumsum(), index=idx)
+    with pytest.raises(ValueError, match="ascending"):
+        sdfc(s)
+
+
+# ---------------------------------------------------------------------------
+# Quantile and conditional ADF (AFML 17.4.2)
+# ---------------------------------------------------------------------------
+
+
+def naive_adf_set(y, min_length, lag, const, e):
+    """The ADF statistics whose maximum is SADF at end point e (windows of >= min_length levels)."""
+    return [naive_adf(y[s : e + 1], lag, const) for s in range(0, e - min_length + 2)]
+
+
+def naive_qadf(y, min_length, lag, const, q):
+    out = np.full(len(y), np.nan)
+    for e in range(min_length - 1, len(y)):
+        out[e] = np.quantile(naive_adf_set(y, min_length, lag, const, e), q)
+    return out
+
+
+def naive_cadf(y, min_length, lag, const, q):
+    out = np.full(len(y), np.nan)
+    for e in range(min_length - 1, len(y)):
+        taus = naive_adf_set(y, min_length, lag, const, e)
+        threshold = np.quantile(taus, q)
+        out[e] = np.mean([tau for tau in taus if tau >= threshold])
+    return out
+
+
+@pytest.mark.parametrize("const", ["c", "ct"])
+@pytest.mark.parametrize("q", [0.5, 0.9])
+def test_qadf_matches_naive_quantile(const, q):
+    y = np.random.default_rng(21).standard_normal(45).cumsum()
+    np.testing.assert_allclose(
+        qadf(y, 15, 1, q=q, constant=const), naive_qadf(y, 15, 1, const, q), rtol=1e-8, equal_nan=True
+    )
+
+
+@pytest.mark.parametrize("const", ["c", "ct"])
+@pytest.mark.parametrize("q", [0.5, 0.9])
+def test_cadf_matches_naive_tail_mean(const, q):
+    y = np.random.default_rng(22).standard_normal(45).cumsum()
+    np.testing.assert_allclose(
+        cadf(y, 15, 1, q=q, constant=const), naive_cadf(y, 15, 1, const, q), rtol=1e-8, equal_nan=True
+    )
+
+
+def test_qadf_and_cadf_at_q_one_equal_sadf_exactly():
+    y = np.random.default_rng(21).standard_normal(45).cumsum()
+    base = sadf(y, min_length=15, lags=1)
+    np.testing.assert_array_equal(qadf(y, 15, 1, q=1.0), base)
+    np.testing.assert_array_equal(cadf(y, 15, 1, q=1.0), base)
+
+
+def test_quantile_rule_is_numpy_linear():
+    from finlab.structural_breaks import _quantile_sorted
+
+    rng = np.random.default_rng(8)
+    for n in [1, 2, 3, 7, 40]:
+        vals = np.sort(rng.standard_normal(n))
+        for q in [0.0, 0.05, 0.25, 0.5, 0.73, 0.95, 1.0]:
+            assert _quantile_sorted(vals, q) == pytest.approx(np.quantile(vals, q), rel=1e-12, abs=1e-15)
+
+
+def test_qadf_dispersion_matches_naive_band():
+    y = np.random.default_rng(23).standard_normal(45).cumsum()
+    level, dispersion = qadf(y, 15, 1, q=0.9, v=0.05)
+    np.testing.assert_allclose(
+        level, naive_qadf(y, 15, 1, "c", 0.9), rtol=1e-8, equal_nan=True
+    )
+    expected = naive_qadf(y, 15, 1, "c", 0.95) - naive_qadf(y, 15, 1, "c", 0.85)
+    np.testing.assert_allclose(dispersion, expected, rtol=1e-8, equal_nan=True)
+    assert np.all(dispersion[14:] >= -1e-12)
+
+
+def test_qadf_is_nondecreasing_in_q_and_cadf_is_bracketed():
+    y = np.random.default_rng(24).standard_normal(60).cumsum()
+    grid = [0.1, 0.5, 0.9, 0.95, 1.0]
+    values = np.vstack([qadf(y, 20, 1, q=q) for q in grid])
+    finite = np.all(np.isfinite(values[:, 19:]), axis=0)
+    assert np.all(np.diff(values[:, 19:][:, finite], axis=0) >= 0)
+    upper = np.asarray(sadf(y, min_length=20, lags=1))
+    for q in [0.5, 0.9]:
+        c = cadf(y, 20, 1, q=q)
+        lower = qadf(y, 20, 1, q=q)
+        ok = np.isfinite(c)
+        assert np.all(c[ok] >= lower[ok] - 1e-12)
+        assert np.all(c[ok] <= upper[ok] + 1e-12)
+
+
+def test_qadf_and_cadf_pandas_index_and_numpy_agree():
+    idx = pd.date_range("2021-01-01", periods=60, freq="D")
+    s = pd.Series(np.random.default_rng(25).standard_normal(60).cumsum(), index=idx)
+    for fn in (qadf, cadf):
+        out = fn(s, 20, 1, q=0.9)
+        assert isinstance(out, pd.Series)
+        assert out.index.equals(idx)
+        np.testing.assert_allclose(out.to_numpy(), fn(s.to_numpy(), 20, 1, q=0.9), rtol=1e-12, equal_nan=True)
+    level, dispersion = qadf(s, 20, 1, q=0.9, v=0.05)
+    assert isinstance(level, pd.Series) and isinstance(dispersion, pd.Series)
+
+
+@pytest.mark.parametrize("bad", [-0.1, 1.1, float("nan"), True, "0.9"])
+def test_qadf_and_cadf_reject_q_outside_unit_interval(bad):
+    y = np.random.default_rng(26).standard_normal(60).cumsum()
+    with pytest.raises(ValueError, match="q must"):
+        qadf(y, 20, 1, q=bad)
+    with pytest.raises(ValueError, match="q must"):
+        cadf(y, 20, 1, q=bad)
+
+
+@pytest.mark.parametrize(
+    "q, v, message",
+    [(0.9, 0.0, "v must"), (0.9, -0.05, "v must"), (0.02, 0.05, "outside"), (0.98, 0.05, "outside")],
+)
+def test_qadf_rejects_bad_dispersion_band(q, v, message):
+    y = np.random.default_rng(27).standard_normal(60).cumsum()
+    with pytest.raises(ValueError, match=message):
+        qadf(y, 20, 1, q=q, v=v)
+
+
+def test_qadf_and_cadf_reject_short_window_and_bad_lag():
+    y = np.random.default_rng(28).standard_normal(60).cumsum()
+    with pytest.raises(ValueError, match="lag=2"):
+        qadf(y, 5, 2)
+    with pytest.raises(ValueError, match="lag must be an integer"):
+        cadf(y, 20, 1.5)
+    with pytest.raises(ValueError, match="lag must be >= 0"):
+        qadf(y, 20, -1)
+    with pytest.raises(ValueError, match="constant"):
+        cadf(y, 20, 1, constant="trend")
+
+
+def test_qadf_and_cadf_refuse_constant_series():
+    with pytest.raises(ValueError, match="constant"):
+        qadf(np.full(40, 1.0), 15, 1)
+    with pytest.raises(ValueError, match="constant"):
+        cadf(np.full(40, 1.0), 15, 1)
+
+
+# ---------------------------------------------------------------------------
+# Sub- and super-martingale tests (AFML 17.4.3)
+# ---------------------------------------------------------------------------
+
+
+def naive_smt_tstat(y, t0, t1, kind):
+    """OLS on the window [t0, t1] (0-based) with raw 1-based positions and lstsq."""
+    pos = np.arange(t0, t1 + 1) + 1.0
+    yy = y[t0 : t1 + 1]
+    if kind in ("poly2", "exp", "power"):
+        yy = np.log(yy)
+    if kind in ("poly1", "poly2"):
+        x, k = np.column_stack([np.ones_like(pos), pos, pos**2]), 2
+    elif kind == "exp":
+        x, k = np.column_stack([np.ones_like(pos), pos]), 1
+    else:
+        x, k = np.column_stack([np.ones_like(pos), np.log(pos)]), 1
+    beta = np.linalg.lstsq(x, yy, rcond=None)[0]
+    resid = yy - x @ beta
+    n, p = x.shape
+    cov = (resid @ resid / (n - p)) * np.linalg.inv(x.T @ x)
+    return beta[k] / math.sqrt(cov[k, k])
+
+
+def naive_smt(y, min_length, kind, phi):
+    out = np.full(len(y), np.nan)
+    for e in range(min_length - 1, len(y)):
+        out[e] = max(
+            abs(naive_smt_tstat(y, s, e, kind)) / (e - s) ** phi for s in range(0, e - min_length + 2)
+        )
+    return out
+
+
+def _positive_growth_series(n: int = 80, seed: int = 3) -> np.ndarray:
+    rng = np.random.default_rng(seed)
+    return np.exp(0.01 * np.arange(n) + 0.05 * rng.standard_normal(n))
+
+
+@pytest.mark.parametrize("kind", ["poly1", "poly2", "exp", "power"])
+@pytest.mark.parametrize("phi", [0.0, 0.5])
+def test_smt_matches_naive_loop_with_raw_positions(kind, phi):
+    # The naive loop uses the raw 1-based positions, so this also checks the window centring.
+    y = _positive_growth_series()
+    np.testing.assert_allclose(
+        smt(y, 12, kind, phi), naive_smt(y, 12, kind, phi), rtol=1e-7, equal_nan=True
+    )
+
+
+@pytest.mark.parametrize("kind", ["poly1", "poly2", "exp", "power"])
+def test_smt_is_scale_invariant(kind):
+    y = _positive_growth_series(n=60, seed=4)
+    base = np.asarray(smt(y, 12, kind))
+    for factor in (1e200, 1e-200):
+        np.testing.assert_allclose(np.asarray(smt(y * factor, 12, kind)), base, rtol=1e-7, equal_nan=True)
+
+
+@pytest.mark.parametrize("kind", ["poly1", "poly2", "exp", "power"])
+def test_smt_with_phi_one_is_no_larger_than_phi_zero(kind):
+    y = _positive_growth_series(n=60, seed=5)
+    plain = np.asarray(smt(y, 12, kind, 0.0))
+    damped = np.asarray(smt(y, 12, kind, 1.0))
+    ok = np.isfinite(plain)
+    assert np.all(damped[ok] <= plain[ok] + 1e-12)
+
+
+def test_smt_exponential_growth_exceeds_random_walk_for_exp_kind():
+    # Measured on seed 0 (see docs/proofs/structural_breaks.md, section 7). Pinned values.
+    rng = np.random.default_rng(0)
+    expo = np.exp(0.01 * np.arange(200)) * (1.0 + 0.01 * rng.standard_normal(200))
+    walk = np.exp(np.cumsum(0.01 * np.random.default_rng(100).standard_normal(200)))
+    exp_kind = np.asarray(smt(expo, 30, "exp"))
+    walk_kind = np.asarray(smt(walk, 30, "exp"))
+    assert float(exp_kind[-1]) == pytest.approx(845.1877, rel=1e-4)
+    assert float(np.nanmax(walk_kind)) == pytest.approx(32.8009, rel=1e-4)
+    assert np.nanmax(exp_kind) > 20.0 * np.nanmax(walk_kind)
+
+
+def test_smt_poly2_does_not_flag_pure_exponential_growth():
+    # A pure exponential is linear in logs, so the quadratic term of the log fit is near zero.
+    rng = np.random.default_rng(0)
+    expo = np.exp(0.01 * np.arange(200)) * (1.0 + 0.01 * rng.standard_normal(200))
+    walk = np.exp(np.cumsum(0.01 * np.random.default_rng(100).standard_normal(200)))
+    poly2_expo = np.asarray(smt(expo, 30, "poly2"))
+    assert float(np.nanmax(poly2_expo)) == pytest.approx(4.0016, rel=1e-4)
+    assert np.nanmax(poly2_expo) < np.nanmax(np.asarray(smt(walk, 30, "poly2")))
+
+
+def test_smt_poly1_accepts_negative_values_and_log_kinds_refuse_them():
+    y = np.random.default_rng(6).standard_normal(60)
+    assert np.any(y <= 0.0)
+    assert np.isfinite(np.asarray(smt(y, 12, "poly1"))[11:]).all()
+    for kind in ("poly2", "exp", "power"):
+        with pytest.raises(ValueError, match=f"kind={kind!r}.*strictly positive"):
+            smt(y, 12, kind)
+
+
+@pytest.mark.parametrize("kind", ["poly2", "exp", "power"])
+def test_smt_log_kinds_refuse_zero_by_name(kind):
+    y = _positive_growth_series(n=40)
+    y[7] = 0.0
+    with pytest.raises(ValueError, match="found 1 value"):
+        smt(y, 12, kind)
+
+
+def test_smt_pandas_index_and_nan_prefix():
+    idx = pd.date_range("2021-01-01", periods=60, freq="D")
+    s = pd.Series(_positive_growth_series(n=60, seed=8), index=idx)
+    out = smt(s, 12, "exp", 0.5)
+    assert isinstance(out, pd.Series)
+    assert out.index.equals(idx)
+    assert out.iloc[:11].isna().all()
+    assert out.iloc[11:].notna().all()
+    np.testing.assert_allclose(out.to_numpy(), smt(s.to_numpy(), 12, "exp", 0.5), rtol=1e-12, equal_nan=True)
+
+
+@pytest.mark.parametrize("bad", ["linear", None, 1, "POLY1"])
+def test_smt_refuses_unknown_kind(bad):
+    with pytest.raises(ValueError, match="kind must be one of"):
+        smt(_positive_growth_series(n=40), 12, bad)
+
+
+@pytest.mark.parametrize("bad", [-0.1, 1.5, float("nan"), True, "0.5"])
+def test_smt_refuses_phi_outside_unit_interval(bad):
+    with pytest.raises(ValueError, match="phi"):
+        smt(_positive_growth_series(n=40), 12, "exp", bad)
+
+
+def test_smt_refuses_min_length_too_small_for_the_regressors():
+    y = _positive_growth_series(n=40)
+    with pytest.raises(ValueError, match="too small for kind='poly1'"):
+        smt(y, 3, "poly1")
+    with pytest.raises(ValueError, match="too small for kind='exp'"):
+        smt(y, 2, "exp")
+    assert np.isfinite(np.asarray(smt(y, 3, "exp"))[2:]).all()
+
+
+@pytest.mark.parametrize("bad", [30.5, float("nan")])
+def test_smt_refuses_non_integer_min_length(bad):
+    with pytest.raises(ValueError, match="min_length must be an integer"):
+        smt(_positive_growth_series(n=40), bad, "exp")
+
+
+def test_smt_refuses_min_length_beyond_the_series():
+    with pytest.raises(ValueError, match="exceeds the series length"):
+        smt(_positive_growth_series(n=40), 41, "exp")

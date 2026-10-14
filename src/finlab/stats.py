@@ -1,4 +1,4 @@
-"""Backtest statistics: Sharpe ratio, PSR, expected maximum SR, DSR, minTRL.
+"""Backtest statistics: Sharpe ratio, PSR, expected maximum SR, DSR, minTRL, and the bet and drawdown statistics of AFML ch. 14.
 
 Implements the efficiency statistics of AFML chapter 14 (section 14.7):
 
@@ -14,6 +14,15 @@ Implements the efficiency statistics of AFML chapter 14 (section 14.7):
 * :func:`min_track_record_length` -- minTRL, the smallest T at which PSR reaches
   a given confidence (Bailey and Lopez de Prado 2012; not in the AFML text).
 
+Implements the bet and drawdown statistics of AFML ch. 14 (snippets 14.1 to 14.4):
+
+* :func:`bet_timing` -- timestamps where a bet ends (flattenings and flips), Snippet 14.1.
+* :func:`holding_period` -- average holding period weighted by the size closed, Snippet 14.2.
+* :func:`hhi_concentration` -- HHI of a return series, Snippet 14.3.
+* :func:`return_concentration` -- HHI of the positive returns, the negative returns and the
+  returns per calendar period, Snippet 14.3.
+* :func:`drawdown_time_under_water` -- drawdowns and time under water, Snippet 14.4.
+
 Notes
 -----
 All ``sr_*`` arguments of the PSR/DSR/minTRL functions are *non-annualised*
@@ -25,13 +34,14 @@ The annualised value returned by :func:`sharpe_ratio` must be de-annualised
 
 Scope
 -----
-Scalar statistics only; no multiple-testing corrections beyond DSR, and no
+Mostly scalar statistics. The bet and drawdown functions return a DatetimeIndex
+or a pair of Series. No multiple-testing corrections beyond DSR, and no
 estimation of skewness/kurtosis (callers compute them, e.g. with
 ``scipy.stats.skew`` and ``scipy.stats.kurtosis(fisher=False)``).
 
-Not covered: AFML 14.7.4 information ratio, implied precision and bet timing
-(14.4-14.6), and the variance estimation of the trial Sharpe ratios, which is
-left to the caller (``var_sr`` is an input).
+Not covered: AFML 14.7.4 information ratio, implied precision (14.4-14.6), and the
+variance estimation of the trial Sharpe ratios, which is left to the caller
+(``var_sr`` is an input).
 """
 
 from __future__ import annotations
@@ -40,14 +50,15 @@ import math
 import numbers
 import warnings
 from dataclasses import dataclass
-from typing import Union
+from typing import Any, Union
 
 import numpy as np
 import pandas as pd
 from scipy.stats import norm
 
-from finlab._checks import _require_real_values
+from finlab._checks import _require_real_values, _require_type, as_datetime_index
 from finlab._display import html_table
+from finlab._jit import jit
 
 __all__ = [
     "sharpe_ratio",
@@ -57,6 +68,12 @@ __all__ = [
     "deflated_sharpe",
     "DeflatedSharpeResult",
     "min_track_record_length",
+    "bet_timing",
+    "holding_period",
+    "hhi_concentration",
+    "return_concentration",
+    "ReturnConcentration",
+    "drawdown_time_under_water",
 ]
 
 EULER_MASCHERONI: float = 0.5772156649015329
@@ -464,6 +481,380 @@ def min_track_record_length(
     denom_sq = _psr_denominator(sr_hat, skew, kurt) ** 2
     z = norm.ppf(prob)
     return 1.0 + denom_sq * (z / (sr_hat - sr_benchmark)) ** 2
+
+
+def bet_timing(positions: pd.Series) -> pd.DatetimeIndex:
+    """Timestamps where a bet ends, from a series of target positions (AFML Snippet 14.1).
+
+    A bet ends at a flattening (the position goes from non-zero to zero) and at a
+    flip (the sign changes between two rows).
+
+    Parameters
+    ----------
+    positions : pd.Series
+        Target positions indexed by a strictly increasing DatetimeIndex. Positive is
+        long, negative short, 0 flat. Finite values only.
+
+    Returns
+    -------
+    pd.DatetimeIndex
+        Sorted bet-end timestamps, without duplicates. The last timestamp is always in
+        the result, so a position still open at the end is reported there.
+
+    Raises
+    ------
+    TypeError
+        If ``positions`` is not a Series, or its index is not a DatetimeIndex.
+    ValueError
+        If ``positions`` is empty, holds NaN or non-numeric values, or its index is not
+        strictly increasing.
+
+    Notes
+    -----
+    The first row has no predecessor, so it counts as non-flat: the NaN that ``shift(1)``
+    leaves in front of it compares unequal to zero. A flat first row is therefore a bet end.
+
+    The last timestamp is appended whenever it is not already a bet end, so a flat final
+    row that did not flatten a bet is also reported.
+    """
+    values, index = _timed_values("positions", positions)
+    flat_now = index[values == 0]
+    # The first row is treated as non-flat, the same as the NaN the book code compares.
+    was_open = index[np.r_[True, values[:-1] != 0]]
+    bets = flat_now.intersection(was_open)
+    # Signs, not the product: the product of two tiny opposite positions underflows to -0.0.
+    signs = np.sign(values)
+    flips = index[1:][signs[1:] * signs[:-1] < 0]
+    bets = bets.union(flips).sort_values()
+    if index[-1] not in bets:
+        bets = bets.append(index[-1:])
+    return bets
+
+
+def holding_period(positions: pd.Series) -> float:
+    """Average holding period in days, weighted by the size closed (AFML Snippet 14.2).
+
+    Units are pooled, so the entry time of the open position is the size-weighted mean
+    of the times its units were entered. A reduction or a flip closes size at the
+    current time, and that size contributes (close time - entry time) to the average.
+
+    Parameters
+    ----------
+    positions : pd.Series
+        Target positions, as in :func:`bet_timing`.
+
+    Returns
+    -------
+    float
+        Size-weighted average holding period in days, measured from the first timestamp.
+        NaN if no size is closed.
+
+    Raises
+    ------
+    TypeError
+        If ``positions`` is not a Series, or its index is not a DatetimeIndex.
+    ValueError
+        If ``positions`` is empty, holds NaN or non-numeric values, or its index is not
+        strictly increasing.
+
+    Notes
+    -----
+    Only closed size counts. A position still open at the end adds nothing to the
+    average. Time is in float days, so a 36-hour holding period is 1.5.
+
+    The loop runs in a numba kernel (``finlab._jit.jit``), with fastmath off.
+    """
+    values, index = _timed_values("positions", positions)
+    # The average is unchanged by a common scale of the sizes. Dividing by the largest size keeps
+    # time x size from overflowing over a long history (a size near 1e306 after 3000 days).
+    largest = float(np.max(np.abs(values)))
+    if largest > 0.0:
+        values = values / largest
+    tdiff = np.asarray((index - index[0]) / pd.Timedelta(days=1), dtype=float)
+    weighted, closed = _holding_kernel(np.ascontiguousarray(values), np.ascontiguousarray(tdiff))
+    if closed > 0.0:
+        return float(weighted / closed)
+    return float("nan")
+
+
+def hhi_concentration(returns: ArrayLike) -> float:
+    """Herfindahl-Hirschman concentration of a return series (AFML Snippet 14.3).
+
+    With weights w = r / sum(r), the HHI is ``(sum(w**2) - 1/n) / (1 - 1/n)``. Equal
+    returns give 0, and a single non-zero return among n gives 1.
+
+    Parameters
+    ----------
+    returns : array-like
+        Period returns, as a pd.Series, list or 1-D array. Finite values only.
+
+    Returns
+    -------
+    float
+        The HHI. NaN if there are two or fewer returns.
+
+    Raises
+    ------
+    ValueError
+        If ``returns`` holds NaN or infinite values, or its values sum to zero (the
+        weights are then undefined).
+
+    Notes
+    -----
+    The result lies in [0, 1] when all returns share a sign. Mixed signs can push the
+    weights outside [0, 1], so the value can exceed 1: for returns [2, -1, 0] it is 7.
+    """
+    x = _finite_returns(returns)
+    return _hhi(x)
+
+
+@dataclass(frozen=True)
+class ReturnConcentration:
+    """HHI of the positive returns, the negative returns and the returns per period.
+
+    Returned by :func:`return_concentration`.
+
+    Attributes
+    ----------
+    positive : float
+        HHI of the returns that are >= 0.
+    negative : float
+        HHI of the returns that are < 0.
+    time : float
+        HHI of the number of returns in each calendar period.
+    """
+
+    positive: float
+    negative: float
+    time: float
+
+
+def return_concentration(
+    returns: pd.Series, freq: str | pd.DateOffset | None = None
+) -> ReturnConcentration:
+    """Concentration of returns by sign and over time (AFML Snippet 14.3).
+
+    Parameters
+    ----------
+    returns : pd.Series
+        Period returns indexed by a DatetimeIndex. Finite values only.
+    freq : str, DateOffset or None, default None
+        Calendar period for the time component, passed to ``pd.Grouper``. None means
+        month end (``pd.offsets.MonthEnd()``), the book's "M". The offset object is used
+        because pandas 2.0 and 2.1 spell month end "M", and pandas 3 accepts only "ME".
+
+    Returns
+    -------
+    ReturnConcentration
+        ``positive`` is the HHI of ``returns[returns >= 0]``, ``negative`` the HHI of
+        ``returns[returns < 0]``, and ``time`` the HHI of the number of returns in each
+        period. Periods with no returns count as 0.
+
+    Raises
+    ------
+    TypeError
+        If ``returns`` is not a Series, or its index is not a DatetimeIndex.
+    ValueError
+        If ``returns`` holds NaN or infinite values.
+
+    Notes
+    -----
+    A component is NaN when its sub-series has two or fewer values, or sums to zero. A
+    positive sub-series sums to zero only when all its values are zero. Unlike
+    :func:`hhi_concentration`, this function does not refuse that case, because a
+    series with no gains is a normal input here.
+    """
+    _require_type(returns, "returns", pd.Series)
+    index = as_datetime_index(returns.index)
+    if not isinstance(index, pd.DatetimeIndex):
+        raise TypeError(
+            f"returns must be indexed by a DatetimeIndex, got {type(returns.index).__name__}."
+        )
+    values = _finite_returns(returns)
+    period = pd.offsets.MonthEnd() if freq is None else freq
+    counts = pd.Series(values, index=index).groupby(pd.Grouper(freq=period)).count()
+    return ReturnConcentration(
+        positive=_concentration_or_nan(values[values >= 0.0]),
+        negative=_concentration_or_nan(values[values < 0.0]),
+        time=_concentration_or_nan(counts.to_numpy(dtype=float)),
+    )
+
+
+def drawdown_time_under_water(
+    pnl: pd.Series, dollars: bool = False
+) -> tuple[pd.Series, pd.Series]:
+    """Drawdowns and time under water between high-water marks (AFML Snippet 14.4).
+
+    A high-water mark (HWM) is a new running maximum of ``pnl``. The drawdown that
+    starts at an HWM is the deepest point before ``pnl`` rises above that HWM again.
+    Only HWMs followed by a drawdown are reported.
+
+    Parameters
+    ----------
+    pnl : pd.Series
+        Cumulative profit and loss, or an equity curve, indexed by a strictly increasing
+        DatetimeIndex. Finite values only. Strictly positive when ``dollars`` is False.
+    dollars : bool, default False
+        If False, the drawdown is ``1 - min / hwm``, a fraction of the HWM, and ``pnl``
+        must be strictly positive. If True, it is ``hwm - min`` in pnl units.
+
+    Returns
+    -------
+    dd : pd.Series
+        One drawdown per reported HWM, indexed by the time that HWM was set. The last
+        drawdown is included even if it is still open.
+    tuw : pd.Series
+        Time under water in years, indexed by the time of the HWM that starts each
+        interval. It has one entry fewer than ``dd``, so the last drawdown has no entry.
+
+    Raises
+    ------
+    TypeError
+        If ``pnl`` is not a Series, its index is not a DatetimeIndex, or ``dollars`` is not
+        a bool.
+    ValueError
+        If ``pnl`` is empty, holds NaN or infinite values, its index is not strictly
+        increasing, or it is not strictly positive when ``dollars`` is False.
+
+    Notes
+    -----
+    A year is 365.25 days (a convention, not from the book). The book divides by a
+    ``'Y'`` timedelta, which pandas 3.0 rejects with ``ValueError: Unit Y is not supported``.
+
+    Time under water runs from an HWM to the next HWM that has a drawdown, not to the
+    next HWM. If an HWM with no later drawdown falls in between, the interval runs past
+    the true recovery. With ``dollars=True`` and pnl ``[0, 1, 0.5, 2, 3, 2, 4]`` on consecutive
+    days, the HWM at row 1 gets 3 days, but pnl is back above 1 at row 3, so the true time is 2 days.
+    """
+    if not isinstance(dollars, bool):
+        raise TypeError(f"dollars must be a bool, got {type(dollars).__name__}.")
+    values, index = _timed_values("pnl", pnl)
+    if not dollars and not bool((values > 0.0).all()):
+        raise ValueError(
+            "pnl must be strictly positive when dollars is False, because the drawdown is "
+            "divided by the high-water mark."
+        )
+    hwm = np.maximum.accumulate(values)
+    # The running maximum never falls, so each HWM is one contiguous run of rows.
+    starts = np.flatnonzero(np.r_[True, hwm[1:] != hwm[:-1]])
+    run_min = np.minimum.reduceat(values, starts)
+    run_hwm = hwm[starts]
+    keep = run_hwm > run_min
+    run_hwm, run_min = run_hwm[keep], run_min[keep]
+    run_time = index[starts][keep]
+    dd_values = run_hwm - run_min if dollars else 1.0 - run_min / run_hwm
+    dd = pd.Series(dd_values, index=run_time, name="dd", dtype=float)
+    gaps = (run_time[1:] - run_time[:-1]) / pd.Timedelta(days=365.25)
+    tuw = pd.Series(np.asarray(gaps, dtype=float), index=run_time[:-1], name="tuw")
+    return dd, tuw
+
+
+@jit
+def _holding_kernel(pos: np.ndarray, tdiff: np.ndarray) -> tuple[float, float]:
+    """Return (sum of days held x size closed, sum of size closed) for Snippet 14.2.
+
+    ``tdiff`` holds the timestamps in float days from the first row.
+    """
+    weighted = 0.0
+    closed = 0.0
+    t_entry = 0.0
+    for i in range(1, pos.shape[0]):
+        p_diff = pos[i] - pos[i - 1]
+        # Same test as p_diff * pos[i-1] >= 0, written on signs: that product underflows to -0.0
+        # for tiny positions, which then read as an increase.
+        if pos[i - 1] == 0.0 or p_diff == 0.0 or (p_diff > 0.0) == (pos[i - 1] > 0.0):
+            # Increased or unchanged: the entry time moves to the size-weighted mean.
+            if pos[i] != 0.0:
+                t_entry = (t_entry * pos[i - 1] + tdiff[i] * p_diff) / pos[i]
+        elif pos[i] != 0.0 and (pos[i] > 0.0) != (pos[i - 1] > 0.0):
+            # Flip: the whole old position closes, and the new one opens at this row.
+            size = abs(pos[i - 1])
+            weighted += (tdiff[i] - t_entry) * size
+            closed += size
+            t_entry = tdiff[i]
+        else:
+            size = abs(p_diff)
+            weighted += (tdiff[i] - t_entry) * size
+            closed += size
+    return weighted, closed
+
+
+def _timed_values(name: str, series: Any) -> tuple[np.ndarray, pd.DatetimeIndex]:
+    """Return the float values and the DatetimeIndex of a time-indexed series.
+
+    The rows must be in time order, because the bet and drawdown rules read the order of
+    the rows. NaN, infinite and non-numeric values are refused.
+    """
+    _require_type(series, name, pd.Series)
+    index = as_datetime_index(series.index)
+    if not isinstance(index, pd.DatetimeIndex):
+        raise TypeError(
+            f"{name} must be indexed by a DatetimeIndex, got {type(series.index).__name__}."
+        )
+    if index.hasnans:
+        raise ValueError(f"{name} index must not contain NaT.")
+    if len(series) == 0:
+        raise ValueError(f"{name} must hold at least one observation.")
+    dtype = series.dtype
+    if pd.api.types.is_bool_dtype(dtype) or not (
+        pd.api.types.is_numeric_dtype(dtype) or dtype == object
+    ):
+        raise ValueError(f"{name} must hold real numbers, got dtype {dtype}.")
+    _require_real_values(name, series.to_numpy())
+    if bool(series.isna().any()):
+        raise ValueError(f"{name} must not contain NaN; a missing value is not a position or a pnl.")
+    values = np.asarray(series.to_numpy(dtype=float), dtype=float)
+    if not np.isfinite(values).all():
+        bad = values[~np.isfinite(values)][0]
+        raise ValueError(f"{name} must be finite, got {bad!r}.")
+    if not (index.is_monotonic_increasing and index.is_unique):
+        raise ValueError(f"{name} index must be strictly increasing.")
+    return values, index
+
+
+def _finite_returns(returns: ArrayLike) -> np.ndarray:
+    """Return ``returns`` as a 1-D float array, refusing NaN and infinite values."""
+    if np.ndim(returns) == 0:
+        # A scalar would reshape to one value and come back as NaN, which reads as "no answer".
+        raise ValueError("returns must be a sequence of numbers, got a scalar.")
+    x = _as_1d(returns)
+    if np.isnan(x).any():
+        raise ValueError("returns must not contain NaN; drop missing values before calling.")
+    if np.isinf(x).any():
+        raise ValueError("returns must be finite, got an infinite value.")
+    return x
+
+
+def _sums_to_zero(x: np.ndarray) -> bool:
+    """True when the values sum to zero, within float precision relative to their size."""
+    return bool(abs(float(np.sum(x))) <= 1e-12 * float(np.sum(np.abs(x))))
+
+
+def _unit_scale(x: np.ndarray) -> np.ndarray:
+    """Return ``x`` divided by its largest magnitude, so that sums of it cannot overflow."""
+    # The HHI is scale-free. Without this, three returns of 1e308 sum to inf and look like a zero sum.
+    m = float(np.max(np.abs(x))) if x.size else 0.0
+    return x / m if m > 0.0 else x
+
+
+def _hhi(x: np.ndarray) -> float:
+    """HHI of a finite 1-D array; NaN for two or fewer values, refused when the sum is zero."""
+    n = x.size
+    if n <= 2:
+        return float("nan")
+    z = _unit_scale(x)
+    if _sums_to_zero(z):
+        raise ValueError("returns sum to zero, so the HHI weights r / sum(r) are undefined.")
+    w = z / float(np.sum(z))
+    h = float(np.sum(w * w))
+    return (h - 1.0 / n) / (1.0 - 1.0 / n)
+
+
+def _concentration_or_nan(x: np.ndarray) -> float:
+    """HHI of a sub-series; NaN when it is too short or sums to zero, where HHI is undefined."""
+    if x.size <= 2 or _sums_to_zero(_unit_scale(x)):
+        return float("nan")
+    return _hhi(x)
 
 
 def _psr_denominator(sr_hat: float, skew: float, kurt: float) -> float:

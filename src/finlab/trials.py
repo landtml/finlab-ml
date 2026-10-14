@@ -85,7 +85,7 @@ class TrialRecord:
         # values for a researcher, so the type name is part of the key.
         pairs = cast("tuple[tuple[str, ParamValue], ...]", self.params)
         params = tuple((key, type(value).__name__, value) for key, value in pairs)
-        return (self.name, params, _returns_key(self.returns))
+        return (self.name, params, _returns_key(cast(np.ndarray, self.returns)))
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, TrialRecord):

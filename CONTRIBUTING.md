@@ -14,8 +14,12 @@ Run these before opening a pull request. CI runs the same commands.
 
 ```bash
 ruff check src tests tools benchmarks examples
+mypy
 pytest -q
 ```
+
+CI also runs the suite on Python 3.10 with the lowest dependency versions that
+`pyproject.toml` allows (numpy 1.24, pandas 2.0, numba 0.59, scipy 1.10).
 
 ## Pull requests
 

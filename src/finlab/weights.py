@@ -392,6 +392,9 @@ def _seq_bootstrap_kernel(
     already drawn (``c[t]`` counts of earlier draws):
     ``avg[j] = (sum_t 1 / (1 + c[t])) / colsum[j]``. The draw is the first ``j``
     whose cumulative weight exceeds ``uniforms[k] * total``.
+
+    This full-recompute kernel is the reference for :func:`_seq_bootstrap_kernel_incremental`,
+    which returns the same draws. :mod:`finlab.monte_carlo` calls this one directly.
     """
     n_ev = ptr.shape[0] - 1
     n_draw = uniforms.shape[0]
@@ -424,6 +427,110 @@ def _seq_bootstrap_kernel(
         draws[k] = pick
         for q in range(ptr[pick], ptr[pick + 1]):
             c[rows[q]] += 1.0
+    return draws
+
+
+# A draw recomputes every weight when the drawn label's touch count reaches nnz / DIVISOR.
+_FULL_RECOMPUTE_DIVISOR = 8
+
+
+@jit
+def _seq_bootstrap_kernel_incremental(
+    n_bars: int,
+    ptr: np.ndarray,
+    rows: np.ndarray,
+    colsum: np.ndarray,
+    uniforms: np.ndarray,
+) -> np.ndarray:
+    """Same draws as :func:`_seq_bootstrap_kernel`, recomputing only the weights a draw changes.
+
+    A draw raises the concurrency ``c[t]`` only on the bars of the drawn label. The weight of
+    a label depends only on the ``c`` values of its own bars, so only labels sharing a bar with
+    the drawn label change. Each draw lists the labels whose weight is stale, and one loop
+    recomputes them with the same arithmetic, in the same order, as the full kernel. The total
+    and the inverse-CDF scan still run over all labels in index order, because their
+    floating-point sums depend on that order.
+
+    When the drawn label touches many (bar, label) entries, marking the stale labels costs about
+    as much as recomputing every weight, so the draw lists every label instead. The loop that
+    recomputes weights is the same in both cases, so the choice does not change the draws.
+    """
+    n_ev = ptr.shape[0] - 1
+    n_draw = uniforms.shape[0]
+    nnz = rows.shape[0]
+    # Bar-major index: the labels covering bar t are ev[row_ptr[t]:row_ptr[t + 1]].
+    row_ptr = np.zeros(n_bars + 1, dtype=np.int64)
+    for q in range(nnz):
+        row_ptr[rows[q] + 1] += 1
+    for t in range(n_bars):
+        row_ptr[t + 1] += row_ptr[t]
+    fill = row_ptr[:n_bars].copy()
+    ev = np.empty(nnz, dtype=np.int64)
+    for j in range(n_ev):
+        for q in range(ptr[j], ptr[j + 1]):
+            t = rows[q]
+            ev[fill[t]] = j
+            fill[t] += 1
+    # touch[j]: the (bar, label) entries the marking pass visits when label j is drawn.
+    touch = np.zeros(n_ev, dtype=np.int64)
+    for j in range(n_ev):
+        s = 0
+        for q in range(ptr[j], ptr[j + 1]):
+            t = rows[q]
+            s += row_ptr[t + 1] - row_ptr[t]
+        touch[j] = s
+
+    all_labels = np.arange(n_ev)
+    marked = np.empty(n_ev, dtype=np.int64)
+    # mark[j] == k when label j was listed as stale after draw k, so it is listed once.
+    mark = np.full(n_ev, -1, dtype=np.int64)
+    stale = all_labels
+    n_stale = n_ev
+    c = np.zeros(n_bars, dtype=np.float64)
+    avg = np.zeros(n_ev, dtype=np.float64)
+    draws = np.empty(n_draw, dtype=np.int64)
+    for k in range(n_draw):
+        for i in range(n_stale):
+            j = stale[i]
+            acc = 0.0
+            if colsum[j] > 0.0:
+                for q in range(ptr[j], ptr[j + 1]):
+                    acc += 1.0 / (1.0 + c[rows[q]])
+                acc = acc / colsum[j]
+            avg[j] = acc
+        total = 0.0
+        for j in range(n_ev):
+            total += avg[j]
+        target = uniforms[k] * total
+        acc = 0.0
+        pick = -1
+        last_pos = -1
+        for j in range(n_ev):
+            if avg[j] > 0.0:
+                last_pos = j
+                acc += avg[j]
+                if acc > target:
+                    pick = j
+                    break
+        if pick < 0:
+            pick = last_pos
+        draws[k] = pick
+        for q in range(ptr[pick], ptr[pick + 1]):
+            c[rows[q]] += 1.0
+        if touch[pick] * _FULL_RECOMPUTE_DIVISOR >= nnz:
+            stale = all_labels
+            n_stale = n_ev
+        else:
+            n_stale = 0
+            for q in range(ptr[pick], ptr[pick + 1]):
+                t = rows[q]
+                for r in range(row_ptr[t], row_ptr[t + 1]):
+                    j = ev[r]
+                    if mark[j] != k:
+                        mark[j] = k
+                        marked[n_stale] = j
+                        n_stale += 1
+            stale = marked
     return draws
 
 
@@ -461,7 +568,10 @@ def sequential_bootstrap(
     is reproducible for a given seed and matches a naive loop that uses the
     same uniforms.
 
-    Scope: cost is O(n_samples * (T + nnz)) with nnz the number of 1 entries.
+    Scope: each draw costs O(I + nnz) at most, with I the number of labels and nnz the number
+    of 1 entries. A draw whose label shares bars with few others recomputes only those labels.
+    A draw whose label touches most of the matrix recomputes every weight. Building the bar
+    index costs O(T + nnz) once.
     """
     if isinstance(index_matrix, pd.DataFrame):
         m = index_matrix.to_numpy(dtype=np.float64)
@@ -487,7 +597,7 @@ def sequential_bootstrap(
     rows = t_idx.astype(np.int64)
     rng = np.random.default_rng(seed)
     uniforms = rng.random(n_draw)
-    return _seq_bootstrap_kernel(n_bars, ptr, rows, colsum, uniforms)
+    return _seq_bootstrap_kernel_incremental(n_bars, ptr, rows, colsum, uniforms)
 
 
 # ---------------------------------------------------------------------------

@@ -65,7 +65,7 @@ def _as_integer(value: object) -> int | None:
     if isinstance(value, numbers.Integral):
         return int(value)
     if isinstance(value, numbers.Real) and math.isfinite(value) and float(value).is_integer():
-        return int(value)
+        return int(math.floor(value))
     return None
 
 
@@ -123,11 +123,12 @@ def prob_bet_size(
     p = np.asarray(prob, dtype=np.float64) + 0.0
     if np.any((p < 0) | (p > 1)) or np.any(np.isnan(p)):
         raise ValueError("probabilities must lie in [0, 1].")
-    if _as_integer(num_classes) is None:
+    whole = _as_integer(num_classes)
+    if whole is None:
         # A non-integral float such as 2.5 must not take the "> 2" branch, so it is refused.
         # A whole float such as 2.0 is accepted: only a non-integral value is refused.
         raise ValueError(f"num_classes must be an integer, got {num_classes!r}.")
-    num_classes = _as_integer(num_classes)
+    num_classes = whole
     if num_classes < 2:
         raise ValueError(f"num_classes must be >= 2, got {num_classes!r}.")
     s = None if side is None else np.asarray(side, dtype=np.float64)

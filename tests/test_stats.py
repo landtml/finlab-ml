@@ -16,11 +16,16 @@ from scipy.stats import norm
 import finlab.stats as stats_module
 from finlab.stats import (
     DeflatedSharpeResult,
+    bet_timing,
     deflated_sharpe,
     deflated_sharpe_ratio,
+    drawdown_time_under_water,
     expected_max_sharpe,
+    hhi_concentration,
+    holding_period,
     min_track_record_length,
     probabilistic_sharpe_ratio,
+    return_concentration,
     sharpe_ratio,
 )
 
@@ -589,3 +594,424 @@ def test_min_track_record_length_prob_half_gives_the_root() -> None:
     assert min_track_record_length(0.1, 0.0, prob=0.5) == pytest.approx(1.0)
     with pytest.raises(ValueError, match="prob"):
         min_track_record_length(0.1, 0.0, prob=0.4)
+
+
+# ---------------------------------------------------------------------------
+# Bets, holding period, concentration and drawdown (AFML Snippets 14.1 to 14.4)
+# ---------------------------------------------------------------------------
+
+
+def _daily(values: list[float] | np.ndarray) -> pd.Series:
+    values = np.asarray(values, dtype=float)
+    return pd.Series(values, index=pd.date_range("2024-01-01", periods=values.size, freq="D"))
+
+
+def _bet_timing_reference(values: list[float]) -> list[int]:
+    # The bet-end rule, one row at a time. A flat row ends a bet when the row before it was not
+    # flat; the first row counts as not flat. A sign flip ends a bet. The last row is always included.
+    n = len(values)
+    ends: set[int] = set()
+    for t in range(n):
+        was_open = True if t == 0 else values[t - 1] != 0
+        if values[t] == 0 and was_open:
+            ends.add(t)
+        if t > 0 and values[t] * values[t - 1] < 0:
+            ends.add(t)
+    ends.add(n - 1)
+    return sorted(ends)
+
+
+def _holding_period_reference(positions: list[float], days: list[float]) -> float:
+    # Snippet 14.2 transcribed row by row in pure Python. The numba kernel is compared with it.
+    closed: list[tuple[float, float]] = []
+    t_entry = 0.0
+    for i in range(1, len(positions)):
+        p_diff = positions[i] - positions[i - 1]
+        if p_diff * positions[i - 1] >= 0:
+            if positions[i] != 0:
+                t_entry = (t_entry * positions[i - 1] + days[i] * p_diff) / positions[i]
+        elif positions[i] * positions[i - 1] < 0:
+            closed.append((days[i] - t_entry, abs(positions[i - 1])))
+            t_entry = days[i]
+        else:
+            closed.append((days[i] - t_entry, abs(p_diff)))
+    total = sum(w for _, w in closed)
+    return sum(dt * w for dt, w in closed) / total if total > 0 else math.nan
+
+
+def _drawdown_reference(pnl: list[float]) -> tuple[list[int], list[float], list[float]]:
+    # One scan of the path. A high-water mark (HWM) starts at a row where pnl rises above every earlier
+    # value. Its drawdown is the lowest pnl before pnl rises above the HWM again. Daily rows, so a row
+    # difference is a number of days.
+    marks: list[tuple[int, float, float]] = []
+    row, hwm, low = 0, pnl[0], pnl[0]
+    for t in range(1, len(pnl)):
+        if pnl[t] > hwm:
+            marks.append((row, hwm, low))
+            row, hwm, low = t, pnl[t], pnl[t]
+        else:
+            low = min(low, pnl[t])
+    marks.append((row, hwm, low))
+    kept = [(r, h, lo) for r, h, lo in marks if h > lo]
+    rows = [r for r, _, _ in kept]
+    dd = [1.0 - lo / h for _, h, lo in kept]
+    tuw = [(rows[k + 1] - rows[k]) / 365.25 for k in range(len(rows) - 1)]
+    return rows, dd, tuw
+
+
+def test_bet_timing_flattening_flip_and_trailing_open_position() -> None:
+    # Rows 0 to 6: long, long, flip to short, short, flat, long, long. The last position is still open.
+    positions = _daily([1, 1, -1, -1, 0, 1, 1])
+    bets = bet_timing(positions)
+    assert isinstance(bets, pd.DatetimeIndex)
+    assert list(bets) == [positions.index[2], positions.index[4], positions.index[6]]
+
+
+def test_bet_timing_flat_first_row_is_a_bet_end() -> None:
+    # The NaN that shift(1) leaves in front of row 0 compares unequal to zero, as in the book code.
+    positions = _daily([0, 1, 1, 0])
+    assert list(bet_timing(positions)) == [positions.index[0], positions.index[3]]
+
+
+def test_bet_timing_reports_a_flat_last_row_even_when_it_ends_no_bet() -> None:
+    # Row 1 is the flattening. Row 2 is flat but did not end a bet; it is included as the last timestamp.
+    positions = _daily([1, 0, 0])
+    assert list(bet_timing(positions)) == [positions.index[1], positions.index[2]]
+
+
+def test_bet_timing_single_open_row_is_its_own_bet_end() -> None:
+    positions = _daily([1])
+    assert list(bet_timing(positions)) == [positions.index[0]]
+
+
+def test_bet_timing_matches_row_by_row_rule_on_random_positions() -> None:
+    rng = np.random.default_rng(14)
+    for _ in range(20):
+        raw = rng.integers(-2, 3, size=60).astype(float)
+        positions = _daily(raw)
+        rows = positions.index.get_indexer(bet_timing(positions)).tolist()
+        assert rows == _bet_timing_reference(raw.tolist())
+
+
+def test_bet_timing_refuses_bad_input() -> None:
+    with pytest.raises(TypeError, match="positions must be a pandas Series"):
+        bet_timing(np.array([1.0, 0.0]))
+    with pytest.raises(TypeError, match="DatetimeIndex"):
+        bet_timing(pd.Series([1.0, 0.0]))
+    with pytest.raises(ValueError, match="at least one observation"):
+        bet_timing(_daily([]))
+    with pytest.raises(ValueError, match="must not contain NaN"):
+        bet_timing(_daily([1.0, np.nan, 0.0]))
+    # pandas 2.0 gives a string Series dtype object, which is refused by the element check
+    # ("must be real numbers"); pandas 3 has a str dtype, refused by the dtype check ("must hold").
+    with pytest.raises(ValueError, match="real numbers"):
+        bet_timing(pd.Series(["1", "0"], index=pd.date_range("2024-01-01", periods=2)))
+    with pytest.raises(ValueError, match="must be real numbers"):
+        bet_timing(pd.Series(["1", "0"], index=pd.date_range("2024-01-01", periods=2), dtype=object))
+    with pytest.raises(ValueError, match="must hold real numbers"):
+        bet_timing(pd.Series([True, False], index=pd.date_range("2024-01-01", periods=2)))
+    with pytest.raises(ValueError, match="strictly increasing"):
+        bet_timing(pd.Series([1.0, 0.0], index=pd.DatetimeIndex(["2024-01-02", "2024-01-01"])))
+    with pytest.raises(ValueError, match="strictly increasing"):
+        bet_timing(pd.Series([1.0, 0.0], index=pd.DatetimeIndex(["2024-01-01", "2024-01-01"])))
+
+
+def test_bet_timing_sees_flips_between_tiny_positions() -> None:
+    # The product of two opposite positions of 1e-200 underflows to -0.0, which is not < 0.
+    # A flip must be read from the signs, so the flips on rows 1 and 3 are both reported.
+    got = bet_timing(_daily([1e-200, -1e-200, -1e-200, 1e-200]))
+    assert list(got) == list(pd.date_range("2024-01-01", periods=4, freq="D")[[1, 3]])
+
+
+@pytest.mark.parametrize("scale", [1e-200, 1e-300])
+def test_bet_timing_is_unchanged_by_scaling_positions(scale: float) -> None:
+    rng = np.random.default_rng(11)
+    for _ in range(20):
+        values = rng.integers(-2, 3, 25).astype(float)
+        assert bet_timing(_daily(values * scale)).equals(bet_timing(_daily(values)))
+
+
+@pytest.mark.parametrize(
+    ("values", "expected"),
+    [([1.0, 0.5, 0.0, 0.0], 1.5), ([1.0, -1.0, 0.0, 0.0], 1.0)],
+)
+@pytest.mark.parametrize("scale", [1.0, 1e-200, 1e-300])
+def test_holding_period_closes_tiny_positions(values: list[float], expected: float, scale: float) -> None:
+    # Holding period does not depend on the unit of size. Products of tiny positions underflow to
+    # -0.0 and would read as an increase, which drops the closing row.
+    assert holding_period(_daily(np.array(values) * scale)) == pytest.approx(expected, rel=1e-12)
+
+
+def test_holding_period_handles_sizes_near_1e306_over_a_long_history() -> None:
+    # Entry 3000 days after the first row with size 1e306: the product of that time and the size
+    # overflowed to inf, and the average came out as -inf. Entry on day 3000 and close on day 3002.
+    positions = np.zeros(3003)
+    positions[3000], positions[3001] = 1e306, 2e306
+    series = pd.Series(positions, index=pd.date_range("2000-01-01", periods=3003, freq="D"))
+    assert holding_period(series) == pytest.approx(1.5, rel=1e-9)
+
+
+@pytest.mark.parametrize("scale", [1e-200, 1e-300])
+def test_holding_period_is_unchanged_by_scaling_random_positions(scale: float) -> None:
+    rng = np.random.default_rng(12)
+    for _ in range(20):
+        values = rng.integers(-2, 3, 25).astype(float)
+        assert holding_period(_daily(values * scale)) == pytest.approx(
+            holding_period(_daily(values)), rel=1e-12, nan_ok=True
+        )
+
+
+def test_holding_period_one_long_closed_after_three_days() -> None:
+    # Opened on day 0 with size 1 and closed on day 3.
+    assert holding_period(_daily([1, 1, 1, 0])) == pytest.approx(3.0, rel=1e-12)
+
+
+def test_holding_period_scale_in_weights_the_entry_by_size() -> None:
+    # Day 0: one unit. Day 1: a second unit, so the entry time is (0 * 1 + 1 * 1) / 2 = 0.5.
+    # Day 2: both units close, each held 2 - 0.5 = 1.5 days on average.
+    assert holding_period(_daily([1, 2, 0])) == pytest.approx(1.5, rel=1e-12)
+
+
+def test_holding_period_partial_close_weights_each_closing_step_by_size() -> None:
+    # Day 0: two units. Day 1: one closes after 1 day. Day 3: the other closes after 3 days. Mean 2.
+    positions = pd.Series(
+        [2.0, 1.0, 0.0], index=pd.DatetimeIndex(["2024-01-01", "2024-01-02", "2024-01-04"])
+    )
+    assert holding_period(positions) == pytest.approx(2.0, rel=1e-12)
+
+
+def test_holding_period_flip_closes_the_old_side_and_restarts_the_entry() -> None:
+    # Long from day 0 closes on the flip at day 2 (2 days). The short opened at day 2 closes on day 5 (3 days).
+    positions = pd.Series(
+        [1.0, -1.0, -1.0, 0.0],
+        index=pd.DatetimeIndex(["2024-01-01", "2024-01-03", "2024-01-05", "2024-01-06"]),
+    )
+    assert holding_period(positions) == pytest.approx(2.5, rel=1e-12)
+
+
+def test_holding_period_uses_fractional_days() -> None:
+    positions = pd.Series([1.0, 0.0], index=pd.DatetimeIndex(["2024-01-01 00:00", "2024-01-02 12:00"]))
+    assert holding_period(positions) == pytest.approx(1.5, rel=1e-12)
+
+
+def test_holding_period_is_nan_when_nothing_is_closed() -> None:
+    assert math.isnan(holding_period(_daily([1, 1, 1])))
+    assert math.isnan(holding_period(_daily([0])))
+
+
+def test_holding_period_refuses_bad_input() -> None:
+    with pytest.raises(TypeError, match="positions must be a pandas Series"):
+        holding_period([1.0, 0.0])
+    with pytest.raises(ValueError, match="must not contain NaN"):
+        holding_period(_daily([1.0, np.nan, 0.0]))
+    with pytest.raises(ValueError, match="at least one observation"):
+        holding_period(_daily([]))
+
+
+def test_holding_period_numba_kernel_matches_python_transcription() -> None:
+    rng = np.random.default_rng(2)
+    for trial in range(30):
+        n = int(rng.integers(2, 120))
+        raw = rng.integers(-3, 4, size=n).astype(float) if trial % 2 else rng.normal(0.0, 1.0, n)
+        index = pd.Timestamp("2024-01-01") + pd.to_timedelta(
+            np.concatenate([[0.0], np.cumsum(rng.uniform(0.1, 3.0, n - 1))]), unit="D"
+        )
+        days = ((index - index[0]) / pd.Timedelta(days=1)).tolist()
+        expected = _holding_period_reference(raw.tolist(), days)
+        got = holding_period(pd.Series(raw, index=index))
+        if math.isnan(expected):
+            assert math.isnan(got)
+        else:
+            assert got == pytest.approx(expected, rel=1e-12)
+
+
+def test_hhi_equal_returns_give_zero() -> None:
+    assert hhi_concentration([0.01] * 5) == pytest.approx(0.0, abs=1e-12)
+
+
+def test_hhi_single_nonzero_return_gives_one() -> None:
+    assert hhi_concentration([0.0, 0.0, 0.0, 0.5]) == pytest.approx(1.0, rel=1e-12)
+
+
+def test_hhi_two_or_fewer_returns_is_nan() -> None:
+    assert math.isnan(hhi_concentration([0.1, 0.2]))
+    assert math.isnan(hhi_concentration([0.1]))
+
+
+def test_hhi_hand_computed_three_returns() -> None:
+    # Weights (1/6, 1/3, 1/2) give sum w^2 = 7/18, so HHI = (7/18 - 1/3) / (2/3) = 1/12.
+    assert hhi_concentration([1.0, 2.0, 3.0]) == pytest.approx(1 / 12, rel=1e-12)
+
+
+def test_hhi_is_scale_invariant() -> None:
+    r = np.array([0.02, -0.01, 0.0, 0.03, 0.01])
+    assert hhi_concentration(10.0 * r) == pytest.approx(hhi_concentration(r), rel=1e-12)
+
+
+def test_hhi_equal_huge_returns_give_zero() -> None:
+    # The sum of three 1e308 overflows to inf. The HHI is scale-free, so it must not be refused.
+    assert hhi_concentration([1e308, 1e308, 1e308]) == pytest.approx(0.0, abs=1e-12)
+
+
+def test_hhi_refuses_a_scalar_by_name() -> None:
+    # A scalar is not a return series; it must not come back as NaN.
+    with pytest.raises(ValueError, match="returns"):
+        hhi_concentration(0.02)
+
+
+def test_hhi_single_signed_returns_stay_in_unit_interval() -> None:
+    # With one sign the weights lie in [0, 1], so sum w^2 <= sum w = 1 and HHI <= 1.
+    rng = np.random.default_rng(5)
+    for _ in range(50):
+        r = rng.uniform(0.001, 1.0, int(rng.integers(3, 40)))
+        for sign in (1.0, -1.0):
+            assert -1e-12 <= hhi_concentration(sign * r) <= 1.0 + 1e-12
+
+
+def test_hhi_mixed_sign_can_exceed_one() -> None:
+    # Weights (2, -1, 0) sum to one with sum w^2 = 5, so HHI = (5 - 1/3) / (2/3) = 7.
+    assert hhi_concentration([2.0, -1.0, 0.0]) == pytest.approx(7.0, rel=1e-12)
+
+
+def test_hhi_refuses_zero_sum_and_missing_values_by_name() -> None:
+    with pytest.raises(ValueError, match="returns sum to zero"):
+        hhi_concentration([1.0, -1.0, 2.0, -2.0])
+    with pytest.raises(ValueError, match="returns must not contain NaN"):
+        hhi_concentration([0.1, np.nan, 0.2, 0.3])
+    with pytest.raises(ValueError, match="returns must be finite"):
+        hhi_concentration([0.1, np.inf, 0.2])
+
+
+def test_return_concentration_hand_computed() -> None:
+    # Six returns: two in January, one in February, three in March.
+    dates = pd.DatetimeIndex(
+        ["2024-01-05", "2024-01-20", "2024-02-10", "2024-03-01", "2024-03-15", "2024-03-30"]
+    )
+    res = return_concentration(pd.Series([0.1, 0.2, -0.1, 0.3, -0.1, -0.2], index=dates))
+    # Positive (0.1, 0.2, 0.3): 1/12. Negative (0.1, 0.1, 0.2), weights (1/4, 1/4, 1/2): 1/16.
+    # Counts per month (2, 1, 3): 1/12.
+    assert res.positive == pytest.approx(1 / 12, rel=1e-12)
+    assert res.negative == pytest.approx(1 / 16, rel=1e-12)
+    assert res.time == pytest.approx(1 / 12, rel=1e-12)
+
+
+def test_return_concentration_periods_without_returns_count_as_zero() -> None:
+    # Counts per month (Jan 2, Feb 0, Mar 1): weights (2/3, 0, 1/3), HHI = (5/9 - 1/3) / (2/3) = 1/3.
+    dates = pd.DatetimeIndex(["2024-01-05", "2024-01-20", "2024-03-03"])
+    assert return_concentration(pd.Series([0.1, -0.1, 0.2], index=dates)).time == pytest.approx(
+        1 / 3, rel=1e-12
+    )
+
+
+def test_return_concentration_all_zero_side_is_nan() -> None:
+    # No gains at all: the positive sub-series is all zeros, so its HHI is undefined and reported as NaN.
+    res = return_concentration(_daily([0, 0, 0, -0.1, -0.2, -0.3]))
+    assert math.isnan(res.positive)
+    assert res.negative == pytest.approx(1 / 12, rel=1e-12)
+    assert math.isnan(res.time)
+
+
+def test_return_concentration_equal_huge_gains_give_zero_not_nan() -> None:
+    # Three equal gains of 1e308 sum to inf. Equal gains have HHI 0, so NaN would be wrong.
+    res = return_concentration(_daily([1e308, 1e308, 1e308]))
+    assert res.positive == pytest.approx(0.0, abs=1e-12)
+
+
+def test_return_concentration_empty_series_is_all_nan() -> None:
+    res = return_concentration(pd.Series([], index=pd.DatetimeIndex([]), dtype=float))
+    assert all(math.isnan(v) for v in (res.positive, res.negative, res.time))
+
+
+def test_return_concentration_result_is_frozen() -> None:
+    res = return_concentration(_daily([0.1, -0.1, 0.2, 0.3]))
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        res.time = 0.0  # type: ignore[misc]
+
+
+def test_return_concentration_refuses_bad_input() -> None:
+    with pytest.raises(TypeError, match="returns must be a pandas Series"):
+        return_concentration(np.array([0.1, 0.2]))
+    with pytest.raises(TypeError, match="DatetimeIndex"):
+        return_concentration(pd.Series([0.1, -0.1, 0.2]))
+    with pytest.raises(ValueError, match="returns must not contain NaN"):
+        return_concentration(_daily([0.1, np.nan, 0.2]))
+
+
+def test_drawdown_hand_built_path_with_two_drawdowns() -> None:
+    # pnl by day: 1, 2, 1, 3, 2, 3, 4, 2, 5. Reported HWMs: day 1 (2, low 1), day 3 (3, low 2), day 6 (4, low 2).
+    # Day 0 (value 1) and day 8 (value 5) have no drawdown and are not reported.
+    pnl = _daily([1, 2, 1, 3, 2, 3, 4, 2, 5])
+    dd, tuw = drawdown_time_under_water(pnl)
+    assert dd.tolist() == pytest.approx([0.5, 1 / 3, 0.5], rel=1e-12)
+    assert list(dd.index) == [pnl.index[1], pnl.index[3], pnl.index[6]]
+    assert tuw.tolist() == pytest.approx([2 / 365.25, 3 / 365.25], rel=1e-12)
+    assert list(tuw.index) == [pnl.index[1], pnl.index[3]]
+
+
+def test_drawdown_in_dollars_is_hwm_minus_low() -> None:
+    dd, _ = drawdown_time_under_water(_daily([1, 2, 1, 3, 2, 3, 4, 2, 5]), dollars=True)
+    assert dd.tolist() == pytest.approx([1.0, 1.0, 2.0], rel=1e-12)
+
+
+def test_drawdown_open_last_drawdown_has_no_time_under_water_entry() -> None:
+    # The path ends below the HWM of 3 set on day 3, so that drawdown is still open.
+    pnl = _daily([1, 2, 1, 3, 2])
+    dd, tuw = drawdown_time_under_water(pnl)
+    assert dd.tolist() == pytest.approx([0.5, 1 / 3], rel=1e-12)
+    assert list(tuw.index) == [pnl.index[1]]
+    assert tuw.tolist() == pytest.approx([2 / 365.25], rel=1e-12)
+
+
+def test_drawdown_time_under_water_runs_to_next_drawdown_high_not_next_high() -> None:
+    # pnl by day: 0, 1, 0.5, 2, 3, 2, 4. The HWM of 1 (day 1) recovers on day 3, when pnl is 2.
+    # The HWM of 2 (day 3) has no drawdown and is skipped, so the interval runs to day 4 (HWM 3): 3 days.
+    pnl = _daily([0, 1, 0.5, 2, 3, 2, 4])
+    dd, tuw = drawdown_time_under_water(pnl, dollars=True)
+    assert dd.tolist() == pytest.approx([0.5, 1.0], rel=1e-12)
+    assert tuw.tolist() == pytest.approx([3 / 365.25], rel=1e-12)
+    assert list(tuw.index) == [pnl.index[1]]
+
+
+def test_drawdown_fraction_needs_strictly_positive_pnl() -> None:
+    with pytest.raises(ValueError, match="pnl must be strictly positive"):
+        drawdown_time_under_water(_daily([1.0, 0.0, 2.0]))
+    # Dollar drawdowns accept zero and negative pnl: the HWM 1 has low -1, so its drawdown is 2.
+    dd, _ = drawdown_time_under_water(_daily([1.0, -1.0, 2.0]), dollars=True)
+    assert dd.tolist() == pytest.approx([2.0], rel=1e-12)
+
+
+def test_drawdown_single_observation_gives_empty_series() -> None:
+    dd, tuw = drawdown_time_under_water(_daily([1.0]))
+    assert len(dd) == 0 and len(tuw) == 0
+
+
+def test_drawdown_refuses_bad_input() -> None:
+    with pytest.raises(TypeError, match="pnl must be a pandas Series"):
+        drawdown_time_under_water(np.array([1.0, 2.0]))
+    with pytest.raises(TypeError, match="DatetimeIndex"):
+        drawdown_time_under_water(pd.Series([1.0, 2.0]))
+    with pytest.raises(ValueError, match="strictly increasing"):
+        drawdown_time_under_water(
+            pd.Series([1.0, 2.0], index=pd.DatetimeIndex(["2024-01-02", "2024-01-01"]))
+        )
+    with pytest.raises(ValueError, match="must not contain NaN"):
+        drawdown_time_under_water(_daily([1.0, np.nan]))
+    with pytest.raises(TypeError, match="dollars must be a bool"):
+        drawdown_time_under_water(_daily([1.0, 2.0]), dollars=1)
+
+
+def test_drawdown_matches_row_by_row_scan_on_random_equity_curves() -> None:
+    rng = np.random.default_rng(4)
+    for _ in range(10):
+        n = int(rng.integers(2, 200))
+        pnl = _daily(np.exp(np.cumsum(rng.normal(0.0, 0.03, n))))
+        rows, dd_ref, tuw_ref = _drawdown_reference(pnl.tolist())
+        dd, tuw = drawdown_time_under_water(pnl)
+        assert list(dd.index) == list(pnl.index[np.asarray(rows, dtype=int)])
+        assert dd.tolist() == pytest.approx(dd_ref, rel=1e-12)
+        assert tuw.tolist() == pytest.approx(tuw_ref, rel=1e-12)
+
+
+def test_stats_all_exports_resolve() -> None:
+    for name in stats_module.__all__:
+        assert hasattr(stats_module, name), name

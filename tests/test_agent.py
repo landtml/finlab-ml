@@ -10,9 +10,24 @@ import pytest
 from finlab.agent import server as srv
 from finlab.agent import tools as tl
 from finlab.bars import cusum_filter
+from finlab.bet_sizing import prob_bet_size
+from finlab.entropy import kontoyiannis_entropy
 from finlab.fracdiff import frac_diff_ffd
 from finlab.hrp import hrp_weights
-from finlab.stats import deflated_sharpe_ratio, sharpe_ratio
+from finlab.onc import onc
+from finlab.stats import (
+    deflated_sharpe_ratio,
+    min_track_record_length,
+    probabilistic_sharpe_ratio,
+    sharpe_ratio,
+)
+from finlab.strategy_risk import (
+    binomial_sharpe,
+    implied_frequency,
+    implied_precision,
+    probability_of_failure,
+)
+from finlab.structural_breaks import sadf
 
 
 def _rpc(method, params=None, req_id=1):
@@ -58,6 +73,67 @@ def test_deflated_sharpe_matches_library():
                      {"sr_hat": 0.3, "n_trials": 40, "var_sr": 0.02, "n_obs": 250})
     assert not err
     assert out["dsr"] == pytest.approx(deflated_sharpe_ratio(0.3, 40, 0.02, 250), rel=1e-12)
+
+
+def test_probabilistic_sharpe_matches_library():
+    out, err = _call("probabilistic_sharpe_ratio",
+                     {"sr_hat": 0.1, "n_obs": 250, "sr_benchmark": 0.05, "skew": -0.3, "kurtosis": 4.5})
+    assert not err
+    assert out["psr"] == pytest.approx(probabilistic_sharpe_ratio(0.1, 0.05, 250, -0.3, 4.5), rel=1e-12)
+
+
+def test_min_track_record_length_matches_library():
+    out, err = _call("min_track_record_length",
+                     {"sr_hat": 0.1, "sr_benchmark": 0.0, "skew": -0.2, "kurt": 5.0, "prob": 0.9})
+    assert not err
+    expected = min_track_record_length(0.1, 0.0, -0.2, 5.0, 0.9)
+    assert out["min_track_record_length"] == pytest.approx(expected, rel=1e-12)
+
+
+def test_sadf_matches_library():
+    s = np.cumsum(np.random.default_rng(4).normal(size=160))
+    out, err = _call("sadf", {"series": s.tolist(), "min_length": 30, "lags": 1})
+    assert not err
+    arr = np.asarray(sadf(s, min_length=30, lags=1), dtype=np.float64).ravel()
+    assert out["n_points"] == arr.size
+    assert out["sadf"] == pytest.approx(float(np.nanmax(arr)), rel=1e-12)
+
+
+def test_bet_size_matches_library():
+    p = [0.2, 0.5, 0.65, 0.9]
+    side = [-1, 1, 1, -1]
+    out, err = _call("bet_size_from_probability", {"probability": p, "side": side})
+    assert not err
+    np.testing.assert_allclose(out["bet_size"], prob_bet_size(np.array(p), np.array(side)), rtol=1e-12)
+    out, err = _call("bet_size_from_probability",
+                     {"probability": [0.4, 0.5, 0.7], "side": [1, -1, 1], "num_classes": 3})
+    assert not err
+    np.testing.assert_allclose(out["bet_size"],
+                               prob_bet_size(np.array([0.4, 0.5, 0.7]), np.array([1, -1, 1]), 3), rtol=1e-12)
+
+
+def test_bet_size_endpoints_are_plus_or_minus_one():
+    # p = 0 and p = 1 give z = -inf and +inf inside the library; the bet is then -1 and +1, finite.
+    out, err = _call("bet_size_from_probability", {"probability": [0.0, 1.0]})
+    assert not err
+    assert out["bet_size"] == [-1.0, 1.0]
+
+
+def test_kontoyiannis_entropy_matches_library():
+    msg = list("abracadabra" * 8)
+    out, err = _call("kontoyiannis_entropy", {"message": msg})
+    assert not err
+    assert out["entropy"] == pytest.approx(kontoyiannis_entropy(msg), rel=1e-12)
+
+
+def test_onc_clusters_matches_library():
+    corr = [[1.0, 0.9, 0.1, 0.0], [0.9, 1.0, 0.0, 0.1], [0.1, 0.0, 1.0, 0.8], [0.0, 0.1, 0.8, 1.0]]
+    out, err = _call("onc_clusters", {"corr": corr})
+    assert not err
+    res = onc(np.array(corr), seed=0)
+    assert out["labels"] == [int(x) for x in res.labels]
+    assert out["n_clusters"] == res.n_clusters
+    assert out["silhouette"] == pytest.approx(res.silhouette, rel=1e-12)
 
 
 def test_cusum_and_fracdiff_match_library():
@@ -644,3 +720,156 @@ def test_nan_in_arguments_parse_error_reply_keeps_request_id():
     assert reply["id"] == 7
     assert reply["error"]["code"] == -32700
     assert reply["error"]["message"] == "parse error: non-standard constant NaN"
+
+
+def _strict_call(name, arguments):
+    """Like _call, but the reply text must be strict JSON: no NaN or Infinity tokens."""
+    reply = _rpc("tools/call", {"name": name, "arguments": arguments})
+    result = reply["result"]
+    return _strict_loads(result["content"][0]["text"]), result["isError"]
+
+
+def test_hrp_and_bet_size_replies_turn_non_finite_values_into_null(monkeypatch):
+    # The library output is replaced here, since no input found so far makes these calls return a
+    # non-finite value. Each non-finite float must still come back as null, and the text must be strict JSON.
+    monkeypatch.setattr(tl, "hrp_weights", lambda cov, method="single": np.array([np.nan, 0.25, np.inf]))
+    monkeypatch.setattr(tl, "prob_bet_size", lambda p, side, k: np.array([-np.inf, np.nan, 0.5]))
+    cov = [[1.0, 0.3, 0.1], [0.3, 2.0, 0.2], [0.1, 0.2, 0.5]]
+    out, err = _strict_call("hrp_weights", {"cov": cov})
+    assert not err and out == {"weights": [None, 0.25, None]}
+    out, err = _strict_call("bet_size_from_probability", {"probability": [0.6, 0.7, 0.8]})
+    assert not err and out == {"bet_size": [None, None, 0.5]}
+
+
+@pytest.mark.parametrize("token", ["NaN", "Infinity", "-Infinity"])
+@pytest.mark.parametrize("arguments", [
+    '{"returns":[0.01,TOKEN,0.02,-0.01]}',
+    '{"returns":[0.01,0.02,-0.01],"periods_per_year":TOKEN}',
+])
+def test_non_finite_literal_in_arguments_takes_the_nan_parse_error_path(token, arguments):
+    # The whole line fails to parse, so the position of the literal does not change the reply,
+    # and every constant gets the same reply shape with the request id kept.
+    line = ('{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"sharpe_ratio","arguments":'
+            + arguments.replace("TOKEN", token) + '}}')
+    out = io.StringIO()
+    srv.main(io.StringIO(line + "\n"), out)
+    replies = out.getvalue().splitlines()
+    assert len(replies) == 1
+    assert _strict_loads(replies[0]) == {
+        "jsonrpc": "2.0",
+        "id": 7,
+        "error": {"code": -32700, "message": f"parse error: non-standard constant {token}"},
+    }
+
+
+@pytest.mark.parametrize("arguments, message", [
+    ('{"returns":[0.01,1e400,0.02]}', "'returns' must contain only finite numbers"),
+    ('{"returns":[0.01,0.02,-0.01],"periods_per_year":1e400}', "'periods_per_year' must be a finite number"),
+])
+def test_literal_that_overflows_to_infinity_is_a_tool_error(arguments, message):
+    # 1e400 is valid JSON that Python reads as inf. It passes the parser and the argument checks
+    # refuse it, so the reply is a tool error that names the argument.
+    line = ('{"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"sharpe_ratio","arguments":'
+            + arguments + '}}')
+    out = io.StringIO()
+    srv.main(io.StringIO(line + "\n"), out)
+    reply = _strict_loads(out.getvalue().splitlines()[0])
+    assert reply["id"] == 8 and reply["result"]["isError"] is True
+    assert message in json.loads(reply["result"]["content"][0]["text"])["error"]
+
+
+def test_strategy_risk_tools_match_library():
+    out, err = _call("binomial_sharpe", {"p": 0.55, "freq": 252})
+    assert not err
+    assert out["binomial_sharpe"] == pytest.approx(binomial_sharpe(0.55, 252), rel=1e-12)
+    out, err = _call("binomial_sharpe", {"p": 0.6, "freq": 52, "pt": 2.0, "sl": -1.5})
+    assert not err
+    assert out["binomial_sharpe"] == pytest.approx(binomial_sharpe(0.6, 52, 2.0, -1.5), rel=1e-12)
+    out, err = _call("implied_precision", {"sl": -1.0, "pt": 1.0, "freq": 252, "target_sharpe": 1.5})
+    assert not err
+    assert out["implied_precision"] == pytest.approx(implied_precision(-1.0, 1.0, 252, 1.5), rel=1e-12)
+    out, err = _call("implied_frequency", {"sl": -1.0, "pt": 1.0, "p": 0.6, "target_sharpe": 1.5})
+    assert not err
+    assert out["implied_frequency"] == pytest.approx(implied_frequency(-1.0, 1.0, 0.6, 1.5), rel=1e-12)
+    returns = np.random.default_rng(3).normal(0.0005, 0.01, 500)
+    out, err = _call("probability_of_failure", {"returns": returns.tolist(), "freq": 252, "target_sharpe": 1.0})
+    assert not err
+    assert out["probability_of_failure"] == pytest.approx(
+        probability_of_failure(returns, 252, 1.0), rel=1e-12)
+
+
+def test_implied_precision_inverts_binomial_sharpe_through_the_tools():
+    out, _ = _call("implied_precision", {"sl": -1.0, "pt": 1.0, "freq": 252, "target_sharpe": 1.5})
+    back, err = _call("binomial_sharpe", {"p": out["implied_precision"], "freq": 252})
+    assert not err
+    assert back["binomial_sharpe"] == pytest.approx(1.5, rel=1e-9)
+
+
+def test_implied_frequency_reply_is_null_when_no_frequency_gives_the_target():
+    # The library returns nan for these inputs by design; the reply holds null, not NaN.
+    out, err = _call("implied_frequency", {"sl": -1.0, "pt": 1.0, "p": 0.6, "target_sharpe": 0.0})
+    assert not err and out == {"implied_frequency": None}
+    out, err = _call("implied_frequency", {"sl": -1.0, "pt": 1.0, "p": 0.5, "target_sharpe": 1.0})
+    assert not err and out == {"implied_frequency": None}
+    out, err = _call("implied_frequency", {"sl": -1.0, "pt": 1.0, "p": 0.4, "target_sharpe": 1.0})
+    assert not err and out == {"implied_frequency": None}
+
+
+@pytest.mark.parametrize("name, arguments, message", [
+    ("binomial_sharpe", {"p": 1.0, "freq": 252}, "p must be strictly between 0 and 1"),
+    ("binomial_sharpe", {"p": 0.5, "freq": 0}, "freq must be positive"),
+    ("binomial_sharpe", {"p": 0.5, "freq": 252, "pt": -1.0}, "pt must be positive"),
+    ("binomial_sharpe", {"p": 0.5, "freq": 252, "sl": 0.5}, "sl must be negative"),
+    ("binomial_sharpe", {"p": True, "freq": 252}, "'p' must be a finite number"),
+    ("binomial_sharpe", {"p": "0.5", "freq": 252}, "'p' must be a finite number"),
+    ("binomial_sharpe", {"p": 1e400, "freq": 252}, "'p' must be a finite number"),
+    ("binomial_sharpe", {"p": 0.5}, "'freq' is required"),
+    ("implied_precision", {"sl": -1.0, "pt": -1.0, "freq": 252, "target_sharpe": 1.0}, "pt must be positive"),
+    ("implied_precision", {"sl": -1.0, "pt": 1.0, "freq": 252}, "'target_sharpe' is required"),
+    ("implied_precision", {"sl": -1.0, "pt": 1.0, "freq": 252, "target_sharpe": 1e400},
+     "'target_sharpe' must be a finite number"),
+    ("implied_frequency", {"sl": -1.0, "pt": 1.0, "p": 1.0, "target_sharpe": 1.0},
+     "p must be strictly between 0 and 1"),
+    ("implied_frequency", {"sl": -1.0, "pt": 1.0, "p": 0.6, "target_sharpe": 1e400},
+     "'target_sharpe' must be a finite number"),
+    ("probability_of_failure", {"returns": [0.1, 0.0, 0.2, 0.0], "freq": 252, "target_sharpe": 1.0},
+     "every non-positive return is zero"),
+    ("probability_of_failure", {"returns": [0.1, 0.2], "freq": 252, "target_sharpe": 1.0},
+     "at least one value <= 0"),
+    ("probability_of_failure", {"returns": [0.1, -0.2, 0.3], "freq": 0, "target_sharpe": 1.0},
+     "freq must be positive"),
+    ("probability_of_failure", {"returns": [0.1, 1e400, -0.2], "freq": 252, "target_sharpe": 1.0},
+     "'returns' must contain only finite numbers"),
+    ("probability_of_failure", {"returns": [[0.1, -0.2], [0.3, 0.1]], "freq": 252, "target_sharpe": 1.0},
+     "'returns' must be a flat array of numbers"),
+    ("probability_of_failure", {"returns": [], "freq": 252, "target_sharpe": 1.0}, "non-empty"),
+])
+def test_strategy_risk_tools_refuse_bad_input(name, arguments, message):
+    out, err = _call(name, arguments)
+    assert err and message in out["error"]
+
+
+def test_probability_of_failure_size_limit_enforced(monkeypatch):
+    monkeypatch.setattr(tl, "MAX_ELEMENTS", 10)
+    out, err = _call("probability_of_failure", {"returns": [0.1, -0.1] * 10, "freq": 252, "target_sharpe": 1.0})
+    assert err and "limit" in out["error"]
+
+
+def test_strategy_risk_tools_are_listed_with_their_arguments():
+    listed = {t["name"]: t for t in _rpc("tools/list")["result"]["tools"]}
+    expected = {
+        "binomial_sharpe": ["p", "freq"],
+        "implied_precision": ["sl", "pt", "freq", "target_sharpe"],
+        "implied_frequency": ["sl", "pt", "p", "target_sharpe"],
+        "probability_of_failure": ["returns", "freq", "target_sharpe"],
+    }
+    for name, required in expected.items():
+        schema = listed[name]["inputSchema"]
+        assert schema["type"] == "object"
+        assert schema["required"] == required
+        assert set(required) <= set(schema["properties"])
+        assert listed[name]["description"]
+    props = listed["binomial_sharpe"]["inputSchema"]["properties"]
+    assert props["pt"]["default"] == 1.0 and props["sl"]["default"] == -1.0
+    assert listed["probability_of_failure"]["inputSchema"]["properties"]["returns"]["type"] == "array"
+    assert "null" in listed["implied_frequency"]["description"]

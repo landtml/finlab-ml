@@ -11,6 +11,7 @@
 <!-- Commands run and their results. -->
 
 - `ruff check src tests tools benchmarks examples`:
+- `mypy`:
 - `pytest -q`:
 
 ## Changelog

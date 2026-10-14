@@ -9,7 +9,7 @@
 <p align="center">
   <a href="https://github.com/landtml/finlab-ml/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/landtml/finlab-ml/actions/workflows/ci.yml/badge.svg"></a>
   <a href="https://github.com/landtml/finlab-ml/tags"><img alt="Latest tag" src="https://img.shields.io/github/v/tag/landtml/finlab-ml?label=version&color=2f5d8c"></a>
-  <img alt="Python 3.10 to 3.13" src="https://img.shields.io/badge/python-3.10%20to%203.13-3776ab">
+  <img alt="Python 3.10 to 3.14" src="https://img.shields.io/badge/python-3.10%20to%203.14-3776ab">
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-2a9d8f"></a>
 </p>
 
@@ -35,10 +35,10 @@ pytest                      # run the suite
 To install a tagged release instead:
 
 ```bash
-pip install "git+https://github.com/landtml/finlab-ml@v0.1.4"
+pip install "git+https://github.com/landtml/finlab-ml@v0.1.5"
 ```
 
-Requires Python 3.10 to 3.13.
+Requires Python 3.10 to 3.14.
 
 ## Quick start
 
@@ -94,25 +94,26 @@ tools with compact JSON output. See [`docs/AGENTS.md`](docs/AGENTS.md).
 | `finlab.weights` | 4 | concurrency, average uniqueness, sequential bootstrap, return attribution, time decay |
 | `finlab.monte_carlo` | 4 | seeded Monte Carlo trial runner (`run_trials`), random label sets, standard vs sequential bootstrap uniqueness experiment |
 | `finlab.fracdiff` | 5 | fixed-width and expanding-window fractional differentiation, minimum-d search |
-| `finlab.ensemble` | 6 | `SequentialBootstrapBagging` |
+| `finlab.ensemble` | 6 | `SequentialBootstrapBagging`, with an optional out-of-bag score |
 | `finlab.importance` | 8 | MDI, MDA, SFI, orthogonal features |
 | `finlab.tuning` | 9 | grid and randomized search scored by purged CV |
 | `finlab.bet_sizing` | 10 | probability and sigmoid bet sizing, target positions, limit prices, discretisation |
 | `finlab.pbo` | 11 | probability of backtest overfitting by CSCV |
+| `finlab.trading_rules` | 13 | Ornstein-Uhlenbeck half-life and fit, optimal profit-taking and stop-loss grid |
 | `finlab.trials` | not AFML (feeds 11 and 14) | trial registry (`TrialRegistry`) that supplies the number of trials and the performance matrix to PBO and deflated Sharpe |
 | `finlab.onc` | not AFML | ONC correlation clustering, without the repair step |
 | `finlab.agent` | not AFML | MCP server exposing selected computations as tools (see [`docs/AGENTS.md`](docs/AGENTS.md)) |
-| `finlab.stats` | 14 | Sharpe, probabilistic and deflated Sharpe, minimum track record length |
+| `finlab.stats` | 14 | Sharpe, probabilistic and deflated Sharpe, minimum track record length, bet timing, holding period, return concentration, drawdown and time under water |
+| `finlab.strategy_risk` | 15 | binomial Sharpe ratio, implied precision and frequency, probability of strategy failure |
 | `finlab.plot` | optional | plotly figures for PBO, deflated Sharpe and the Monte Carlo experiment (needs the `plot` extra) |
 | `finlab.hrp` | 16 | hierarchical risk parity |
-| `finlab.structural_breaks` | 17 | CUSUM tests, Chu-Stinchcombe-White, SADF |
+| `finlab.structural_breaks` | 17 | CUSUM tests, Chu-Stinchcombe-White, SADF, QADF, CADF, sub- and super-martingale tests, Chow-type DFC and SDFC |
 | `finlab.entropy` | 18 | plug-in, Lempel-Ziv and Kontoyiannis entropy; encoders |
-| `finlab.microstructure` | 19 | tick rule, Roll, Corwin-Schultz, Becker-Parkinson, Kyle lambda, Amihud, VPIN |
+| `finlab.microstructure` | 19 | tick rule, Roll, Corwin-Schultz, Becker-Parkinson, Kyle and Hasbrouck lambda, Amihud, VPIN |
 | `finlab.parallel` | 20 | molecule partitioning and `mp_pandas_obj` on `concurrent.futures` |
 
 Each module in the map has its own page with a runnable example in
-[`docs/modules/`](docs/modules/), except `finlab.trials` and `finlab.plot`, which are
-described in the API reference (the examples are executed by
+[`docs/modules/`](docs/modules/) (the examples are executed by
 `tests/test_doc_examples.py`). The full signature list is in
 [`docs/API.md`](docs/API.md), generated from the code by `tools/gen_api.py`.
 
@@ -161,9 +162,15 @@ from the repository root (see the script for the Chrome requirement).
 | Purged K-fold, tuning, bet sizing, parallel helpers | Tested. Book worked examples for bet sizing (sigmoid calibration, target 97, limit price 112.3657) are tests. |
 | PBO via CSCV | Tested against a naive transcription. Under i.i.d. noise E[PBO] = 1/2 for even N (proved in `docs/proofs/pbo.md`), so a PBO near 1 is not a noise result. |
 | Deflated Sharpe, PSR, minTRL | Tested on hand-checked values. minTRL is cited to Bailey and López de Prado (2012), not AFML. |
+| Bet timing, holding period, HHI, drawdown and time under water | Tested against transcriptions of AFML Snippets 14.1 to 14.4 and hand-computed cases. |
+| Strategy risk (ch. 15) | Closed forms derived in [`docs/proofs/strategy_risk.md`](docs/proofs/strategy_risk.md); inversions tested by round trips. `probability_of_failure` keeps the book's scale `p(1-p)`. |
+| Optimal trading rules (ch. 13) | The numba grid equals a pure-Python transcription on the same draws, for any thread count. The book's heat-map conclusions are not reproduced here. |
+| Out-of-bag score | Tested against a reference loop. Optimistic for overlapping labels; it does not replace purged cross-validation. |
 | VPIN and bulk-volume classification | Tested against a trade-level reference. The default scale is causal (expanding window), so no future prices enter the classification. The bulk-volume classifier is from Easley et al. (2012), not AFML. |
 | Kyle lambda, Corwin-Schultz, Roll | Tested on synthetic data; the Corwin-Schultz and Kyle results are claimed from the book only. |
+| Hasbrouck lambda | Tested against a direct least-squares fit; the regression form is claimed from the book only. |
 | SADF and CUSUM | Tested; the Chu-Stinchcombe-White critical value is read from an ambiguous radical in the book (see `docs/proofs/structural_breaks.md`). |
+| QADF, CADF, SMT, Chow DFC and SDFC | Tested against literal loops. No critical values or p-values. |
 | Entropy | Tested on known cases. The Lempel-Ziv normalisation is the standard LZ78 one, not from AFML. |
 | Trend-scanning labels | Implemented from the literal definition. Not in AFML ch. 3; the t-threshold of 1.96 is a design choice and the citation is not verified against a primary source. |
 | Time decay | Proved and tested: the oldest observation's weight is `c + (1-c)·w1/T`, not exactly `c`. |
@@ -183,7 +190,7 @@ Measured on 2026-10-10 on a shared machine (4 vCPU, Python 3.13.16, numpy 2.5.3,
 |---|---|---|---|
 | `get_events` (triple barrier; naive extrapolated from 1k events; `bench_labeling.py`) | 1915.1 ms | 6.92 ms | 276.6x |
 | `trend_scanning_labels` (`bench_labeling.py`) | 6715.7 ms | 0.68 ms | 9870.9x |
-| `sequential_bootstrap` (`bench_weights.py`) | 1248.1 ms | 1.05 ms | 1185.7x (the naive version is a dense loop, so this overstates the gain) |
+| `sequential_bootstrap` (`bench_weights.py`, measured 2026-10-14) | 1378.7 ms | 0.44 ms | 3110.2x (the naive version is a dense loop, so this overstates the gain; against the full-recompute sparse kernel the same script gives 1.1x to 5.8x) |
 | `num_co_events` (`bench_weights.py`) | 62.0 ms | 5.02 ms | 12.3x |
 | SADF, n=300 (`bench_structural_breaks.py`) | 5.5516 s | 0.111449 s | 50x |
 | Kontoyiannis entropy, n=300 (`bench_entropy.py`) | 0.0711 s | 0.000151 s | 471x |
@@ -205,10 +212,12 @@ Measured on 2026-10-10 on a shared machine (4 vCPU, Python 3.13.16, numpy 2.5.3,
   JAX are not used.
 - **Parallel engine.** Snippet 4.9 runs through the book's `mpEngine` (Chapter 20).
   `finlab.monte_carlo` uses `mp_pandas_obj` in `finlab.parallel` instead.
-- **Not implemented:** the Chow DFC/SDFC and
-  quantile ADF tests, the distance-of-distances clustering variant of AFML section 16.4.1,
-  and out-of-bag estimation for bagging. ONC clustering is in `finlab.onc`, without the
-  published repair step.
+- **Not implemented:** the distance-of-distances clustering variant of AFML section 16.4.1.
+  ONC clustering is in `finlab.onc`, without the published repair step.
+- **Out-of-bag score.** `SequentialBootstrapBagging(oob_score=True)` is optimistic for
+  overlapping labels; it does not replace purged cross-validation.
+- **Break tests without critical values.** QADF, CADF, SMT and the Chow-type statistics
+  return the statistic only, with no critical values or p-values.
 - **No purging inside CSCV or importance.** Passing a purged splitter is the
   caller's responsibility for MDA and SFI; CSCV follows the book without purging.
 - **Leakage beyond the splitter.** The CV guarantee covers the split boundary given
@@ -228,10 +237,10 @@ Measured on 2026-10-10 on a shared machine (4 vCPU, Python 3.13.16, numpy 2.5.3,
   zero-drift data gives very short bars. Runs bars use the book's
   `max{E[buy], E[sell]}` threshold, which is not `E[max]` (Jensen); the proof note
   shows this.
-- **Python versions.** CI runs 3.10 to 3.13. Locally the suite was run on 3.13.
+- **Python versions.** CI runs 3.10 to 3.14. Locally the suite was run on 3.13 and 3.14.
 - **Sample size.** Average uniqueness and sequential-bootstrap gains are modest in
   practice (one measured setting gave 0.1963 vs 0.1913 over 200 seeds; that run is
-  recorded in `docs/proofs/weights.md`, and no script in the repo reproduces it). The
+  recorded in `docs/proofs/weights.md`, and `benchmarks/repro_uniqueness.py` reruns it). The
   Monte Carlo experiment in `finlab.monte_carlo` follows Snippets 4.7-4.8 at the Snippet
   4.9 sizes. Its paired gap is about 0.084 (`bootstrap_uniqueness_mc(n_iter=2000, seed=0)`,
   see `docs/proofs/monte_carlo.md` section 4). Its medians of 0.6 and 0.7 at 20,000
@@ -244,9 +253,10 @@ Measured on 2026-10-10 on a shared machine (4 vCPU, Python 3.13.16, numpy 2.5.3,
 
 ## Contributing
 
-Each module has a test file in `tests/`. Except `finlab.trials` and `finlab.plot`, each has a page in `docs/modules/`. Most also have a
+Each module has a test file in `tests/` and a page in `docs/modules/`. Most also have a
 benchmark in `benchmarks/` and a proof note in `docs/proofs/` (no benchmark for
-`finlab.stats` and `finlab.tuning`; no proof note for `finlab.agent`). Keep claims in the
+`finlab.strategy_risk`, `finlab.trials` and `finlab.plot`; no proof note for `finlab.trials`
+and `finlab.plot`). Keep claims in the
 proof notes to four kinds: proved here, checked by test, measured, or claimed from the
 book only.
 
