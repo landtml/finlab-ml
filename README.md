@@ -190,7 +190,7 @@ Measured on 2026-10-10 on a shared machine (4 vCPU, Python 3.13.16, numpy 2.5.3,
 |---|---|---|---|
 | `get_events` (triple barrier; naive extrapolated from 1k events; `bench_labeling.py`) | 1915.1 ms | 6.92 ms | 276.6x |
 | `trend_scanning_labels` (`bench_labeling.py`) | 6715.7 ms | 0.68 ms | 9870.9x |
-| `sequential_bootstrap` (`bench_weights.py`) | 1248.1 ms | 1.05 ms | 1185.7x (the naive version is a dense loop, so this overstates the gain) |
+| `sequential_bootstrap` (`bench_weights.py`, measured 2026-10-14) | 1378.7 ms | 0.44 ms | 3110.2x (the naive version is a dense loop, so this overstates the gain; against the full-recompute sparse kernel the same script gives 1.1x to 5.8x) |
 | `num_co_events` (`bench_weights.py`) | 62.0 ms | 5.02 ms | 12.3x |
 | SADF, n=300 (`bench_structural_breaks.py`) | 5.5516 s | 0.111449 s | 50x |
 | Kontoyiannis entropy, n=300 (`bench_entropy.py`) | 0.0711 s | 0.000151 s | 471x |

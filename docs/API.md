@@ -74,7 +74,7 @@ Fractionally differentiated features (AFML ch. 5)
 
 Ensemble methods (AFML ch. 6)
 
-- **`SequentialBootstrapBagging(base_factory: 'Callable[[], Any]', n_estimators: 'int' = 10, sequential: 'bool' = True, max_samples: 'int | None' = None, seed: 'int | None' = 0) -> 'None'`** (class). Bagged ensemble whose bags are drawn by sequential bootstrap.
+- **`SequentialBootstrapBagging(base_factory: 'Callable[[], Any]', n_estimators: 'int' = 10, sequential: 'bool' = True, max_samples: 'int | None' = None, seed: 'int | None' = 0, oob_score: 'bool' = False) -> 'None'`** (class). Bagged ensemble whose bags are drawn by sequential bootstrap.
 
 ## `finlab.importance`
 
@@ -115,6 +115,16 @@ Backtest overfitting via CSCV (AFML ch. 11)
 - **`PBOResult(pbo: 'float', logits: 'np.ndarray', n_combinations: 'int') -> None`** (class). Result of :func:`probability_of_backtest_overfitting`.
 - **`probability_of_backtest_overfitting(performance_matrix: 'Union[pd.DataFrame, np.ndarray]', n_partitions: 'int' = 16, performance: 'Optional[PerformanceFn]' = None) -> 'PBOResult'`** (function). Estimate the probability of backtest overfitting by CSCV.
 
+## `finlab.trading_rules`
+
+Optimal trading rules on an Ornstein-Uhlenbeck process (AFML ch. 13)
+
+- **`OUFit(phi: 'float', sigma: 'float', half_life: 'float', n_obs: 'int') -> None`** (class). Result of :func:`fit_ou`.
+- **`fit_ou(prices, forecast: 'float') -> 'OUFit'`** (function). Estimate the OU parameters of a price path around a fixed forecast.
+- **`otr_grid(forecast: 'float', half_life: 'float', sigma: 'float' = 1.0, profit_taking=None, stop_loss=None, n_iter: 'int' = 100000, max_hp: 'int' = 100, seed: 'int' = 0, start: 'float' = 0.0) -> 'pd.DataFrame'`** (function). Simulate the exit value of a holding rule for each profit-taking and stop-loss pair.
+- **`ou_half_life(phi: 'float') -> 'float'`** (function). Half-life, in steps, of an OU process with AR(1) coefficient ``phi``.
+- **`ou_phi(half_life: 'float') -> 'float'`** (function). AR(1) coefficient of an OU process with the given half-life.
+
 ## `finlab.stats`
 
 Backtest statistics (AFML ch. 14)
@@ -126,6 +136,22 @@ Backtest statistics (AFML ch. 14)
 - **`deflated_sharpe(sr_hat: 'float', n_trials: 'int', var_sr: 'float', n_obs: 'int', skew: 'float' = 0.0, kurt: 'float' = 3.0) -> 'DeflatedSharpeResult'`** (function). Deflated Sharpe ratio with its benchmark and inputs, AFML 14.7.3.
 - **`DeflatedSharpeResult(dsr: 'float', sr_hat: 'float', sr_star: 'float', n_trials: 'int', n_obs: 'int', skew: 'float', kurt: 'float') -> None`** (class). Deflated Sharpe ratio together with the benchmark and inputs it used.
 - **`min_track_record_length(sr_hat: 'float', sr_benchmark: 'float', skew: 'float' = 0.0, kurt: 'float' = 3.0, prob: 'float' = 0.95) -> 'float'`** (function). Minimum track record length (minTRL) for a PSR confidence level.
+- **`bet_timing(positions: 'pd.Series') -> 'pd.DatetimeIndex'`** (function). Timestamps where a bet ends, from a series of target positions (AFML Snippet 14.1).
+- **`holding_period(positions: 'pd.Series') -> 'float'`** (function). Average holding period in days, weighted by the size closed (AFML Snippet 14.2).
+- **`hhi_concentration(returns: 'ArrayLike') -> 'float'`** (function). Herfindahl-Hirschman concentration of a return series (AFML Snippet 14.3).
+- **`return_concentration(returns: 'pd.Series', freq: 'str | pd.DateOffset | None' = None) -> 'ReturnConcentration'`** (function). Concentration of returns by sign and over time (AFML Snippet 14.3).
+- **`ReturnConcentration(positive: 'float', negative: 'float', time: 'float') -> None`** (class). HHI of the positive returns, the negative returns and the returns per period.
+- **`drawdown_time_under_water(pnl: 'pd.Series', dollars: 'bool' = False) -> 'tuple[pd.Series, pd.Series]'`** (function). Drawdowns and time under water between high-water marks (AFML Snippet 14.4).
+
+## `finlab.strategy_risk`
+
+Strategy risk (AFML ch. 15)
+
+- **`binomial_sharpe(p: 'float', freq: 'float', pt: 'float' = 1.0, sl: 'float' = -1.0) -> 'float'`** (function). Annualised Sharpe ratio of IID two-outcome bets.
+- **`implied_precision(sl: 'float', pt: 'float', freq: 'float', target_sharpe: 'float') -> 'float'`** (function). Hit rate at which bets deliver a target annualised Sharpe ratio.
+- **`implied_frequency(sl: 'float', pt: 'float', p: 'float', target_sharpe: 'float') -> 'float'`** (function). Bets per year at which a hit rate delivers a target annualised Sharpe ratio.
+- **`probability_of_failure(returns: 'object', freq: 'float', target_sharpe: 'float') -> 'float'`** (function). Probability that a strategy's return sample falls short of a target Sharpe ratio.
+- **`mixture_returns(mu1: 'float', mu2: 'float', sigma1: 'float', sigma2: 'float', prob1: 'float', n_obs: 'int', seed: 'int | None' = None) -> 'np.ndarray'`** (function). Sample from a mixture of two Gaussians (AFML Snippet 15.5, mixGaussians).
 
 ## `finlab.trials`
 
@@ -164,11 +190,17 @@ Structural breaks (AFML ch. 17)
 
 - **`CusumResult(statistic: 'np.ndarray', z: 'np.ndarray', residuals: 'np.ndarray', sigma: 'float', initial_size: 'int') -> None`** (class). Output of :func:`cusum_test`.
 - **`CSWResult(statistic: 'np.ndarray', critical: 'np.ndarray', reject: 'np.ndarray', reference: 'np.ndarray | None') -> None`** (class). Output of :func:`chu_stinchcombe_white`.
+- **`SDFCResult(statistic: 'float', break_index: 'int', breaks: 'np.ndarray', dfc: 'np.ndarray') -> None`** (class). Output of :func:`sdfc`.
 - **`cusum_test(series: 'Any', exog: 'Any' = None) -> 'CusumResult'`** (function). Brown-Durbin-Evans CUSUM test on recursive residuals (AFML 17.3.1).
 - **`chu_stinchcombe_white(series: 'Any', reference: 'int | None' = None, b: 'float' = 4.6) -> 'CSWResult'`** (function). Chu-Stinchcombe-White CUSUM test on levels (AFML 17.3.2).
 - **`csw_critical_value(lag: 'int | np.ndarray', b: 'float' = 4.6) -> 'np.ndarray'`** (function). One-sided critical value ``sqrt(b + log(t - n))`` (AFML 17.3.2).
 - **`adf_stat(series: 'Any', lag: 'int', constant: 'str' = 'c') -> 'float'`** (function). Augmented Dickey-Fuller tau-statistic on a single window (AFML 17.4.2).
 - **`sadf(series: 'Any', min_length: 'int', lags: 'int' = 1, constant: 'str' = 'c') -> 'Any'`** (function). Supremum Augmented Dickey-Fuller series (AFML 17.4.2).
+- **`qadf(series: 'Any', min_length: 'int', lag: 'int', q: 'float' = 0.95, constant: 'str' = 'c', v: 'float | None' = None) -> 'Any'`** (function). Quantile ADF series (AFML 17.4.2).
+- **`cadf(series: 'Any', min_length: 'int', lag: 'int', q: 'float' = 0.95, constant: 'str' = 'c') -> 'Any'`** (function). Conditional ADF series (AFML 17.4.2).
+- **`chow_dfc(series: 'Any', tau: 'float') -> 'float'`** (function). Chow-type Dickey-Fuller statistic ``DFC(tau)`` for a break at fraction ``tau``.
+- **`sdfc(series: 'Any', tau0: 'float' = 0.15) -> 'SDFCResult'`** (function). Supremum Chow-type Dickey-Fuller statistic (AFML ch. 17).
+- **`smt(series: 'Any', min_length: 'int', kind: 'str' = 'poly1', phi: 'float' = 0.0) -> 'Any'`** (function). Sub- and super-martingale test statistic ``SMT_t`` (AFML 17.4.3).
 
 ## `finlab.entropy`
 
@@ -193,6 +225,9 @@ Microstructure features (AFML ch. 19)
 - **`kyle_lambda(prices: 'ArrayLike', signed_volume: 'ArrayLike') -> 'float'`** (function). Kyle's lambda: price impact per unit of signed volume.
 - **`kyle_lambda_tstat(prices: 'ArrayLike', signed_volume: 'ArrayLike') -> 'tuple[float, float]'`** (function). Kyle's lambda and its t-statistic.
 - **`amihud_illiquidity(returns: 'ArrayLike', dollar_volume: 'ArrayLike', method: 'str' = 'regression') -> 'float'`** (function). Amihud's illiquidity measure from bar returns and dollar volume.
+- **`hasbrouck_lambda(bar_close: 'ArrayLike', signed_root_dollar_volume: 'ArrayLike') -> 'float'`** (function). Hasbrouck's lambda: log-price impact per unit of signed root dollar volume.
+- **`hasbrouck_lambda_tstat(bar_close: 'ArrayLike', signed_root_dollar_volume: 'ArrayLike') -> 'tuple[float, float]'`** (function). Hasbrouck's lambda and its t-statistic.
+- **`signed_root_dollar_volume(prices: 'ArrayLike', volumes: 'ArrayLike', signs: 'ArrayLike', bar_ids: 'ArrayLike') -> 'np.ndarray'`** (function). Per-bar sums of signed root dollar volume from trade data.
 - **`bulk_volume_classification(prices: 'ArrayLike', volume: 'ArrayLike', sigma: 'float | None' = None) -> 'np.ndarray'`** (function). Buy-volume fraction from bulk volume classification (BVC).
 - **`vpin(prices: 'ArrayLike', volume: 'ArrayLike', bucket_volume: 'float', n_window: 'int', sigma: 'float | None' = None) -> 'np.ndarray'`** (function). Volume-synchronized probability of informed trading (VPIN).
 
