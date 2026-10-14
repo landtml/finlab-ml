@@ -345,3 +345,81 @@ def test_otr_grid_refusals(kwargs, match) -> None:
     half_life = args.pop("half_life")
     with pytest.raises(ValueError, match=match):
         otr_grid(forecast, half_life, **args)
+
+
+@pytest.mark.parametrize("scale", [1e170, 1e-170])
+def test_fit_ou_is_equivariant_in_price_scale_away_from_float_limits(scale: float) -> None:
+    # Squares of prices near 1e170 overflow, and squares near 1e-170 underflow to zero.
+    base = _simulate_ou(300, phi=0.8, sigma=1.0, forecast=0.0, seed=20261014)
+    ref = fit_ou(base, forecast=0.0)
+    fit = fit_ou(base * scale, forecast=0.0)
+    assert fit.phi == pytest.approx(ref.phi, rel=1e-12)
+    assert fit.sigma == pytest.approx(ref.sigma * scale, rel=1e-12)
+    assert fit.half_life == pytest.approx(ref.half_life, rel=1e-12)
+    assert fit.n_obs == ref.n_obs
+
+
+@pytest.mark.parametrize("sigma", [1e-300, 1e300])
+def test_otr_grid_is_scale_free_at_extreme_sigma(sigma: float) -> None:
+    # Exits scale with sigma, so the Sharpe ratio must not depend on it. Squared deviations of exits
+    # near 1e-300 underflow to zero, and near 1e300 they overflow to inf.
+    kwargs = dict(
+        forecast=0.0, half_life=5.0, profit_taking=[1.0, 2.0], stop_loss=[1.0],
+        n_iter=400, max_hp=20, seed=3,
+    )
+    unit = otr_grid(sigma=1.0, **kwargs)
+    grid = otr_grid(sigma=sigma, **kwargs)
+    np.testing.assert_allclose(grid["std"], unit["std"] * sigma, rtol=1e-9, atol=0.0)
+    np.testing.assert_allclose(grid["sharpe"], unit["sharpe"], rtol=1e-9, atol=0.0)
+
+
+def test_otr_grid_refuses_barriers_that_overflow_float64() -> None:
+    # sigma * 10 is inf, so the profit barrier would be silently absent.
+    with pytest.raises(ValueError, match="sigma"):
+        otr_grid(0.0, 5.0, sigma=1e308, profit_taking=[10.0], stop_loss=[1.0], n_iter=50, max_hp=100, seed=0)
+
+
+def test_otr_grid_refuses_exits_that_overflow_float64() -> None:
+    # Barriers are finite here, but sigma * eps overflows on some draws, so an exit is inf.
+    with pytest.raises(ValueError, match="sigma"):
+        otr_grid(0.0, 5.0, sigma=1e308, profit_taking=[0.5], stop_loss=[0.5], n_iter=50, max_hp=100, seed=0)
+
+
+def test_scalar_arguments_accept_zero_dimensional_arrays() -> None:
+    # finlab.strategy_risk takes a 0-d array as a scalar, so this module does too.
+    assert ou_phi(np.array(5.0)) == ou_phi(5.0)
+    assert ou_half_life(np.array(0.5)) == ou_half_life(0.5)
+    assert fit_ou([1.0, 2.0, 0.0], np.array(0.0)).phi == fit_ou([1.0, 2.0, 0.0], 0.0).phi
+    kwargs = dict(n_iter=50, profit_taking=[1.0], stop_loss=[1.0], seed=1)
+    pd.testing.assert_frame_equal(
+        otr_grid(np.array(0.0), np.array(5.0), sigma=np.array(1.0), start=np.array(0.0), **kwargs),
+        otr_grid(0.0, 5.0, sigma=1.0, start=0.0, **kwargs),
+    )
+
+
+def test_ou_phi_rounds_to_endpoints_for_extreme_half_lives() -> None:
+    # 2 ** (-1 / half_life) rounds to 0 below a half-life of about 9.3e-4 and to 1 above about
+    # 1.25e16. ou_phi documents the closed interval, and otr_grid still simulates both cases.
+    assert ou_phi(1e-6) == 0.0
+    assert ou_phi(1e-3) > 0.0
+    assert ou_phi(1e16) < 1.0
+    assert ou_phi(1e17) == 1.0
+    for half_life in (1e-6, 1e17):
+        grid = otr_grid(0.0, half_life, n_iter=20, profit_taking=[1.0], stop_loss=[1.0], max_hp=3)
+        assert np.isfinite(grid.loc[0, "mean"])
+
+
+def test_scalars_beyond_float64_range_are_refused_by_name() -> None:
+    with pytest.raises(ValueError, match="half_life"):
+        ou_phi(10**400)
+    with pytest.raises(ValueError, match="forecast"):
+        otr_grid(10**400, 5.0, n_iter=10, profit_taking=[1.0], stop_loss=[1.0])
+
+
+@pytest.mark.parametrize("name", ["n_iter", "max_hp"])
+def test_otr_grid_refuses_counts_beyond_int64_by_name(name: str) -> None:
+    # numba receives these as int64, so 2**63 raised OverflowError from the kernel call.
+    kwargs = dict(n_iter=10, max_hp=3, profit_taking=[1.0], stop_loss=[1.0])
+    kwargs[name] = 2**63
+    with pytest.raises(ValueError, match=name):
+        otr_grid(0.0, 5.0, **kwargs)

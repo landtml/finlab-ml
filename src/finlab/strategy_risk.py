@@ -35,6 +35,9 @@ __all__ = [
     "mixture_returns",
 ]
 
+# Smallest positive normal float64. Results below it have lost precision to subnormal rounding.
+_TINY = float(np.finfo(np.float64).tiny)
+
 
 def _as_finite(name: str, value: object) -> float:
     """Return ``value`` as a finite float; reject bool, non-real and non-finite values."""
@@ -42,7 +45,10 @@ def _as_finite(name: str, value: object) -> float:
         value = value.item()
     if isinstance(value, (bool, np.bool_)) or not isinstance(value, numbers.Real):
         raise ValueError(f"{name} must be a real number, got {type(value).__name__}")
-    x = float(value)
+    try:
+        x = float(value)
+    except OverflowError:
+        raise ValueError(f"{name} is outside the float64 range") from None
     if not math.isfinite(x):
         raise ValueError(f"{name} must be finite, got {x}")
     return x
@@ -80,6 +86,16 @@ def _check_payoffs(pt: object, sl: object) -> tuple[float, float]:
     if stop >= 0.0:
         raise ValueError(f"sl must be negative (a losing bet's return), got {stop}")
     return profit, stop
+
+
+def _unit_payoffs(pt: float, sl: float) -> tuple[float, float]:
+    """Divide both payoffs by the larger magnitude, so the outcome width lies in (1, 2].
+
+    The Sharpe ratio, the hit rate and the frequency depend on the payoffs only through their
+    ratio. Scaling first keeps the arithmetic away from float64 overflow and underflow.
+    """
+    scale = max(pt, -sl)
+    return pt / scale, sl / scale
 
 
 def _as_returns(returns: object) -> np.ndarray:
@@ -130,7 +146,7 @@ def binomial_sharpe(p: float, freq: float, pt: float = 1.0, sl: float = -1.0) ->
     """
     p = _check_prob(p)
     freq = _check_freq(freq)
-    pt, sl = _check_payoffs(pt, sl)
+    pt, sl = _unit_payoffs(*_check_payoffs(pt, sl))
     width = pt - sl
     mean = width * p + sl
     std = width * math.sqrt(p * (1.0 - p))
@@ -156,6 +172,13 @@ def implied_precision(sl: float, pt: float, freq: float, target_sharpe: float) -
     float
         The unique ``p`` in (0, 1) with ``binomial_sharpe(p, freq, pt, sl) == target_sharpe``.
 
+    Raises
+    ------
+    ValueError
+        If the square of ``target_sharpe`` overflows float64, or if the hit rate is not a normal
+        float strictly between 0 and 1. The second happens when the hit rate rounds to 0 or 1, or
+        falls below the normal float range.
+
     Notes
     -----
     Squaring ``binomial_sharpe(p, freq, pt, sl) = target_sharpe`` gives the quadratic
@@ -166,13 +189,20 @@ def implied_precision(sl: float, pt: float, freq: float, target_sharpe: float) -
     strictly increasing in ``p``, and ``binomial_sharpe`` is strictly increasing on (0, 1), with
     limits -inf and +inf. Exactly one ``p`` in (0, 1) therefore solves the equation.
 
+    The returned ``p`` is a float64, so its precision near 0 and 1 is the spacing of floats there.
+    Each unit of error in ``p`` moves the Sharpe ratio by about ``1 / (2 * (1 - p))`` relative
+    to ``target_sharpe`` when ``p`` is near 1. For ``sl = -1``, ``pt = 1``, ``freq = 52`` the
+    relative error of ``binomial_sharpe(implied_precision(...))`` against the target is 2e-12 at
+    ``target_sharpe = 1e3``, 6e-10 at 1e5, 2e-6 at 1e6 and 3e-2 at 1e8 (measured 2026-10-14 on a
+    shared 4-vCPU machine). The round trip holds to float64 precision only for moderate targets.
+
     The quadratic also has the root of ``-target_sharpe``. For ``target_sharpe >= 0`` the larger
     root is returned, which is the formula of Snippet 15.3. For ``target_sharpe < 0`` the smaller
     root is returned, computed as ``2 c / (-b + sqrt(disc))`` to avoid cancellation.
 
     See ``docs/proofs/strategy_risk.md``, section 2.
     """
-    pt, sl = _check_payoffs(pt, sl)
+    pt, sl = _unit_payoffs(*_check_payoffs(pt, sl))
     freq = _check_freq(freq)
     target = _as_finite("target_sharpe", target_sharpe)
     width = pt - sl
@@ -181,12 +211,23 @@ def implied_precision(sl: float, pt: float, freq: float, target_sharpe: float) -
     # The discriminant factors as t2 * (t2 + 4 freq |sl| pt) with t2 = (target * width)**2, so the
     # root is written as a sum of positive terms. Taking b^2 - 4ac directly would cancel when
     # target is 0, where the two roots coincide at -sl / width.
-    t2 = (target * width) ** 2
+    t2 = (target * width) * (target * width)
     minus_b = t2 + 2.0 * freq * (-sl) * width
     root = abs(target) * width * math.sqrt(t2 + 4.0 * freq * (-sl) * pt)
+    if not all(math.isfinite(v) for v in (a, t2, minus_b, root)):
+        raise ValueError("target_sharpe is too large in magnitude for float64 arithmetic")
     if target >= 0.0:
-        return float((minus_b + root) / (2.0 * a))
-    return float(2.0 * c / (minus_b + root))
+        p = float((minus_b + root) / (2.0 * a))
+    else:
+        # A zero denominator needs sl to underflow to 0 and target to underflow too, which puts
+        # the true hit rate at 0. The range check below then refuses it.
+        denom = minus_b + root
+        p = float(2.0 * c / denom) if denom > 0.0 else 0.0
+    if not (_TINY <= p < 1.0):  # also refuses nan
+        raise ValueError(
+            "target_sharpe gives a hit rate that is not a normal float strictly between 0 and 1"
+        )
+    return p
 
 
 def implied_frequency(sl: float, pt: float, p: float, target_sharpe: float) -> float:
@@ -209,6 +250,12 @@ def implied_frequency(sl: float, pt: float, p: float, target_sharpe: float) -> f
         ``freq = (target_sharpe * (pt - sl))**2 * p * (1 - p) / ((pt - sl) * p + sl)**2``
         (AFML Snippet 15.4), or nan when no positive frequency gives the target.
 
+    Raises
+    ------
+    ValueError
+        If the frequency overflows float64, or falls below the normal float range. Either
+        happens when ``target_sharpe`` is extreme in magnitude.
+
     Notes
     -----
     Squaring ``binomial_sharpe = target_sharpe`` gives this ``freq``. The squared equation also
@@ -219,14 +266,23 @@ def implied_frequency(sl: float, pt: float, p: float, target_sharpe: float) -> f
 
     See ``docs/proofs/strategy_risk.md``, section 3.
     """
-    pt, sl = _check_payoffs(pt, sl)
+    pt, sl = _unit_payoffs(*_check_payoffs(pt, sl))
     p = _check_prob(p)
     target = _as_finite("target_sharpe", target_sharpe)
     width = pt - sl
     mean = width * p + sl
     if target == 0.0 or mean == 0.0:
         return float("nan")
-    freq = (target * width) ** 2 * p * (1.0 - p) / mean**2
+    # Squared as ratio * ratio: mean * mean would underflow for a mean near zero.
+    ratio = abs(target * width) * math.sqrt(p * (1.0 - p)) / abs(mean)
+    freq = ratio * ratio
+    if not math.isfinite(freq):
+        raise ValueError("target_sharpe is too large in magnitude for float64 arithmetic")
+    if not freq >= _TINY:  # also refuses 0 from underflow
+        raise ValueError(
+            "target_sharpe gives a frequency below the normal float range; no float64 frequency "
+            "reaches it"
+        )
     theta = binomial_sharpe(p, freq, pt, sl)
     if not math.isclose(theta, target, rel_tol=1e-9, abs_tol=1e-12):
         return float("nan")
@@ -256,7 +312,8 @@ def probability_of_failure(returns: object, freq: float, target_sharpe: float) -
     Raises
     ------
     ValueError
-        If the non-positive returns are all zero, so ``rNeg`` is 0 and no bet loss exists.
+        If the non-positive returns are all zero, so ``rNeg`` is 0 and no bet loss exists. Also
+        if ``target_sharpe`` cannot be represented, as in :func:`implied_precision`.
 
     Notes
     -----
@@ -269,8 +326,11 @@ def probability_of_failure(returns: object, freq: float, target_sharpe: float) -
     freq = _check_freq(freq)
     target = _as_finite("target_sharpe", target_sharpe)
     positive = arr > 0.0
-    r_pos = float(arr[positive].mean())
-    r_neg = float(arr[~positive].mean())
+    # Averages of the scaled returns: summing values near 1e308 overflows float64.
+    scale = float(np.max(np.abs(arr)))
+    unit = arr / scale
+    r_pos = float(unit[positive].mean()) * scale
+    r_neg = float(unit[~positive].mean()) * scale
     p = float(positive.mean())
     if r_neg == 0.0:
         raise ValueError("returns: every non-positive return is zero, so the mean loss is 0")
@@ -300,7 +360,7 @@ def mixture_returns(
     n_obs : int
         Number of observations, at least 1.
     seed : int or None, default None
-        Passed to ``numpy.random.default_rng``.
+        Non-negative integer, passed to ``numpy.random.default_rng``. Bool is refused.
 
     Returns
     -------
@@ -323,11 +383,17 @@ def mixture_returns(
     if not 0.0 <= prob1 <= 1.0:
         raise ValueError(f"prob1 must be between 0 and 1, got {prob1}")
     n_obs = _as_count("n_obs", n_obs, minimum=1)
+    if n_obs > np.iinfo(np.int64).max:
+        raise ValueError(f"n_obs must be at most {np.iinfo(np.int64).max}, got {n_obs}")
 
+    if seed is not None:
+        seed = _as_count("seed", seed, minimum=0)
     rng = np.random.default_rng(seed)
     n1 = int(round(n_obs * prob1))
     first = rng.normal(mu1, sigma1, size=n1)
     second = rng.normal(mu2, sigma2, size=n_obs - n1)
     out = np.concatenate([first, second])
+    if not np.all(np.isfinite(out)):
+        raise ValueError("sigma1, sigma2, mu1 or mu2 is too large: some draws overflow float64")
     rng.shuffle(out)
     return out

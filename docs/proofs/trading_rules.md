@@ -158,31 +158,60 @@ and the default n_iter is 100,000. Both are choices of this code. The output col
 ## 7. Measured
 
 **Measured (`benchmarks/bench_trading_rules.py`, not a test).** Command:
-`PYTHONPATH=src python3 benchmarks/bench_trading_rules.py`, run three times on 2026-10-13, on a
-shared 4-vCPU machine. The load average was about 4.7 to 4.9 during the runs, because other jobs
-were running. Settings: 5 x 5 grid, n_iter = 2000, max_hp = 100, half_life = 5, sigma = 1. The
-numba time is the best of 3 calls, and the kernel is compiled before timing. The naive loop is
-timed once, on normals drawn before timing, so its time leaves out the draws.
+`PYTHONPATH=src python3 benchmarks/bench_trading_rules.py`, run three times on 2026-10-14, on a
+shared 4-vCPU machine. The load average was about 1.0 to 1.4 during the runs. Settings: 5 x 5 grid,
+n_iter = 2000, max_hp = 100, half_life = 5, sigma = 1. The numba time is the best of 3 calls, and the
+kernel is compiled before timing. The naive loop is timed once, on normals drawn before timing, so its
+time leaves out the draws.
 
 | run | naive loop (s) | numba (s) | speedup | means agree |
 |---|---|---|---|---|
-| 1 | 0.1926 | 0.0195 | 9.9x | yes |
-| 2 | 0.1470 | 0.0160 | 9.2x | yes |
-| 3 | 0.1236 | 0.0107 | 11.5x | yes |
+| 1 | 0.1659 | 0.0222 | 7.5x | yes |
+| 2 | 0.1250 | 0.0197 | 6.3x | yes |
+| 3 | 0.1290 | 0.0191 | 6.8x | yes |
 
 The speedup is a lower bound for a naive loop that draws its own normals, because the timed naive
 loop does not include those draws.
 
-**Measured (docs page example, cold numba cache, 2026-10-13, shared 4-vCPU machine, load average
-about 5 to 6).** Inside `pytest tests/test_doc_claims.py tests/test_doc_examples.py`, the page took
-1.07 s. Run alone in a fresh process with `-k trading_rules`, it took 2.04 to 2.17 s over three
-runs. That figure includes importing numba and pandas, and it is above the 2 s target.
+**Measured (docs page example, cold numba cache, 2026-10-14, a shared 4-vCPU machine).** The code block
+alone, after the imports, took 1.62 s, 1.65 s and 2.03 s over three cold-cache runs, and 0.38 s on a warm
+cache. The whole process, including the imports of numba, pandas and finlab, took 2.35 s, 2.38 s and 2.40 s.
+The slowest cold run is above the 2 s target.
 
-**Measured (compile cost, scratch script, cold cache, 2026-10-13).** The first call of the grid
-took about 2.2 s with `np.mean` and `np.std` in the kernel, and about 1.4 s with the explicit loops
-in `_mean_std`. The scratch script is not in the repository.
+---
 
-## 8. Not covered
+## 8. Float64 range
+
+**Proved here (fit_ou is equivariant in the price scale).** Scaling every price and the forecast by c > 0
+scales the deviations x and y by c. Then phi = sum(x y) / sum(x^2) is unchanged, and the residual standard
+deviation scales by c. The module divides the deviations by their largest magnitude before the sums, so the
+sums stay finite and nonzero for prices near 1e170 and 1e-170.
+
+**Checked by test.** `test_fit_ou_is_equivariant_in_price_scale_away_from_float_limits` (scales 1e170 and 1e-170),
+`test_fit_ou_closed_form_on_three_prices`.
+
+**Proved here (otr_grid is scale-free in sigma).** With forecast = start = 0, the update p = phi p + sigma g
+and the barriers pt sigma and sl sigma are all linear in sigma. Every exit, mean and standard deviation
+therefore scales by sigma, and the Sharpe ratio does not change. The kernel divides the exits by their largest
+magnitude before it squares the deviations.
+
+**Checked by test.** `test_otr_grid_is_scale_free_at_extreme_sigma` (sigma 1e-300 and 1e300),
+`test_sigma_scales_exit_values`.
+
+**Convention (not from the book): refusals.** A result that float64 cannot represent raises ValueError
+naming the argument:
+
+- sigma times the grid overflows, or a simulated mean or standard deviation is not finite:
+  `test_otr_grid_refuses_barriers_that_overflow_float64`, `test_otr_grid_refuses_exits_that_overflow_float64`;
+- n_iter or max_hp above 2**63 - 1: `test_otr_grid_refuses_counts_beyond_int64_by_name`;
+- a scalar beyond the float64 range: `test_scalars_beyond_float64_range_are_refused_by_name`.
+
+ou_phi returns the endpoints 0 and 1 for half-lives beyond the rounding thresholds, and otr_grid simulates
+both cases: `test_ou_phi_rounds_to_endpoints_for_extreme_half_lives`.
+
+---
+
+## 9. Not covered
 
 - The estimation error of phi and sigma is not carried into the grid results.
 - Transaction costs are not modelled.

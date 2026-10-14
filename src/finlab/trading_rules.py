@@ -44,6 +44,8 @@ from finlab._jit import jit, pjit
 
 __all__ = ["OUFit", "fit_ou", "otr_grid", "ou_half_life", "ou_phi"]
 
+_INT64_MAX = int(np.iinfo(np.int64).max)
+
 
 @dataclass(frozen=True)
 class OUFit:
@@ -111,7 +113,9 @@ def ou_phi(half_life: float) -> float:
     Returns
     -------
     float
-        phi = 2 ** (-1 / half_life), in (0, 1).
+        phi = 2 ** (-1 / half_life), in [0, 1]. The value rounds to 0 for a half-life below
+        about 9.3e-4 and to 1 for one above about 1.25e16. :func:`ou_half_life` accepts only
+        the open interval (0, 1).
 
     Raises
     ------
@@ -164,11 +168,15 @@ def fit_ou(prices, forecast: float) -> OUFit:
         raise ValueError(f"prices must hold at least 3 values, got {x.size}")
     lag = x[:-1] - f
     cur = x[1:] - f
-    sxx = float(np.sum(lag * lag))
-    if sxx == 0.0:
+    if not np.any(lag):
         raise ValueError("every lagged price equals forecast, so phi is undefined")
-    phi = float(np.sum(lag * cur)) / sxx
-    sigma = float(np.std(cur - phi * lag, ddof=1))
+    # Dividing by the largest deviation keeps the squares finite. phi does not change with the
+    # scale, and sigma scales with it.
+    mag = max(float(np.max(np.abs(lag))), float(np.max(np.abs(cur))))
+    u = lag / mag
+    v = cur / mag
+    phi = float(np.sum(u * v)) / float(np.sum(u * u))
+    sigma = mag * float(np.std(v - phi * u, ddof=1))
     return OUFit(phi=phi, sigma=sigma, half_life=_fitted_half_life(phi), n_obs=int(x.size - 1))
 
 
@@ -231,7 +239,8 @@ def otr_grid(
         If any argument is not a finite real number where one is required, if
         ``half_life`` or ``sigma`` is not positive, if ``n_iter`` is below 2, if
         ``max_hp`` or ``seed`` is negative or not an integer, or if a grid is empty,
-        not one-dimensional, non-finite or negative.
+        not one-dimensional, non-finite or negative. Also if ``sigma`` times the grid, or a
+        simulated exit, overflows float64.
 
     Notes
     -----
@@ -256,6 +265,10 @@ def otr_grid(
     st = _finite("start", start)
     n = _nonneg_int("n_iter", n_iter, 2)
     holding = _nonneg_int("max_hp", max_hp, 0)
+    for name, count in (("n_iter", n), ("max_hp", holding)):
+        # The kernel receives both as int64, so a larger value would fail inside numba.
+        if count > _INT64_MAX:
+            raise ValueError(f"{name} must be at most {_INT64_MAX}, got {count}")
     root = _nonneg_int("seed", seed, 0)
     pts = _grid("profit_taking", profit_taking)
     sls = _grid("stop_loss", stop_loss)
@@ -264,11 +277,19 @@ def otr_grid(
     pt_col = np.repeat(pts, sls.size)
     sl_col = np.tile(sls, pts.size)
     n_pairs = pt_col.size
+    with np.errstate(over="ignore"):  # overflow is caught by the finiteness check below
+        pt_barrier = pt_col * s
+        sl_barrier = sl_col * s
+    # An infinite barrier would never be hit, so the result would be silently wrong.
+    if not (np.all(np.isfinite(pt_barrier)) and np.all(np.isfinite(sl_barrier))):
+        raise ValueError("sigma times the profit_taking or stop_loss grid overflows float64")
     means = np.empty(n_pairs, dtype=np.float64)
     stds = np.empty(n_pairs, dtype=np.float64)
     _otr_grid_kernel(
-        phi, f, s, st, pt_col * s, sl_col * s, holding, n, _pair_seeds(root, n_pairs), means, stds
+        phi, f, s, st, pt_barrier, sl_barrier, holding, n, _pair_seeds(root, n_pairs), means, stds
     )
+    if not (np.all(np.isfinite(means)) and np.all(np.isfinite(stds))):
+        raise ValueError("simulated exits overflow float64 for this sigma; use a smaller sigma")
 
     sharpe = np.full(n_pairs, np.nan)
     ok = stds > 0.0
@@ -278,9 +299,14 @@ def otr_grid(
 
 def _finite(name: str, value: object) -> float:
     """Return ``value`` as a finite float; refuse bools, non-real and non-finite values."""
+    if isinstance(value, np.ndarray) and value.ndim == 0:
+        value = value.item()
     if isinstance(value, (bool, np.bool_)) or not isinstance(value, numbers.Real):
         raise ValueError(f"{name} must be a real number, got {type(value).__name__}")
-    x = float(value)
+    try:
+        x = float(value)
+    except OverflowError:
+        raise ValueError(f"{name} is outside the float64 range") from None
     if not math.isfinite(x):
         raise ValueError(f"{name} must be finite, got {x}")
     return x
@@ -384,19 +410,28 @@ def _exits_one_pair(phi, forecast, sigma, start, pt, sl, max_hp, n_iter, seed):
 def _mean_std(x):
     """Mean and population standard deviation (ddof=0), two passes in index order.
 
+    The exits are divided by their largest magnitude first, so the squared deviations
+    neither overflow nor underflow. A non-finite exit returns nan for both statistics.
     Written as loops rather than ``np.mean`` and ``np.std``: the NumPy versions add
     about 0.7 s to the first compile of the kernel.
     """
     n = x.shape[0]
+    scale = 0.0
+    for i in range(n):
+        if not math.isfinite(x[i]):
+            return math.nan, math.nan
+        scale = max(scale, abs(x[i]))
+    if scale == 0.0:
+        return 0.0, 0.0
     total = 0.0
     for i in range(n):
-        total += x[i]
+        total += x[i] / scale
     mu = total / n
     ss = 0.0
     for i in range(n):
-        d = x[i] - mu
+        d = x[i] / scale - mu
         ss += d * d
-    return mu, math.sqrt(ss / n)
+    return mu * scale, math.sqrt(ss / n) * scale
 
 
 @pjit

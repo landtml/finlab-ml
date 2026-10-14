@@ -405,3 +405,113 @@ def test_module_all_lists_public_functions() -> None:
     }
     for name in sr.__all__:
         assert callable(getattr(sr, name))
+
+
+# ---------------------------------------------------------------------------
+# Extreme magnitudes: theta, the hit rate and the frequency depend on the payoffs only through
+# their ratio, so a common scale must leave them unchanged and must not overflow or underflow.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("scale", [1e-310, 1e-300, 1e308])
+def test_binomial_sharpe_is_invariant_to_common_payoff_scale(scale: float) -> None:
+    expected = binomial_sharpe(0.6, 52.0, 1.0, -1.0)
+    assert binomial_sharpe(0.6, 52.0, scale, -scale) == pytest.approx(expected, rel=1e-12)
+
+
+@pytest.mark.parametrize("scale", [1e-310, 1e-300, 1e308])
+def test_implied_precision_is_invariant_to_common_payoff_scale(scale: float) -> None:
+    expected = implied_precision(-1.0, 1.0, 52.0, 1.0)
+    assert implied_precision(-scale, scale, 52.0, 1.0) == pytest.approx(expected, rel=1e-12)
+
+
+@pytest.mark.parametrize("scale", [1e-310, 1e-300, 1e308])
+def test_implied_frequency_is_invariant_to_common_payoff_scale(scale: float) -> None:
+    expected = implied_frequency(-1.0, 1.0, 0.6, 1.0)
+    assert implied_frequency(-scale, scale, 0.6, 1.0) == pytest.approx(expected, rel=1e-12)
+
+
+def test_probability_of_failure_is_invariant_to_tiny_return_scale() -> None:
+    # Returns near 1e-300 make the threshold's payoff arithmetic underflow.
+    tiny = np.array([1e-300, -1e-300, 2e-300, -2e-300])
+    assert probability_of_failure(tiny, 52.0, 1.0) == pytest.approx(
+        probability_of_failure([1.0, -1.0, 2.0, -2.0], 52.0, 1.0), rel=1e-9
+    )
+
+
+def test_probability_of_failure_accepts_returns_near_float_max() -> None:
+    # Summing the positive returns overflows float64 at this scale, so the means need scaled values.
+    base = np.array([1.0, 1.5, -0.5])
+    expected = probability_of_failure(base, 52.0, 1.0)
+    assert probability_of_failure(base * 1e308, 52.0, 1.0) == pytest.approx(expected, rel=1e-9)
+
+
+@pytest.mark.parametrize("target", [1e200, -1e200])
+def test_implied_precision_names_target_when_its_square_overflows(target: float) -> None:
+    with pytest.raises(ValueError, match="target_sharpe"):
+        implied_precision(-1.0, 1.0, 52.0, target)
+
+
+@pytest.mark.parametrize("target", [1e200, 1e154])
+def test_implied_frequency_names_target_when_the_frequency_overflows(target: float) -> None:
+    with pytest.raises(ValueError, match="target_sharpe"):
+        implied_frequency(-1.0, 1.0, 0.6, target)
+
+
+def test_probability_of_failure_names_target_when_its_square_overflows() -> None:
+    with pytest.raises(ValueError, match="target_sharpe"):
+        probability_of_failure([0.1, -0.1, 0.2], 52.0, 1e200)
+
+
+
+@pytest.mark.parametrize(
+    ("sl", "pt", "freq", "target"),
+    [(-1.0, 1.0, 52.0, 1e100), (-1.0, 1.0, 1e-300, -1e100), (-1.0, 1.0, 1e-300, -1e10)],
+)
+def test_implied_precision_refuses_hit_rates_that_are_not_normal_floats_in_unit_interval(
+    sl: float, pt: float, freq: float, target: float
+) -> None:
+    # Hit rates round to 1.0 or 0.0, or fall into the subnormal range, where they lose precision.
+    with pytest.raises(ValueError, match="target_sharpe"):
+        implied_precision(sl, pt, freq, target)
+
+
+@pytest.mark.parametrize("target", [1e-200, 1e-160])
+def test_implied_frequency_refuses_frequencies_below_the_normal_float_range(target: float) -> None:
+    with pytest.raises(ValueError, match="target_sharpe"):
+        implied_frequency(-1.0, 1.0, 0.6, target)
+
+
+@pytest.mark.parametrize("seed", [True, -1, 1.5, "3"])
+def test_mixture_returns_refuses_bad_seed_by_name(seed: object) -> None:
+    # bool is not an int, and numpy's own messages for -1 and 1.5 do not say which argument is wrong.
+    with pytest.raises(ValueError, match="seed"):
+        mixture_returns(0.05, -0.1, 0.05, 0.1, 0.75, 10, seed=seed)  # type: ignore[arg-type]
+
+
+def test_mixture_returns_accepts_none_and_numpy_integer_seeds() -> None:
+    assert mixture_returns(0.0, 0.0, 1.0, 1.0, 0.5, 6, seed=None).shape == (6,)
+    a = mixture_returns(0.0, 0.0, 1.0, 1.0, 0.5, 6, seed=np.int64(3))
+    b = mixture_returns(0.0, 0.0, 1.0, 1.0, 0.5, 6, seed=3)
+    np.testing.assert_array_equal(a, b)
+
+
+def test_mixture_returns_refuses_draws_that_overflow_float64() -> None:
+    # A sigma near 1e308 puts some draws beyond float64. They must not come back as inf.
+    with pytest.raises(ValueError, match="sigma"):
+        mixture_returns(0.0, 0.0, 1e308, 1e308, 0.5, 1000, seed=0)
+
+
+def test_scalars_beyond_float64_range_are_refused_by_name() -> None:
+    # An int too large for float64 raised OverflowError, which does not name the argument.
+    with pytest.raises(ValueError, match="freq"):
+        binomial_sharpe(0.6, 10**400)
+    with pytest.raises(ValueError, match="p "):
+        binomial_sharpe(10**400, 52)
+    with pytest.raises(ValueError, match="freq"):
+        probability_of_failure([0.1, -0.1, 0.2], 10**400, 1.0)
+
+
+def test_mixture_returns_refuses_n_obs_beyond_int64_by_name() -> None:
+    with pytest.raises(ValueError, match="n_obs"):
+        mixture_returns(0.0, 0.0, 1.0, 1.0, 0.5, 10**400, seed=0)
