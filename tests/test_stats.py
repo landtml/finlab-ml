@@ -702,7 +702,9 @@ def test_bet_timing_refuses_bad_input() -> None:
         bet_timing(_daily([]))
     with pytest.raises(ValueError, match="must not contain NaN"):
         bet_timing(_daily([1.0, np.nan, 0.0]))
-    with pytest.raises(ValueError, match="must hold real numbers"):
+    # pandas 2.0 gives a string Series dtype object, which is refused by the element check
+    # ("must be real numbers"); pandas 3 has a str dtype, refused by the dtype check ("must hold").
+    with pytest.raises(ValueError, match="real numbers"):
         bet_timing(pd.Series(["1", "0"], index=pd.date_range("2024-01-01", periods=2)))
     with pytest.raises(ValueError, match="must be real numbers"):
         bet_timing(pd.Series(["1", "0"], index=pd.date_range("2024-01-01", periods=2), dtype=object))
