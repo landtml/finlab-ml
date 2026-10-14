@@ -337,9 +337,10 @@ pass the recovery. Pnl 0, 1, 0.5, 2, 3, 2, 4 on consecutive days gives 3 days fo
 Pnl is back above 1 at day 3, so the recovery took 2 days. The rule is Snippet 14.4 as implemented here, claimed from the book only (not verified against the text). The 3-day value
 is checked by test.
 
-**Convention (not from the book).** One year is 365.25 days. The book divides by
-`np.timedelta64(1, 'Y')`. On numpy 2.5.4 that raises `ValueError: Unit Y is not supported`
-(checked 2026-10-13 on a shared 4-vCPU machine), so the conversion is replaced.
+**Convention (not from the book).** One year is 365.25 days. The book divides a `DatetimeIndex`
+difference by `np.timedelta64(1, 'Y')`. On pandas 3.0.6 that raises `ValueError: Unit Y is not
+supported` (checked 2026-10-14 on a shared 4-vCPU machine). A plain numpy array divided by the
+same value raises `TypeError` instead. So the conversion is replaced.
 
 **Claimed from the book only.** The high-water-mark grouping and the dd and tuw definitions of
 Snippet 14.4, as implemented here.
@@ -363,4 +364,4 @@ Snippet 14.4, as implemented here.
 | HHI above 1 with mixed signs (example 7) | Proved here (arithmetic); checked by test (`test_hhi_mixed_sign_can_exceed_one`) |
 | Drawdown runs, dd in (0, 1) for positive pnl | Proved here (contiguous runs of the running maximum) |
 | Time under water skips marks with no later drawdown | Checked by test (`test_drawdown_time_under_water_runs_to_next_drawdown_high_not_next_high`); the rule claimed from the book only |
-| One year = 365.25 days | Convention (not from the book); the book's `'Y'` divisor fails on numpy 2.5.4 (section 10) |
+| One year = 365.25 days | Convention (not from the book); the book's `'Y'` divisor fails on pandas 3.0.6 (section 10) |

@@ -714,7 +714,7 @@ def drawdown_time_under_water(
     Notes
     -----
     A year is 365.25 days (a convention, not from the book). The book divides by a
-    ``'Y'`` timedelta, which numpy 2.5 rejects with ``ValueError: Unit Y is not supported``.
+    ``'Y'`` timedelta, which pandas 3.0 rejects with ``ValueError: Unit Y is not supported``.
 
     Time under water runs from an HWM to the next HWM that has a drawdown, not to the
     next HWM. If an HWM with no later drawdown falls in between, the interval runs past
