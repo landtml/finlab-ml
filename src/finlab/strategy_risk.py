@@ -380,5 +380,7 @@ def mixture_returns(
     first = rng.normal(mu1, sigma1, size=n1)
     second = rng.normal(mu2, sigma2, size=n_obs - n1)
     out = np.concatenate([first, second])
+    if not np.all(np.isfinite(out)):
+        raise ValueError("sigma1, sigma2, mu1 or mu2 is too large: some draws overflow float64")
     rng.shuffle(out)
     return out

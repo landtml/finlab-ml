@@ -494,3 +494,9 @@ def test_mixture_returns_accepts_none_and_numpy_integer_seeds() -> None:
     a = mixture_returns(0.0, 0.0, 1.0, 1.0, 0.5, 6, seed=np.int64(3))
     b = mixture_returns(0.0, 0.0, 1.0, 1.0, 0.5, 6, seed=3)
     np.testing.assert_array_equal(a, b)
+
+
+def test_mixture_returns_refuses_draws_that_overflow_float64() -> None:
+    # A sigma near 1e308 puts some draws beyond float64. They must not come back as inf.
+    with pytest.raises(ValueError, match="sigma"):
+        mixture_returns(0.0, 0.0, 1e308, 1e308, 0.5, 1000, seed=0)
