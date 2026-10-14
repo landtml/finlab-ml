@@ -153,7 +153,7 @@ def _plug_in_kernel(codes: np.ndarray, k: int, w: int) -> float:
         while j < m and words[j] == words[i]:
             j += 1
         p = (j - i) / m
-        h -= p * math.log2(p)
+        h -= p * np.log2(p)
         i = j
     return h / w
 
@@ -321,7 +321,7 @@ def _konto_sum(codes: np.ndarray, first: int, last: int, window: int) -> tuple[f
     for i in range(first, last + 1):
         n = window if window > 0 else i
         length = _match_length(codes, i, n)
-        total += math.log2(n + 1) / length
+        total += np.log2(n + 1.0) / length
         num += 1
     return total, num
 
