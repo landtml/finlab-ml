@@ -453,6 +453,34 @@ def test_sequential_bootstrap_draws_equal_reference_kernel(shape, seed):
         assert np.array_equal(got, ref), (shape, seed, n_samples)
 
 
+def _mixed_span_matrix(seed: int) -> np.ndarray:
+    """Thirty labels of 1 or 2 bars and six labels of about 150 bars, on one 200-bar grid."""
+    rng = np.random.default_rng(seed)
+    index = pd.bdate_range("2021-01-01", periods=200)
+    short_s = np.sort(rng.choice(190, size=30, replace=False))
+    short_e = np.minimum(short_s + rng.integers(0, 2, size=30), 199)
+    long_s = np.sort(rng.choice(40, size=6, replace=False))
+    long_e = long_s + 150
+    starts = np.concatenate([short_s, long_s])
+    ends = np.concatenate([short_e, long_e])
+    t1 = pd.Series(index[ends], index=index[starts])
+    return np.array(indicator_matrix(index, t1), dtype=np.float64)
+
+
+@pytest.mark.parametrize("seed", range(4))
+def test_sequential_bootstrap_mixed_spans_take_both_update_paths_in_one_call(seed):
+    # Short labels touch few (bar, label) entries and long labels touch many, so one call
+    # recomputes some draws' stale weights by marking and others by a full recompute.
+    m = _mixed_span_matrix(seed)
+    got = sequential_bootstrap(m, seed=seed)
+    np.testing.assert_array_equal(got, _reference_draws(m, None, seed))
+    deg = (m != 0.0).sum(axis=1)
+    touch = np.array([deg[np.flatnonzero(m[:, j])].sum() for j in range(m.shape[1])])
+    nnz = int((m != 0.0).sum())
+    full = touch[got] * weights._FULL_RECOMPUTE_DIVISOR >= nnz
+    assert full.any() and not full.all()
+
+
 # ---------------------------------------------------------------------------
 # Return attribution and time decay
 # ---------------------------------------------------------------------------
