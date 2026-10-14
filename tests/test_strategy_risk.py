@@ -461,3 +461,22 @@ def test_implied_frequency_names_target_when_the_frequency_overflows(target: flo
 def test_probability_of_failure_names_target_when_its_square_overflows() -> None:
     with pytest.raises(ValueError, match="target_sharpe"):
         probability_of_failure([0.1, -0.1, 0.2], 52.0, 1e200)
+
+
+
+@pytest.mark.parametrize(
+    ("sl", "pt", "freq", "target"),
+    [(-1.0, 1.0, 52.0, 1e100), (-1.0, 1.0, 1e-300, -1e100), (-1.0, 1.0, 1e-300, -1e10)],
+)
+def test_implied_precision_refuses_hit_rates_that_are_not_normal_floats_in_unit_interval(
+    sl: float, pt: float, freq: float, target: float
+) -> None:
+    # Hit rates round to 1.0 or 0.0, or fall into the subnormal range, where they lose precision.
+    with pytest.raises(ValueError, match="target_sharpe"):
+        implied_precision(sl, pt, freq, target)
+
+
+@pytest.mark.parametrize("target", [1e-200, 1e-160])
+def test_implied_frequency_refuses_frequencies_below_the_normal_float_range(target: float) -> None:
+    with pytest.raises(ValueError, match="target_sharpe"):
+        implied_frequency(-1.0, 1.0, 0.6, target)

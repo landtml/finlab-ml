@@ -35,6 +35,9 @@ __all__ = [
     "mixture_returns",
 ]
 
+# Smallest positive normal float64. Results below it have lost precision to subnormal rounding.
+_TINY = float(np.finfo(np.float64).tiny)
+
 
 def _as_finite(name: str, value: object) -> float:
     """Return ``value`` as a finite float; reject bool, non-real and non-finite values."""
@@ -166,6 +169,13 @@ def implied_precision(sl: float, pt: float, freq: float, target_sharpe: float) -
     float
         The unique ``p`` in (0, 1) with ``binomial_sharpe(p, freq, pt, sl) == target_sharpe``.
 
+    Raises
+    ------
+    ValueError
+        If the square of ``target_sharpe`` overflows float64, or if the hit rate is not a normal
+        float strictly between 0 and 1. The second happens when the hit rate rounds to 0 or 1, or
+        falls below the normal float range.
+
     Notes
     -----
     Squaring ``binomial_sharpe(p, freq, pt, sl) = target_sharpe`` gives the quadratic
@@ -197,8 +207,17 @@ def implied_precision(sl: float, pt: float, freq: float, target_sharpe: float) -
     if not all(math.isfinite(v) for v in (a, t2, minus_b, root)):
         raise ValueError("target_sharpe is too large in magnitude for float64 arithmetic")
     if target >= 0.0:
-        return float((minus_b + root) / (2.0 * a))
-    return float(2.0 * c / (minus_b + root))
+        p = float((minus_b + root) / (2.0 * a))
+    else:
+        # A zero denominator needs sl to underflow to 0 and target to underflow too, which puts
+        # the true hit rate at 0. The range check below then refuses it.
+        denom = minus_b + root
+        p = float(2.0 * c / denom) if denom > 0.0 else 0.0
+    if not (_TINY <= p < 1.0):  # also refuses nan
+        raise ValueError(
+            "target_sharpe gives a hit rate that is not a normal float strictly between 0 and 1"
+        )
+    return p
 
 
 def implied_frequency(sl: float, pt: float, p: float, target_sharpe: float) -> float:
@@ -220,6 +239,12 @@ def implied_frequency(sl: float, pt: float, p: float, target_sharpe: float) -> f
     float
         ``freq = (target_sharpe * (pt - sl))**2 * p * (1 - p) / ((pt - sl) * p + sl)**2``
         (AFML Snippet 15.4), or nan when no positive frequency gives the target.
+
+    Raises
+    ------
+    ValueError
+        If the frequency overflows float64, or falls below the normal float range. Either
+        happens when ``target_sharpe`` is extreme in magnitude.
 
     Notes
     -----
@@ -243,6 +268,11 @@ def implied_frequency(sl: float, pt: float, p: float, target_sharpe: float) -> f
     freq = ratio * ratio
     if not math.isfinite(freq):
         raise ValueError("target_sharpe is too large in magnitude for float64 arithmetic")
+    if not freq >= _TINY:  # also refuses 0 from underflow
+        raise ValueError(
+            "target_sharpe gives a frequency below the normal float range; no float64 frequency "
+            "reaches it"
+        )
     theta = binomial_sharpe(p, freq, pt, sl)
     if not math.isclose(theta, target, rel_tol=1e-9, abs_tol=1e-12):
         return float("nan")

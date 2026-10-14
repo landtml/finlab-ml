@@ -24,9 +24,10 @@ the number of bets a year. `binomial_sharpe(p, freq, pt, sl)` is the annualised 
 that sequence. With the defaults `pt = 1` and `sl = -1` it is `(2p - 1) sqrt(freq) / (2 sqrt(p(1-p)))`.
 
 `implied_precision` and `implied_frequency` invert `binomial_sharpe` for `p` and `freq`.
-`implied_precision` always returns a hit rate in (0, 1). `implied_frequency` returns `nan` when
-no positive frequency gives the target: the target is 0, the mean bet return is 0, or the mean
-bet return and the target have opposite signs.
+`implied_precision` returns a hit rate in (0, 1), or raises `ValueError` when float64 cannot hold
+one. `implied_frequency` returns `nan` when no positive frequency gives the target: the target is
+0, the mean bet return is 0, or the mean bet return and the target have opposite signs. It raises
+`ValueError` when the frequency overflows or falls below the normal float range.
 
 ## Notes
 
