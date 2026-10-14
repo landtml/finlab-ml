@@ -30,6 +30,10 @@ Or run it directly: `python -m finlab.agent` (reads JSON-RPC lines on stdin).
 | `probabilistic_sharpe_ratio` | P(true SR > benchmark) | 14 |
 | `deflated_sharpe_ratio` | SR corrected for n trials | 14 |
 | `min_track_record_length` | Observations needed for a given confidence | 14 |
+| `binomial_sharpe` | Annualised Sharpe ratio of IID two-outcome bets | 15 |
+| `implied_precision` | Hit rate that gives a target Sharpe ratio | 15 |
+| `implied_frequency` | Bets per year that give a target Sharpe ratio | 15 |
+| `probability_of_failure` | Probability a return sample falls short of a target Sharpe ratio | 15 |
 | `probability_of_backtest_overfitting` | PBO by CSCV on a returns matrix | 11 |
 | `frac_diff_ffd` | Fixed-window fractional differentiation | 5 |
 | `cusum_filter` | Symmetric CUSUM event positions | 2 |
@@ -60,6 +64,11 @@ Response (one line on stdout):
 Bad input returns `isError: true` with an `error` message, not a protocol error, so
 the agent can read the reason and retry.
 
+A float result that is NaN or infinite is `null` in the reply, since JSON has no such
+values. `implied_frequency` returns `null` when no frequency gives the target. In a request,
+a `NaN`, `Infinity` or `-Infinity` literal fails to parse (error `-32700`), and a number too
+large for a float, such as `1e400`, is a tool error.
+
 ## Limits and efficiency
 
 - **Size guard.** Any single array above 5,000,000 numbers is refused before it is
@@ -76,5 +85,5 @@ the agent can read the reason and retry.
 
 ## Verification
 
-`tests/test_agent.py` checks each tool's output against a direct library call, the
-error paths, and a real subprocess round trip over stdio.
+`tests/test_agent.py` checks each tool's output against a direct library call or a fixed
+value, the error paths, and a real subprocess round trip over stdio.
