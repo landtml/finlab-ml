@@ -206,8 +206,9 @@ the weight `ū^{(k)}_j` as the kernel computes it: the sum of `1/(1 + c_t)` over
 kernel computes from the same `c`.
 
 *Proof.* Both evaluate the same sequence of IEEE-754 double operations on the same inputs.
-`finlab._jit` compiles without fastmath, so the compiler does not reorder that sequence.
-*(Proved here.)*
+This holds if the compiler keeps the source order of those operations. `finlab._jit` disables
+fastmath for that reason, and the argument assumes that setting. *(Proved here, given the
+no-fastmath setting. The compiler's behaviour is not checked here beyond the tests below.)*
 
 **Proposition 4a.3 (same draws).** For every sequence of uniforms, the two kernels return the same
 draws.
@@ -227,8 +228,8 @@ The bar index costs `O(T + nnz)` once. Overlap changes the constant, not the bou
 
 * **Checked by test.** `test_sequential_bootstrap_draws_equal_reference_kernel` covers 7 matrix
   shapes (sparse and dense spans, a random binary matrix, one label, identical spans, open-ended
-  labels, an empty column), 20 seeds each, and 5 sample sizes per shape (`None`, 1, `I // 2`, `I`,
-  `2I + 3`). Each comparison is `np.array_equal` on the draws, plus a dtype check. The reference is
+  labels, an empty column), 20 seeds each, and 5 sample sizes per shape (`None`, 1, `max(1, I // 2)`,
+  `I`, `2I + 3`). Each comparison is `np.array_equal` on the draws, plus a dtype check. The reference is
   a verbatim copy of the full-recompute kernel in the test file.
 * **Measured.** `PYTHONPATH=src python benchmarks/bench_weights.py`, run from the worktree root on
   2026-10-14, a shared 4-vCPU machine, best of 3 per timing, two runs. The "full kernel" column
