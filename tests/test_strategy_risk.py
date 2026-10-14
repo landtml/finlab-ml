@@ -405,3 +405,35 @@ def test_module_all_lists_public_functions() -> None:
     }
     for name in sr.__all__:
         assert callable(getattr(sr, name))
+
+
+# ---------------------------------------------------------------------------
+# Extreme magnitudes: theta, the hit rate and the frequency depend on the payoffs only through
+# their ratio, so a common scale must leave them unchanged and must not overflow or underflow.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("scale", [1e-310, 1e-300, 1e308])
+def test_binomial_sharpe_is_invariant_to_common_payoff_scale(scale: float) -> None:
+    expected = binomial_sharpe(0.6, 52.0, 1.0, -1.0)
+    assert binomial_sharpe(0.6, 52.0, scale, -scale) == pytest.approx(expected, rel=1e-12)
+
+
+@pytest.mark.parametrize("scale", [1e-310, 1e-300, 1e308])
+def test_implied_precision_is_invariant_to_common_payoff_scale(scale: float) -> None:
+    expected = implied_precision(-1.0, 1.0, 52.0, 1.0)
+    assert implied_precision(-scale, scale, 52.0, 1.0) == pytest.approx(expected, rel=1e-12)
+
+
+@pytest.mark.parametrize("scale", [1e-310, 1e-300, 1e308])
+def test_implied_frequency_is_invariant_to_common_payoff_scale(scale: float) -> None:
+    expected = implied_frequency(-1.0, 1.0, 0.6, 1.0)
+    assert implied_frequency(-scale, scale, 0.6, 1.0) == pytest.approx(expected, rel=1e-12)
+
+
+def test_probability_of_failure_is_invariant_to_tiny_return_scale() -> None:
+    # Returns near 1e-300 make the threshold's payoff arithmetic underflow.
+    tiny = np.array([1e-300, -1e-300, 2e-300, -2e-300])
+    assert probability_of_failure(tiny, 52.0, 1.0) == pytest.approx(
+        probability_of_failure([1.0, -1.0, 2.0, -2.0], 52.0, 1.0), rel=1e-9
+    )

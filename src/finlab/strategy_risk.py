@@ -82,6 +82,16 @@ def _check_payoffs(pt: object, sl: object) -> tuple[float, float]:
     return profit, stop
 
 
+def _unit_payoffs(pt: float, sl: float) -> tuple[float, float]:
+    """Divide both payoffs by the larger magnitude, so the outcome width lies in (1, 2].
+
+    The Sharpe ratio, the hit rate and the frequency depend on the payoffs only through their
+    ratio. Scaling first keeps the arithmetic away from float64 overflow and underflow.
+    """
+    scale = max(pt, -sl)
+    return pt / scale, sl / scale
+
+
 def _as_returns(returns: object) -> np.ndarray:
     """Return a 1-D float64 array of finite returns with both signs present."""
     raw = np.asarray(returns)
@@ -130,7 +140,7 @@ def binomial_sharpe(p: float, freq: float, pt: float = 1.0, sl: float = -1.0) ->
     """
     p = _check_prob(p)
     freq = _check_freq(freq)
-    pt, sl = _check_payoffs(pt, sl)
+    pt, sl = _unit_payoffs(*_check_payoffs(pt, sl))
     width = pt - sl
     mean = width * p + sl
     std = width * math.sqrt(p * (1.0 - p))
@@ -172,7 +182,7 @@ def implied_precision(sl: float, pt: float, freq: float, target_sharpe: float) -
 
     See ``docs/proofs/strategy_risk.md``, section 2.
     """
-    pt, sl = _check_payoffs(pt, sl)
+    pt, sl = _unit_payoffs(*_check_payoffs(pt, sl))
     freq = _check_freq(freq)
     target = _as_finite("target_sharpe", target_sharpe)
     width = pt - sl
@@ -219,7 +229,7 @@ def implied_frequency(sl: float, pt: float, p: float, target_sharpe: float) -> f
 
     See ``docs/proofs/strategy_risk.md``, section 3.
     """
-    pt, sl = _check_payoffs(pt, sl)
+    pt, sl = _unit_payoffs(*_check_payoffs(pt, sl))
     p = _check_prob(p)
     target = _as_finite("target_sharpe", target_sharpe)
     width = pt - sl
