@@ -392,6 +392,9 @@ def _seq_bootstrap_kernel(
     already drawn (``c[t]`` counts of earlier draws):
     ``avg[j] = (sum_t 1 / (1 + c[t])) / colsum[j]``. The draw is the first ``j``
     whose cumulative weight exceeds ``uniforms[k] * total``.
+
+    This full-recompute kernel is the reference for :func:`_seq_bootstrap_kernel_incremental`,
+    which returns the same draws. :mod:`finlab.monte_carlo` calls this one directly.
     """
     n_ev = ptr.shape[0] - 1
     n_draw = uniforms.shape[0]
@@ -424,6 +427,88 @@ def _seq_bootstrap_kernel(
         draws[k] = pick
         for q in range(ptr[pick], ptr[pick + 1]):
             c[rows[q]] += 1.0
+    return draws
+
+
+@jit
+def _label_avg_uniqueness(
+    j: int, ptr: np.ndarray, rows: np.ndarray, colsum: np.ndarray, c: np.ndarray
+) -> float:
+    """Average uniqueness of label ``j`` given concurrency ``c``, as in the full kernel."""
+    acc = 0.0
+    if colsum[j] > 0.0:
+        for q in range(ptr[j], ptr[j + 1]):
+            acc += 1.0 / (1.0 + c[rows[q]])
+        acc = acc / colsum[j]
+    return acc
+
+
+@jit
+def _seq_bootstrap_kernel_incremental(
+    n_bars: int,
+    ptr: np.ndarray,
+    rows: np.ndarray,
+    colsum: np.ndarray,
+    uniforms: np.ndarray,
+) -> np.ndarray:
+    """Same draws as :func:`_seq_bootstrap_kernel`, recomputing only the weights a draw changes.
+
+    A draw raises the concurrency ``c[t]`` only on the bars of the drawn label. The weight of
+    a label depends only on the ``c`` values of its own bars, so only labels sharing a bar with
+    the drawn label change. Those are recomputed with the same arithmetic, in the same order, as
+    the full kernel, so every weight has the same bits. The total and the inverse-CDF scan still
+    run over all labels in index order, because their floating-point sums depend on that order.
+    """
+    n_ev = ptr.shape[0] - 1
+    n_draw = uniforms.shape[0]
+    # Bar-major index: the labels covering bar t are ev[row_ptr[t]:row_ptr[t + 1]].
+    row_ptr = np.zeros(n_bars + 1, dtype=np.int64)
+    for q in range(rows.shape[0]):
+        row_ptr[rows[q] + 1] += 1
+    for t in range(n_bars):
+        row_ptr[t + 1] += row_ptr[t]
+    fill = row_ptr[:n_bars].copy()
+    ev = np.empty(rows.shape[0], dtype=np.int64)
+    for j in range(n_ev):
+        for q in range(ptr[j], ptr[j + 1]):
+            t = rows[q]
+            ev[fill[t]] = j
+            fill[t] += 1
+
+    c = np.zeros(n_bars, dtype=np.float64)
+    avg = np.zeros(n_ev, dtype=np.float64)
+    for j in range(n_ev):
+        avg[j] = _label_avg_uniqueness(j, ptr, rows, colsum, c)
+    # mark[j] == k when label j was already recomputed after draw k, so it is done once per draw.
+    mark = np.full(n_ev, -1, dtype=np.int64)
+    draws = np.empty(n_draw, dtype=np.int64)
+    for k in range(n_draw):
+        total = 0.0
+        for j in range(n_ev):
+            total += avg[j]
+        target = uniforms[k] * total
+        acc = 0.0
+        pick = -1
+        last_pos = -1
+        for j in range(n_ev):
+            if avg[j] > 0.0:
+                last_pos = j
+                acc += avg[j]
+                if acc > target:
+                    pick = j
+                    break
+        if pick < 0:
+            pick = last_pos
+        draws[k] = pick
+        for q in range(ptr[pick], ptr[pick + 1]):
+            c[rows[q]] += 1.0
+        for q in range(ptr[pick], ptr[pick + 1]):
+            t = rows[q]
+            for r in range(row_ptr[t], row_ptr[t + 1]):
+                j = ev[r]
+                if mark[j] != k:
+                    mark[j] = k
+                    avg[j] = _label_avg_uniqueness(j, ptr, rows, colsum, c)
     return draws
 
 
@@ -461,7 +546,10 @@ def sequential_bootstrap(
     is reproducible for a given seed and matches a naive loop that uses the
     same uniforms.
 
-    Scope: cost is O(n_samples * (T + nnz)) with nnz the number of 1 entries.
+    Scope: each draw costs O(I + nnz) at most, with I the number of labels and nnz the number
+    of 1 entries. Labels that overlap few others cost much less per draw, because only labels
+    sharing a bar with the drawn label are recomputed. Building the bar index costs O(T + nnz)
+    once.
     """
     if isinstance(index_matrix, pd.DataFrame):
         m = index_matrix.to_numpy(dtype=np.float64)
@@ -487,7 +575,7 @@ def sequential_bootstrap(
     rows = t_idx.astype(np.int64)
     rng = np.random.default_rng(seed)
     uniforms = rng.random(n_draw)
-    return _seq_bootstrap_kernel(n_bars, ptr, rows, colsum, uniforms)
+    return _seq_bootstrap_kernel_incremental(n_bars, ptr, rows, colsum, uniforms)
 
 
 # ---------------------------------------------------------------------------
