@@ -269,9 +269,9 @@ first row.
 `test_holding_period_numba_kernel_matches_python_transcription` (30 seeded cases, irregular
 timestamps, relative tolerance 1e-12).
 
-**Measured.** `PYTHONPATH=src python3 benchmarks/bench_stats.py`, three runs on 2026-10-13, a shared
-4-vCPU machine. For 100,000 rows the naive Python loop took 0.020 to 0.024 s and the numba kernel
-0.0017 to 0.0019 s, a speedup of 11.8x to 12.7x. The two results agree to 6e-14. Timings vary with
+**Measured.** `PYTHONPATH=src python3 benchmarks/bench_stats.py`, four runs on 2026-10-14, a shared
+4-vCPU machine. For 100,000 rows the naive Python loop took 0.0187 to 0.0212 s and the numba kernel
+0.0016 to 0.0018 s, a speedup of 11.2x to 11.7x. The two results agree to 6e-14. Timings vary with
 the machine and are not tested.
 
 ## 9. Concentration (Snippet 14.3)
@@ -304,7 +304,7 @@ sums to zero only when every value is zero. The time component uses calendar per
 month end by default (`pd.offsets.MonthEnd()`), and counts periods with no returns as zero.
 
 **Measured.** `pd.Series([1.0], index=pd.DatetimeIndex(["2024-01-01"])).groupby(pd.Grouper(freq="M")).count()`
-raises `ValueError: Invalid frequency: M` on pandas 3.0.6, checked 2026-10-13 on a shared 4-vCPU
+raises `ValueError: Invalid frequency: M` on pandas 3.0.6, checked 2026-10-14 on a shared 4-vCPU
 machine.
 
 **Claimed from the book only.** The HHI formula and the sign and time split of Snippet 14.3, as implemented here.
