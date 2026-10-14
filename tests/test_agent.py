@@ -663,3 +663,40 @@ def test_hrp_and_bet_size_replies_turn_non_finite_values_into_null(monkeypatch):
     assert not err and out == {"weights": [None, 0.25, None]}
     out, err = _strict_call("bet_size_from_probability", {"probability": [0.6, 0.7, 0.8]})
     assert not err and out == {"bet_size": [None, None, 0.5]}
+
+
+@pytest.mark.parametrize("token", ["NaN", "Infinity", "-Infinity"])
+@pytest.mark.parametrize("arguments", [
+    '{"returns":[0.01,TOKEN,0.02,-0.01]}',
+    '{"returns":[0.01,0.02,-0.01],"periods_per_year":TOKEN}',
+])
+def test_non_finite_literal_in_arguments_takes_the_nan_parse_error_path(token, arguments):
+    # The whole line fails to parse, so the position of the literal does not change the reply,
+    # and every constant gets the same reply shape with the request id kept.
+    line = ('{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"sharpe_ratio","arguments":'
+            + arguments.replace("TOKEN", token) + '}}')
+    out = io.StringIO()
+    srv.main(io.StringIO(line + "\n"), out)
+    replies = out.getvalue().splitlines()
+    assert len(replies) == 1
+    assert _strict_loads(replies[0]) == {
+        "jsonrpc": "2.0",
+        "id": 7,
+        "error": {"code": -32700, "message": f"parse error: non-standard constant {token}"},
+    }
+
+
+@pytest.mark.parametrize("arguments, message", [
+    ('{"returns":[0.01,1e400,0.02]}', "'returns' must contain only finite numbers"),
+    ('{"returns":[0.01,0.02,-0.01],"periods_per_year":1e400}', "'periods_per_year' must be a finite number"),
+])
+def test_literal_that_overflows_to_infinity_is_a_tool_error(arguments, message):
+    # 1e400 is valid JSON that Python reads as inf. It passes the parser and the argument checks
+    # refuse it, so the reply is a tool error that names the argument.
+    line = ('{"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"sharpe_ratio","arguments":'
+            + arguments + '}}')
+    out = io.StringIO()
+    srv.main(io.StringIO(line + "\n"), out)
+    reply = _strict_loads(out.getvalue().splitlines()[0])
+    assert reply["id"] == 8 and reply["result"]["isError"] is True
+    assert message in json.loads(reply["result"]["content"][0]["text"])["error"]

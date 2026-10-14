@@ -68,9 +68,14 @@ Input lines are read with `json.loads(line, parse_constant=_reject_constant)`, s
 - **A `NaN` literal in the arguments gives parse error `-32700` and keeps the request id.**
   The reply message is `parse error: non-standard constant NaN`. **Checked by test**
   `test_nan_in_arguments_parse_error_reply_keeps_request_id` (request id 7 comes back).
-- **The same path handles `Infinity` and `-Infinity` in the arguments.** **Proved here** from
-  `main` and `_lenient_request_id`, which re-reads the line with every constant mapped to
-  `None`. No test covers this case (section 11).
+- **`Infinity` and `-Infinity` in the arguments take the same path.** **Checked by test**
+  `test_non_finite_literal_in_arguments_takes_the_nan_parse_error_path`, parametrized over the three
+  tokens, inside an array and as a scalar. The reply is `-32700` with the request id kept and the
+  message `parse error: non-standard constant TOKEN`. **Proved here** from `main` and
+  `_lenient_request_id`, which re-reads the line with every constant mapped to `None`.
+- **A literal that overflows to infinity, such as `1e400`, is not a parse error.** Python reads it as
+  inf, so the argument checks refuse it and the reply is a tool error that names the argument.
+  **Checked by test** `test_literal_that_overflows_to_infinity_is_a_tool_error`.
 - **A `NaN`, `Infinity` or `-Infinity` literal used as the id gives `-32700` with id `null`.**
   **Checked by test** `test_non_standard_constant_id_is_parse_error_and_reply_is_strict_json`
   (parametrized over the three tokens).
@@ -200,8 +205,6 @@ These tests compare a tool's output with a direct library call.
 - **No value check in `tests/test_agent.py`** for `min_track_record_length`, `sadf`,
   `bet_size_from_probability`, and `probabilistic_sharpe_ratio`. The last has only its
   description checked. Their library functions are tested in other files.
-- **`Infinity` and `-Infinity` in the arguments** take the same parse-error path as `NaN`, but no
-  test sends them.
 - **Non-finite weights from `hrp_weights`.** Not verified whether any input gives a non-finite
   weight. The inputs tried (diagonals from 1e-320 to 1e308) gave finite weights or an error. Some
   large inputs give wrong weights from the library: `[[1e308, 0], [0, 1e308]]` gives `[1, 0]`, since
