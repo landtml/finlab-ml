@@ -345,3 +345,15 @@ def test_otr_grid_refusals(kwargs, match) -> None:
     half_life = args.pop("half_life")
     with pytest.raises(ValueError, match=match):
         otr_grid(forecast, half_life, **args)
+
+
+@pytest.mark.parametrize("scale", [1e170, 1e-170])
+def test_fit_ou_is_equivariant_in_price_scale_away_from_float_limits(scale: float) -> None:
+    # Squares of prices near 1e170 overflow, and squares near 1e-170 underflow to zero.
+    base = _simulate_ou(300, phi=0.8, sigma=1.0, forecast=0.0, seed=20261014)
+    ref = fit_ou(base, forecast=0.0)
+    fit = fit_ou(base * scale, forecast=0.0)
+    assert fit.phi == pytest.approx(ref.phi, rel=1e-12)
+    assert fit.sigma == pytest.approx(ref.sigma * scale, rel=1e-12)
+    assert fit.half_life == pytest.approx(ref.half_life, rel=1e-12)
+    assert fit.n_obs == ref.n_obs

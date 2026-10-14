@@ -164,11 +164,15 @@ def fit_ou(prices, forecast: float) -> OUFit:
         raise ValueError(f"prices must hold at least 3 values, got {x.size}")
     lag = x[:-1] - f
     cur = x[1:] - f
-    sxx = float(np.sum(lag * lag))
-    if sxx == 0.0:
+    if not np.any(lag):
         raise ValueError("every lagged price equals forecast, so phi is undefined")
-    phi = float(np.sum(lag * cur)) / sxx
-    sigma = float(np.std(cur - phi * lag, ddof=1))
+    # Dividing by the largest deviation keeps the squares finite. phi does not change with the
+    # scale, and sigma scales with it.
+    mag = max(float(np.max(np.abs(lag))), float(np.max(np.abs(cur))))
+    u = lag / mag
+    v = cur / mag
+    phi = float(np.sum(u * v)) / float(np.sum(u * u))
+    sigma = mag * float(np.std(v - phi * u, ddof=1))
     return OUFit(phi=phi, sigma=sigma, half_life=_fitted_half_life(phi), n_obs=int(x.size - 1))
 
 
