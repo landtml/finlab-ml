@@ -65,7 +65,7 @@ _SQRT2 = math.sqrt(2.0)
 _DEN = 3.0 - 2.0 * _SQRT2  # 3 - 2*sqrt(2), Corwin-Schultz denominator
 _K2 = math.sqrt(8.0 / math.pi)  # Parkinson first-moment constant
 # Below this, sum(x*x) is subnormal and has lost digits, so the regression is run on scaled values.
-_SUM_FLOOR = 2.2250738585072014e-308  # np.finfo(np.float64).tiny
+_SUM_FLOOR = float(np.finfo(np.float64).tiny)
 
 
 def _label_index(x: ArrayLike) -> pd.Index | None:
