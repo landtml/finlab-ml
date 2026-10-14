@@ -19,6 +19,12 @@ from finlab.stats import (
     probabilistic_sharpe_ratio,
     sharpe_ratio,
 )
+from finlab.strategy_risk import (
+    binomial_sharpe,
+    implied_frequency,
+    implied_precision,
+    probability_of_failure,
+)
 from finlab.structural_breaks import sadf
 
 
@@ -751,3 +757,100 @@ def test_literal_that_overflows_to_infinity_is_a_tool_error(arguments, message):
     reply = _strict_loads(out.getvalue().splitlines()[0])
     assert reply["id"] == 8 and reply["result"]["isError"] is True
     assert message in json.loads(reply["result"]["content"][0]["text"])["error"]
+
+
+def test_strategy_risk_tools_match_library():
+    out, err = _call("binomial_sharpe", {"p": 0.55, "freq": 252})
+    assert not err
+    assert out["binomial_sharpe"] == pytest.approx(binomial_sharpe(0.55, 252), rel=1e-12)
+    out, err = _call("binomial_sharpe", {"p": 0.6, "freq": 52, "pt": 2.0, "sl": -1.5})
+    assert not err
+    assert out["binomial_sharpe"] == pytest.approx(binomial_sharpe(0.6, 52, 2.0, -1.5), rel=1e-12)
+    out, err = _call("implied_precision", {"sl": -1.0, "pt": 1.0, "freq": 252, "target_sharpe": 1.5})
+    assert not err
+    assert out["implied_precision"] == pytest.approx(implied_precision(-1.0, 1.0, 252, 1.5), rel=1e-12)
+    out, err = _call("implied_frequency", {"sl": -1.0, "pt": 1.0, "p": 0.6, "target_sharpe": 1.5})
+    assert not err
+    assert out["implied_frequency"] == pytest.approx(implied_frequency(-1.0, 1.0, 0.6, 1.5), rel=1e-12)
+    returns = np.random.default_rng(3).normal(0.0005, 0.01, 500)
+    out, err = _call("probability_of_failure", {"returns": returns.tolist(), "freq": 252, "target_sharpe": 1.0})
+    assert not err
+    assert out["probability_of_failure"] == pytest.approx(
+        probability_of_failure(returns, 252, 1.0), rel=1e-12)
+
+
+def test_implied_precision_inverts_binomial_sharpe_through_the_tools():
+    out, _ = _call("implied_precision", {"sl": -1.0, "pt": 1.0, "freq": 252, "target_sharpe": 1.5})
+    back, err = _call("binomial_sharpe", {"p": out["implied_precision"], "freq": 252})
+    assert not err
+    assert back["binomial_sharpe"] == pytest.approx(1.5, rel=1e-9)
+
+
+def test_implied_frequency_reply_is_null_when_no_frequency_gives_the_target():
+    # The library returns nan for these inputs by design; the reply holds null, not NaN.
+    out, err = _call("implied_frequency", {"sl": -1.0, "pt": 1.0, "p": 0.6, "target_sharpe": 0.0})
+    assert not err and out == {"implied_frequency": None}
+    out, err = _call("implied_frequency", {"sl": -1.0, "pt": 1.0, "p": 0.5, "target_sharpe": 1.0})
+    assert not err and out == {"implied_frequency": None}
+    out, err = _call("implied_frequency", {"sl": -1.0, "pt": 1.0, "p": 0.4, "target_sharpe": 1.0})
+    assert not err and out == {"implied_frequency": None}
+
+
+@pytest.mark.parametrize("name, arguments, message", [
+    ("binomial_sharpe", {"p": 1.0, "freq": 252}, "p must be strictly between 0 and 1"),
+    ("binomial_sharpe", {"p": 0.5, "freq": 0}, "freq must be positive"),
+    ("binomial_sharpe", {"p": 0.5, "freq": 252, "pt": -1.0}, "pt must be positive"),
+    ("binomial_sharpe", {"p": 0.5, "freq": 252, "sl": 0.5}, "sl must be negative"),
+    ("binomial_sharpe", {"p": True, "freq": 252}, "'p' must be a finite number"),
+    ("binomial_sharpe", {"p": "0.5", "freq": 252}, "'p' must be a finite number"),
+    ("binomial_sharpe", {"p": 1e400, "freq": 252}, "'p' must be a finite number"),
+    ("binomial_sharpe", {"p": 0.5}, "'freq' is required"),
+    ("implied_precision", {"sl": -1.0, "pt": -1.0, "freq": 252, "target_sharpe": 1.0}, "pt must be positive"),
+    ("implied_precision", {"sl": -1.0, "pt": 1.0, "freq": 252}, "'target_sharpe' is required"),
+    ("implied_precision", {"sl": -1.0, "pt": 1.0, "freq": 252, "target_sharpe": 1e400},
+     "'target_sharpe' must be a finite number"),
+    ("implied_frequency", {"sl": -1.0, "pt": 1.0, "p": 1.0, "target_sharpe": 1.0},
+     "p must be strictly between 0 and 1"),
+    ("implied_frequency", {"sl": -1.0, "pt": 1.0, "p": 0.6, "target_sharpe": 1e400},
+     "'target_sharpe' must be a finite number"),
+    ("probability_of_failure", {"returns": [0.1, 0.0, 0.2, 0.0], "freq": 252, "target_sharpe": 1.0},
+     "every non-positive return is zero"),
+    ("probability_of_failure", {"returns": [0.1, 0.2], "freq": 252, "target_sharpe": 1.0},
+     "at least one value <= 0"),
+    ("probability_of_failure", {"returns": [0.1, -0.2, 0.3], "freq": 0, "target_sharpe": 1.0},
+     "freq must be positive"),
+    ("probability_of_failure", {"returns": [0.1, 1e400, -0.2], "freq": 252, "target_sharpe": 1.0},
+     "'returns' must contain only finite numbers"),
+    ("probability_of_failure", {"returns": [[0.1, -0.2], [0.3, 0.1]], "freq": 252, "target_sharpe": 1.0},
+     "'returns' must be a flat array of numbers"),
+    ("probability_of_failure", {"returns": [], "freq": 252, "target_sharpe": 1.0}, "non-empty"),
+])
+def test_strategy_risk_tools_refuse_bad_input(name, arguments, message):
+    out, err = _call(name, arguments)
+    assert err and message in out["error"]
+
+
+def test_probability_of_failure_size_limit_enforced(monkeypatch):
+    monkeypatch.setattr(tl, "MAX_ELEMENTS", 10)
+    out, err = _call("probability_of_failure", {"returns": [0.1, -0.1] * 10, "freq": 252, "target_sharpe": 1.0})
+    assert err and "limit" in out["error"]
+
+
+def test_strategy_risk_tools_are_listed_with_their_arguments():
+    listed = {t["name"]: t for t in _rpc("tools/list")["result"]["tools"]}
+    expected = {
+        "binomial_sharpe": ["p", "freq"],
+        "implied_precision": ["sl", "pt", "freq", "target_sharpe"],
+        "implied_frequency": ["sl", "pt", "p", "target_sharpe"],
+        "probability_of_failure": ["returns", "freq", "target_sharpe"],
+    }
+    for name, required in expected.items():
+        schema = listed[name]["inputSchema"]
+        assert schema["type"] == "object"
+        assert schema["required"] == required
+        assert set(required) <= set(schema["properties"])
+        assert listed[name]["description"]
+    props = listed["binomial_sharpe"]["inputSchema"]["properties"]
+    assert props["pt"]["default"] == 1.0 and props["sl"]["default"] == -1.0
+    assert listed["probability_of_failure"]["inputSchema"]["properties"]["returns"]["type"] == "array"
+    assert "null" in listed["implied_frequency"]["description"]

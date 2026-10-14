@@ -139,6 +139,12 @@ Input lines are read with `json.loads(line, parse_constant=_reject_constant)`, s
   replaces the output of `hrp_weights` and `prob_bet_size` with non-finite values. Bet sizes are
   never non-finite for an accepted input: `prob_bet_size` maps z = ±inf (p = 0 or 1) to ±1, and z is
   never NaN, because the 0/0 case needs p = 1/k and p in {0, 1} at once.
+  `implied_frequency` returns NaN by design for a zero target or a zero mean bet return, so its
+  reply is `null` (**Checked by test** `test_implied_frequency_reply_is_null_when_no_frequency_gives_the_target`).
+- **Strategy risk inputs.** `p` must be strictly between 0 and 1, `freq` and `pt` positive, `sl`
+  negative, and `returns` must hold both signs. The library messages reach the reply, and a `1e400`
+  or a boolean is refused by `_num` or `_vec` first (**Checked by test**
+  `test_strategy_risk_tools_refuse_bad_input`).
 
 ## 8. Size limits
 
@@ -174,7 +180,7 @@ none.
 - **Proved here**: the distinct messages come from `dict.fromkeys` in `call_tool`. No test
   checks the de-duplication.
 
-**Registry.** `TOOLS` holds 14 tools. `tools/list` returns them in registry order.
+**Registry.** `TOOLS` holds 18 tools. `tools/list` returns them in registry order.
 
 - **Each entry has exactly `name`, `description` and `inputSchema`**, the schema has type `object`
   and a `properties` dict, and every name in `required` is a declared property. **Checked by test**
@@ -199,6 +205,8 @@ These tests compare a tool's output with a direct library call.
 | `cusum_filter`, `frac_diff_ffd` | `test_cusum_and_fracdiff_match_library` | exact events; `rtol=1e-12` |
 | `hrp_weights` | `test_hrp_matches_library` | `rtol=1e-12`; weights sum to 1 |
 | `sadf` | `test_sadf_matches_library` | `rel=1e-12` on the maximum; point count exact |
+| `binomial_sharpe`, `implied_precision`, `implied_frequency`, `probability_of_failure` | `test_strategy_risk_tools_match_library` | `rel=1e-12` |
+| `implied_precision` | `test_implied_precision_inverts_binomial_sharpe_through_the_tools` | `binomial_sharpe` of the reply gives the target back, `rel=1e-9` |
 | `bet_size_from_probability` | `test_bet_size_matches_library` | `rtol=1e-12`, two and three classes |
 | `bet_size_from_probability` | `test_bet_size_endpoints_are_plus_or_minus_one` | p = 0 gives -1 and p = 1 gives 1 |
 | `cpcv_split_summary` | `test_cpcv_summary_counts` | 15 splits, 5 paths for 6 groups, 2 test groups, horizon 5 |
@@ -212,4 +220,7 @@ These tests compare a tool's output with a direct library call.
   large inputs give wrong weights from the library: `[[1e308, 0], [0, 1e308]]` gives `[1, 0]`, since
   the two cluster variances sum to infinity and the split factor becomes 1. The tool does not
   correct this; the library owns it.
+- **`binomial_sharpe` with `pt - sl` overflowing.** `binomial_sharpe(0.5, 252, 1e308, -1e308)`
+  returns NaN, because the width `pt - sl` is infinite. The reply is `null`. The library returns NaN
+  here rather than raising, and no test pins this input.
 - **Memory.** No test measures the allocation the size guards prevent (section 8).
