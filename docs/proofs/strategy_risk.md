@@ -193,6 +193,37 @@ sigma1 = 0.05, sigma2 = 0.1, prob1 = 0.75), the mean is 0.0125 and the variance 
 - `test_mixture_returns_sample_mean_within_four_standard_errors`: 2,000,000 draws with seed 20261013.
   The sample mean is 0.0123841, a difference of -0.000116 from 0.0125. The tolerance is four standard errors, 0.000262.
   **Measured** 2026-10-13 on a shared 4-vCPU machine.
+- `test_mixture_returns_refuses_bad_seed_by_name` and `test_mixture_returns_refuses_draws_that_overflow_float64`: a bool, negative or float seed, and draws beyond the float64 range, are refused by name.
+
+---
+
+## 6. Float64 range
+
+**Proved here (scale invariance).** Theta depends on the payoffs only through their ratio. Multiplying pt and sl by
+c > 0 multiplies the mean and the standard deviation of one bet by c, so theta does not change. The quadratic of
+section 2 has coefficients homogeneous of degree two in (pt, sl), so its roots, and the hit rate, do not change
+either. The implied frequency of section 3 is homogeneous of degree zero in (pt, sl), so it does not change. The
+module divides both payoffs by max(pt, -sl) before the arithmetic, which places the outcome width in (1, 2].
+
+**Checked by test.** `test_binomial_sharpe_is_invariant_to_common_payoff_scale`,
+`test_implied_precision_is_invariant_to_common_payoff_scale` and `test_implied_frequency_is_invariant_to_common_payoff_scale`
+(scales 1e-310, 1e-300 and 1e308); `test_probability_of_failure_is_invariant_to_tiny_return_scale`;
+`test_probability_of_failure_accepts_returns_near_float_max`.
+
+**Convention (not from the book): refusals.** A result that float64 cannot represent raises ValueError naming the
+argument: a hit rate that is not a normal float strictly inside (0, 1); a frequency that overflows or lies below the
+normal range; a target whose square overflows; an integer beyond the float64 range.
+
+**Checked by test.** `test_implied_precision_names_target_when_its_square_overflows`,
+`test_implied_frequency_names_target_when_the_frequency_overflows`,
+`test_implied_precision_refuses_hit_rates_that_are_not_normal_floats_in_unit_interval`,
+`test_implied_frequency_refuses_frequencies_below_the_normal_float_range` and
+`test_scalars_beyond_float64_range_are_refused_by_name`.
+
+**Measured (2026-10-14, a shared 4-vCPU machine).** The round trip
+`binomial_sharpe(implied_precision(sl, pt, freq, t), freq, pt, sl)` at sl = -1, pt = 1, freq = 52 has relative error
+2.2e-12 at t = 1e3, 6.2e-10 at t = 1e5, 1.7e-6 at t = 1e6 and 3.2e-2 at t = 1e8. Near p = 1 the spacing of float64
+limits the hit rate, so the round trip holds to float64 precision only for moderate targets.
 
 ---
 
@@ -211,3 +242,4 @@ sigma1 = 0.05, sigma2 = 0.1, prob1 = 0.75), the mean is 0.0125 and the variance 
 | Mixture count, moments and shuffle | Proved here (moments); checked by test |
 | Simulated binomial Sharpe check | Checked by test; measured 0.20 % relative difference |
 | Rounding of the mixture count and the nan policy | Convention (not from the book) |
+| Float64 range: scale invariance, refusals, measured round-trip error | Proved here (invariance); checked by test; measured (section 6) |
