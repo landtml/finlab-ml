@@ -64,6 +64,8 @@ ArrayLike = Union[np.ndarray, pd.Series]
 _SQRT2 = math.sqrt(2.0)
 _DEN = 3.0 - 2.0 * _SQRT2  # 3 - 2*sqrt(2), Corwin-Schultz denominator
 _K2 = math.sqrt(8.0 / math.pi)  # Parkinson first-moment constant
+# Below this, sum(x*x) is subnormal and has lost digits, so the regression is run on scaled values.
+_SUM_FLOOR = 2.2250738585072014e-308  # np.finfo(np.float64).tiny
 
 
 def _label_index(x: ArrayLike) -> pd.Index | None:
@@ -394,7 +396,7 @@ def _ols_origin(x: np.ndarray, y: np.ndarray) -> tuple[float, float]:
     """Slope and t-statistic of ``y = lambda * x + e`` with no intercept."""
     n = x.shape[0]
     lam, sxx, sxy, ssr = _ols_sums(x, y)
-    if math.isfinite(sxx) and math.isfinite(sxy) and math.isfinite(ssr):
+    if math.isfinite(sxx) and math.isfinite(sxy) and math.isfinite(ssr) and sxx >= _SUM_FLOOR:
         return lam, _ols_t(lam, ssr, sxx, n)
     # sum(x*x) overflows for volume near 1e160. Regress the scaled series instead.
     # lambda scales with y / x and t is unchanged by scaling both, so rescale lambda at the end.
@@ -455,7 +457,7 @@ def kyle_lambda(prices: ArrayLike, signed_volume: ArrayLike) -> float:
     if sxx == 0.0:
         raise ValueError("signed_volume is identically zero")
     sxy = float(np.dot(x, y))
-    if math.isfinite(sxx) and math.isfinite(sxy):
+    if math.isfinite(sxx) and math.isfinite(sxy) and sxx >= _SUM_FLOOR:
         return sxy / sxx
     # The sums overflow for volume near 1e160; the scaled regression in _ols_origin gives the slope.
     return float(_ols_origin(x, y)[0])
@@ -612,9 +614,10 @@ def hasbrouck_lambda(bar_close: ArrayLike, signed_root_dollar_volume: ArrayLike)
         sxy = float(np.dot(x, y))
     if sxx == 0.0:
         raise ValueError("signed_root_dollar_volume is identically zero")
-    if math.isfinite(sxx) and math.isfinite(sxy):
+    if math.isfinite(sxx) and math.isfinite(sxy) and sxx >= _SUM_FLOOR:
         return sxy / sxx
-    # The squared sums overflow once the regressor reaches about 1e154. The scaled
+    # The squared sums overflow once the regressor reaches about 1e154, and underflow below
+    # about 1e-154. The scaled
     # regression in _ols_origin gives the slope.
     return float(_ols_origin(x, y)[0])
 
