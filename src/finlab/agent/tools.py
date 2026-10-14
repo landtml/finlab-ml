@@ -28,6 +28,12 @@ from ..stats import (
     probabilistic_sharpe_ratio,
     sharpe_ratio,
 )
+from ..strategy_risk import (
+    binomial_sharpe,
+    implied_frequency,
+    implied_precision,
+    probability_of_failure,
+)
 from ..structural_breaks import sadf
 
 MAX_ELEMENTS = 5_000_000  # guard: refuse inputs larger than this many numbers
@@ -277,6 +283,77 @@ def _pbo(args):
 
 
 # --------------------------------------------------------------------------- #
+# Strategy risk (AFML ch. 15)                                                 #
+# --------------------------------------------------------------------------- #
+@_tool(
+    "binomial_sharpe",
+    "Annualised Sharpe ratio of IID bets: each wins pt with probability p, else returns sl, and freq bets are made a year (AFML eq. 15.1, 15.3).",
+    {
+        "p": {"type": "number", "description": "probability that a bet wins, strictly between 0 and 1"},
+        "freq": {"type": "number", "description": "bets per year, strictly positive; need not be an integer"},
+        "pt": {"type": "number", "default": 1.0, "description": "profit of a winning bet, positive"},
+        "sl": {"type": "number", "default": -1.0, "description": "return of a losing bet, negative"},
+    },
+    ["p", "freq"],
+)
+def _binomial_sharpe(args):
+    v = binomial_sharpe(_num(args, "p"), _num(args, "freq"), _num(args, "pt", 1.0), _num(args, "sl", -1.0))
+    return {"binomial_sharpe": _clean(float(v))}
+
+
+@_tool(
+    "implied_precision",
+    "Hit rate p in (0, 1) at which IID bets deliver a target annualised Sharpe ratio (AFML Snippet 15.3, binHR).",
+    {
+        "sl": {"type": "number", "description": "return of a losing bet, negative"},
+        "pt": {"type": "number", "description": "profit of a winning bet, positive"},
+        "freq": {"type": "number", "description": "bets per year, strictly positive"},
+        "target_sharpe": {"type": "number", "description": "target annualised Sharpe ratio"},
+    },
+    ["sl", "pt", "freq", "target_sharpe"],
+)
+def _implied_precision(args):
+    v = implied_precision(_num(args, "sl"), _num(args, "pt"), _num(args, "freq"), _num(args, "target_sharpe"))
+    return {"implied_precision": _clean(float(v))}
+
+
+@_tool(
+    "implied_frequency",
+    "Bets per year at which a hit rate p delivers a target annualised Sharpe ratio (AFML Snippet 15.4, binFreq). Returns null when no positive frequency gives the target: a zero target, a zero mean bet return, or a mean bet return of the opposite sign to the target.",
+    {
+        "sl": {"type": "number", "description": "return of a losing bet, negative"},
+        "pt": {"type": "number", "description": "profit of a winning bet, positive"},
+        "p": {"type": "number", "description": "hit rate, strictly between 0 and 1"},
+        "target_sharpe": {"type": "number", "description": "target annualised Sharpe ratio"},
+    },
+    ["sl", "pt", "p", "target_sharpe"],
+)
+def _implied_frequency(args):
+    v = implied_frequency(_num(args, "sl"), _num(args, "pt"), _num(args, "p"), _num(args, "target_sharpe"))
+    return {"implied_frequency": _clean(float(v))}
+
+
+@_tool(
+    "probability_of_failure",
+    "Probability that a strategy's return sample falls short of a target annualised Sharpe ratio, from the hit rate and the mean win and loss of the sample (AFML Snippet 15.5, probFailure). Refused when every non-positive return is zero.",
+    {
+        "returns": {
+            "type": "array",
+            "items": {"type": "number"},
+            "description": "period returns: finite, with at least one value above 0 and one at or below 0",
+        },
+        "freq": {"type": "number", "description": "bets per year, strictly positive"},
+        "target_sharpe": {"type": "number", "description": "target annualised Sharpe ratio"},
+    },
+    ["returns", "freq", "target_sharpe"],
+)
+def _probability_of_failure(args):
+    r = _vec(args, "returns")
+    v = probability_of_failure(r, _num(args, "freq"), _num(args, "target_sharpe"))
+    return {"probability_of_failure": _clean(float(v))}
+
+
+# --------------------------------------------------------------------------- #
 # Features, filters, structural breaks, entropy                              #
 # --------------------------------------------------------------------------- #
 @_tool(
@@ -376,7 +453,7 @@ def _hrp(args):
     if cov.shape[0] != cov.shape[1]:
         raise ToolError("'cov' must be square")
     w = hrp_weights(cov, method=str(args.get("method", "single")))
-    return {"weights": [float(x) for x in np.asarray(w)]}
+    return {"weights": [_clean(float(x)) for x in np.asarray(w)]}
 
 
 @_tool(
@@ -414,7 +491,7 @@ def _bet(args):
     p = _vec(args, "probability")
     side = args.get("side")
     side_arr = None if side is None else _vec({"side": side}, "side")
-    return {"bet_size": [float(x) for x in prob_bet_size(p, side_arr, _int(args, "num_classes", 2))]}
+    return {"bet_size": [_clean(float(x)) for x in prob_bet_size(p, side_arr, _int(args, "num_classes", 2))]}
 
 
 @_tool(

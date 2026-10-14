@@ -68,9 +68,14 @@ Input lines are read with `json.loads(line, parse_constant=_reject_constant)`, s
 - **A `NaN` literal in the arguments gives parse error `-32700` and keeps the request id.**
   The reply message is `parse error: non-standard constant NaN`. **Checked by test**
   `test_nan_in_arguments_parse_error_reply_keeps_request_id` (request id 7 comes back).
-- **The same path handles `Infinity` and `-Infinity` in the arguments.** **Proved here** from
-  `main` and `_lenient_request_id`, which re-reads the line with every constant mapped to
-  `None`. No test covers this case (section 11).
+- **`Infinity` and `-Infinity` in the arguments take the same path.** **Checked by test**
+  `test_non_finite_literal_in_arguments_takes_the_nan_parse_error_path`, parametrized over the three
+  tokens, inside an array and as a scalar. The reply is `-32700` with the request id kept and the
+  message `parse error: non-standard constant TOKEN`. **Proved here** from `main` and
+  `_lenient_request_id`, which re-reads the line with every constant mapped to `None`.
+- **A literal that overflows to infinity, such as `1e400`, is not a parse error.** Python reads it as
+  inf, so the argument checks refuse it and the reply is a tool error that names the argument.
+  **Checked by test** `test_literal_that_overflows_to_infinity_is_a_tool_error`.
 - **A `NaN`, `Infinity` or `-Infinity` literal used as the id gives `-32700` with id `null`.**
   **Checked by test** `test_non_standard_constant_id_is_parse_error_and_reply_is_strict_json`
   (parametrized over the three tokens).
@@ -128,6 +133,18 @@ Input lines are read with `json.loads(line, parse_constant=_reject_constant)`, s
 - **Range checks.** `frac_diff_ffd` requires `d` in [0, 1] and `thres` in (0, 1]
   (`test_bad_arguments_are_reported_not_raised`, `test_fracdiff_thres_out_of_range_is_rejected`).
   `onc_clusters` requires an integer `max_k` (`test_onc_max_k_must_be_integer`).
+- **Non-finite floats become `null`.** Every float in a reply goes through `_clean`, which returns
+  `None` for NaN and infinity. **Proved here** from `_clean`, which the tool handlers call for each
+  float. **Checked by test** `test_hrp_and_bet_size_replies_turn_non_finite_values_into_null`, which
+  replaces the output of `hrp_weights` and `prob_bet_size` with non-finite values. Bet sizes are
+  never non-finite for an accepted input: `prob_bet_size` maps z = ±inf (p = 0 or 1) to ±1, and z is
+  never NaN, because the 0/0 case needs p = 1/k and p in {0, 1} at once.
+  `implied_frequency` returns NaN by design for a zero target or a zero mean bet return, so its
+  reply is `null` (**Checked by test** `test_implied_frequency_reply_is_null_when_no_frequency_gives_the_target`).
+- **Strategy risk inputs.** `p` must be strictly between 0 and 1, `freq` and `pt` positive, `sl`
+  negative, and `returns` must hold both signs. The library messages reach the reply, and a `1e400`
+  or a boolean is refused by `_num` or `_vec` first (**Checked by test**
+  `test_strategy_risk_tools_refuse_bad_input`).
 
 ## 8. Size limits
 
@@ -163,7 +180,7 @@ none.
 - **Proved here**: the distinct messages come from `dict.fromkeys` in `call_tool`. No test
   checks the de-duplication.
 
-**Registry.** `TOOLS` holds 14 tools. `tools/list` returns them in registry order.
+**Registry.** `TOOLS` holds 18 tools. `tools/list` returns them in registry order.
 
 - **Each entry has exactly `name`, `description` and `inputSchema`**, the schema has type `object`
   and a `properties` dict, and every name in `required` is a declared property. **Checked by test**
@@ -182,21 +199,30 @@ These tests compare a tool's output with a direct library call.
 | Tool | Test | Check |
 |---|---|---|
 | `sharpe_ratio` | `test_sharpe_matches_library` | `rel=1e-12` |
+| `probabilistic_sharpe_ratio` | `test_probabilistic_sharpe_matches_library` | `rel=1e-12` |
 | `deflated_sharpe_ratio` | `test_deflated_sharpe_matches_library` | `rel=1e-12` |
+| `min_track_record_length` | `test_min_track_record_length_matches_library` | `rel=1e-12` |
 | `cusum_filter`, `frac_diff_ffd` | `test_cusum_and_fracdiff_match_library` | exact events; `rtol=1e-12` |
 | `hrp_weights` | `test_hrp_matches_library` | `rtol=1e-12`; weights sum to 1 |
+| `kontoyiannis_entropy` | `test_kontoyiannis_entropy_matches_library` | `rel=1e-12` |
+| `onc_clusters` | `test_onc_clusters_matches_library` | labels exact; silhouette `rel=1e-12` |
+| `sadf` | `test_sadf_matches_library` | `rel=1e-12` on the maximum; point count exact |
+| `binomial_sharpe`, `implied_precision`, `implied_frequency`, `probability_of_failure` | `test_strategy_risk_tools_match_library` | `rel=1e-12` |
+| `implied_precision` | `test_implied_precision_inverts_binomial_sharpe_through_the_tools` | `binomial_sharpe` of the reply gives the target back, `rel=1e-9` |
+| `bet_size_from_probability` | `test_bet_size_matches_library` | `rtol=1e-12`, two and three classes |
+| `bet_size_from_probability` | `test_bet_size_endpoints_are_plus_or_minus_one` | p = 0 gives -1 and p = 1 gives 1 |
 | `cpcv_split_summary` | `test_cpcv_summary_counts` | 15 splits, 5 paths for 6 groups, 2 test groups, horizon 5 |
 | `probability_of_backtest_overfitting` | `test_clean_reply_has_no_warnings_key` | PBO 0.514 (36 of 70 splits, to 1e-6 relative) for a 240 x 12 matrix drawn with seed 21 |
 | `plug_in_entropy` | `test_plug_in_entropy_tool_description_names_bits_per_symbol` | 0.975 for word length 2, to 1e-6 relative |
 
 ## 11. Not verified
 
-- **No value check in `tests/test_agent.py`** for `min_track_record_length`, `sadf`,
-  `bet_size_from_probability`, and `probabilistic_sharpe_ratio`. The last has only its
-  description checked. Their library functions are tested in other files.
-- **`Infinity` and `-Infinity` in the arguments** take the same parse-error path as `NaN`, but no
-  test sends them.
-- **Non-finite output.** Most float results go through `_clean`, which returns `null` for a
-  value that is not finite. `hrp_weights` and `bet_size_from_probability` return their floats
-  without `_clean`. No test checks a non-finite result from either tool.
+- **Non-finite weights from `hrp_weights`.** Not verified whether any input gives a non-finite
+  weight. The inputs tried (diagonals from 1e-320 to 1e308) gave finite weights or an error. Some
+  large inputs give wrong weights from the library: `[[1e308, 0], [0, 1e308]]` gives `[1, 0]`, since
+  the two cluster variances sum to infinity and the split factor becomes 1. The tool does not
+  correct this; the library owns it.
+- **`binomial_sharpe` with `pt - sl` overflowing.** `binomial_sharpe(0.5, 252, 1e308, -1e308)`
+  returns NaN, because the width `pt - sl` is infinite. The reply is `null`. The library returns NaN
+  here rather than raising, and no test pins this input.
 - **Memory.** No test measures the allocation the size guards prevent (section 8).
