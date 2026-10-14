@@ -48,14 +48,14 @@ labels are 0, so the unweighted accuracy is 1/2. With weights 1, 100 and 3 the N
 drops out, and the accuracy is (1 * 0 + 3 * 1) / (1 + 3) = 3/4.
 
 **Fit-time overhead (measured).** `PYTHONPATH=src python3 benchmarks/bench_ensemble.py`,
-run 2026-10-13 on a shared 4-vCPU machine (load average 2.4 to 3.2 during the runs).
-n = 1000 rows, 50 bags, nearest-centroid base, best of 3 per setting. Two runs agree:
+three runs on 2026-10-14 on a shared 4-vCPU machine, with other jobs running (1-minute load
+average 2.8 at 10:59). n = 1000 rows, 50 bags, nearest-centroid base, best of 3 per setting.
 
-- Sequential bags: fit 1.53 s with `oob_score=False` and 1.50 s with `oob_score=True`
-  (0.98x); the second run gave 1.55 s and 1.50 s (0.97x). That is within run-to-run
-  noise, because the sequential draws dominate the fit.
-- i.i.d. bags: 0.0073 s and 0.0119 s (1.63x); the second run gave 0.0073 s and 0.0116 s
-  (1.58x). The out-of-bag pass adds about 4 to 5 ms over 50 bags.
+- Sequential bags: fit 1.55 to 1.62 s with `oob_score=False` and 1.51 to 1.56 s with
+  `oob_score=True` (0.96x to 0.98x). The out-of-bag pass is within run-to-run noise here,
+  because the sequential draws dominate the fit.
+- i.i.d. bags: 0.0068 to 0.0098 s with `oob_score=False` and 0.0114 to 0.0170 s with
+  `oob_score=True` (1.43x to 1.73x). The out-of-bag pass adds about 4 to 7 ms over 50 bags.
 
 ## Scope
 
