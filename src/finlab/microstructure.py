@@ -683,7 +683,8 @@ def signed_root_dollar_volume(
     -----
     The root is computed as ``sqrt(p) * sqrt(V)``, so a product ``p * V`` that
     overflows float64 (prices and volumes near 1e200) does not overflow here.
-    Trades need not be in time order, since they are summed by bar number.
+    Trades given as arrays need not be in time order, since they are summed by bar number.
+    A labelled Series must be sorted in ascending order, as every labelled input in this module.
     Element ``tau`` of the result must line up with the closing price of bar
     ``tau``; the function cannot check this.
 
