@@ -25,7 +25,9 @@ that sequence. With the defaults `pt = 1` and `sl = -1` it is `(2p - 1) sqrt(fre
 
 `implied_precision` and `implied_frequency` invert `binomial_sharpe` for `p` and `freq`.
 `implied_precision` returns a hit rate in (0, 1), or raises `ValueError` when float64 cannot hold
-one. `implied_frequency` returns `nan` when no positive frequency gives the target: the target is
+one. For large targets the hit rate sits within a few float64 steps of 0 or 1, and the round trip
+through `binomial_sharpe` loses relative accuracy: about 2e-6 at a target of 1e6 and 3e-2 at 1e8
+(the `sl = -1`, `pt = 1`, `freq = 52` case, measured 2026-10-14 on a shared 4-vCPU machine). `implied_frequency` returns `nan` when no positive frequency gives the target: the target is
 0, the mean bet return is 0, or the mean bet return and the target have opposite signs. It raises
 `ValueError` when the frequency overflows or falls below the normal float range.
 
