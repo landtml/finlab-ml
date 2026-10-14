@@ -500,3 +500,18 @@ def test_mixture_returns_refuses_draws_that_overflow_float64() -> None:
     # A sigma near 1e308 puts some draws beyond float64. They must not come back as inf.
     with pytest.raises(ValueError, match="sigma"):
         mixture_returns(0.0, 0.0, 1e308, 1e308, 0.5, 1000, seed=0)
+
+
+def test_scalars_beyond_float64_range_are_refused_by_name() -> None:
+    # An int too large for float64 raised OverflowError, which does not name the argument.
+    with pytest.raises(ValueError, match="freq"):
+        binomial_sharpe(0.6, 10**400)
+    with pytest.raises(ValueError, match="p "):
+        binomial_sharpe(10**400, 52)
+    with pytest.raises(ValueError, match="freq"):
+        probability_of_failure([0.1, -0.1, 0.2], 10**400, 1.0)
+
+
+def test_mixture_returns_refuses_n_obs_beyond_int64_by_name() -> None:
+    with pytest.raises(ValueError, match="n_obs"):
+        mixture_returns(0.0, 0.0, 1.0, 1.0, 0.5, 10**400, seed=0)

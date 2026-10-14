@@ -45,7 +45,10 @@ def _as_finite(name: str, value: object) -> float:
         value = value.item()
     if isinstance(value, (bool, np.bool_)) or not isinstance(value, numbers.Real):
         raise ValueError(f"{name} must be a real number, got {type(value).__name__}")
-    x = float(value)
+    try:
+        x = float(value)
+    except OverflowError:
+        raise ValueError(f"{name} is outside the float64 range") from None
     if not math.isfinite(x):
         raise ValueError(f"{name} must be finite, got {x}")
     return x
@@ -379,6 +382,8 @@ def mixture_returns(
     if not 0.0 <= prob1 <= 1.0:
         raise ValueError(f"prob1 must be between 0 and 1, got {prob1}")
     n_obs = _as_count("n_obs", n_obs, minimum=1)
+    if n_obs > np.iinfo(np.int64).max:
+        raise ValueError(f"n_obs must be at most {np.iinfo(np.int64).max}, got {n_obs}")
 
     if seed is not None:
         seed = _as_count("seed", seed, minimum=0)
