@@ -46,7 +46,7 @@ from __future__ import annotations
 import math
 import numbers
 import warnings
-from typing import Callable, NamedTuple
+from typing import Callable, NamedTuple, Sized, cast
 
 import numpy as np
 import pandas as pd
@@ -333,7 +333,7 @@ def frac_diff_ffd(
     """
     w = get_weights_ffd(d, thres)
     width = w.shape[0] - 1
-    n = series.shape[0] if hasattr(series, "shape") else len(series)
+    n = series.shape[0] if hasattr(series, "shape") else len(cast(Sized, series))
     if width >= n:
         warnings.warn(
             f"series of length {n} is shorter than the FFD window (width {width}); "

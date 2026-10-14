@@ -103,7 +103,7 @@ def _require_integer(value: Any, message: str) -> None:
         raise ValueError(message)
     if not isinstance(value, numbers.Integral) and not math.isfinite(value):
         raise ValueError(message)
-    if value != int(value):
+    if value != math.floor(value):
         raise ValueError(message)
 
 

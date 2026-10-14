@@ -830,15 +830,16 @@ def cusum_filter(
         # A one-column frame is a labelled series, so it returns labels as a Series does.
         series = series.iloc[:, 0]
     if isinstance(series, pd.Series):
-        index: pd.Index | None = pd.Index(series.index)
+        labels = pd.Index(series.index)
         x = series.to_numpy(dtype=np.float64)
         # The filter runs in arrival order, so an unsorted Series is put in time order
         # first, as _as_arrays does for the bar kinds. A stable sort keeps duplicates.
-        if not index.is_monotonic_increasing:
-            _refuse_ambiguous_naive_index(index)
-            order = index.argsort(kind="stable")
-            index = index[order]
+        if not labels.is_monotonic_increasing:
+            _refuse_ambiguous_naive_index(labels)
+            order = labels.argsort(kind="stable")
+            labels = labels[order]
             x = np.ascontiguousarray(x[order])
+        index: pd.Index | None = labels
     else:
         index = None
         x = np.asarray(series, dtype=np.float64)
