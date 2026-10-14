@@ -212,6 +212,10 @@ The test asserts `t = sqrt(1058/3)` to 1e-12.
 **[checked by test: `test_hasbrouck_lambda_large_regressor_stays_finite`]** With regressor near `1e200`,
 the squared sums overflow and the scaled fallback returns `lambda = 3e-200` to 1e-9.
 
+**[checked by test: `test_hasbrouck_scales_with_a_tiny_regressor`]** With the regressor multiplied by 1e-160,
+its squares are subnormal. The regression then runs on scaled sums, and `t` equals the unscaled
+`sqrt(1058/3)` to 1e-12 and `lambda` scales by 1e160.
+
 **[checked by test: `test_signed_root_dollar_volume_hand_example`, `test_signed_root_dollar_volume_matches_naive`, `test_signed_root_dollar_volume_large_prices_stay_finite`, `test_hasbrouck_trade_level_matches_bar_reference`]**
 The helper's per-bar sums match a trade-by-trade loop that uses `sqrt(p V)` directly, to 1e-12 on random trades
 with zero signs. The hand example covers an empty bar, which gets 0. With prices and volumes of `1e200`, the

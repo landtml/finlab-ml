@@ -235,7 +235,9 @@ the book only (not verified against the text).
 1, 1, -1, -1, 0, 1, 1 give rows 2, 4, 6), `test_bet_timing_flat_first_row_is_a_bet_end` (0, 1, 1, 0
 gives rows 0, 3), `test_bet_timing_reports_a_flat_last_row_even_when_it_ends_no_bet` (1, 0, 0 gives
 rows 1, 2), `test_bet_timing_matches_row_by_row_rule_on_random_positions` (20 seeded integer paths
-against the row-by-row statement above).
+against the row-by-row statement above). Flips are read from signs, so
+`test_bet_timing_sees_flips_between_tiny_positions` (sizes 1e-200) and
+`test_bet_timing_is_unchanged_by_scaling_positions` (paths scaled by 1e-200 and 1e-300) hold.
 
 ## 8. Holding period (Snippet 14.2)
 
@@ -267,7 +269,9 @@ first row.
 `test_holding_period_flip_closes_the_old_side_and_restarts_the_entry` (2.5),
 `test_holding_period_uses_fractional_days` (1.5 for 36 hours),
 `test_holding_period_numba_kernel_matches_python_transcription` (30 seeded cases, irregular
-timestamps, relative tolerance 1e-12).
+timestamps, relative tolerance 1e-12). Sizes are scaled by their largest magnitude before the
+kernel, so `test_holding_period_closes_tiny_positions`, `test_holding_period_is_unchanged_by_scaling_random_positions`
+and `test_holding_period_handles_sizes_near_1e306_over_a_long_history` (entry 3000 days in, size 1e306) hold.
 
 **Measured.** `PYTHONPATH=src python3 benchmarks/bench_stats.py`, four runs on 2026-10-14, a shared
 4-vCPU machine. For 100,000 rows the naive Python loop took 0.0187 to 0.0212 s and the numba kernel
@@ -296,7 +300,10 @@ w = (2, -1, 0), so h = 5 and HHI = (5 - 1/3) / (2/3) = 7.
 `test_hhi_two_or_fewer_returns_is_nan`, `test_hhi_refuses_zero_sum_and_missing_values_by_name`,
 `test_return_concentration_hand_computed` (positive 1/12, negative 1/16, time 1/12),
 `test_return_concentration_periods_without_returns_count_as_zero` (time 1/3, with an empty month),
-`test_return_concentration_all_zero_side_is_nan`.
+`test_return_concentration_all_zero_side_is_nan`. The sums are taken after dividing by the
+largest magnitude, so `test_hhi_equal_huge_returns_give_zero` and
+`test_return_concentration_equal_huge_gains_give_zero_not_nan` (three gains of 1e308) hold, and
+`test_hhi_refuses_a_scalar_by_name` covers a scalar input.
 
 **Convention (not from the book).** `positive` takes returns >= 0, so zeros count as positive. A
 component is NaN when its sub-series has two or fewer values, or sums to zero. A positive sub-series
