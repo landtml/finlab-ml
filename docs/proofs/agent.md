@@ -204,6 +204,8 @@ These tests compare a tool's output with a direct library call.
 | `min_track_record_length` | `test_min_track_record_length_matches_library` | `rel=1e-12` |
 | `cusum_filter`, `frac_diff_ffd` | `test_cusum_and_fracdiff_match_library` | exact events; `rtol=1e-12` |
 | `hrp_weights` | `test_hrp_matches_library` | `rtol=1e-12`; weights sum to 1 |
+| `kontoyiannis_entropy` | `test_kontoyiannis_entropy_matches_library` | `rel=1e-12` |
+| `onc_clusters` | `test_onc_clusters_matches_library` | labels exact; silhouette `rel=1e-12` |
 | `sadf` | `test_sadf_matches_library` | `rel=1e-12` on the maximum; point count exact |
 | `binomial_sharpe`, `implied_precision`, `implied_frequency`, `probability_of_failure` | `test_strategy_risk_tools_match_library` | `rel=1e-12` |
 | `implied_precision` | `test_implied_precision_inverts_binomial_sharpe_through_the_tools` | `binomial_sharpe` of the reply gives the target back, `rel=1e-9` |

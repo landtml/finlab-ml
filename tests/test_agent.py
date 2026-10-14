@@ -11,8 +11,10 @@ from finlab.agent import server as srv
 from finlab.agent import tools as tl
 from finlab.bars import cusum_filter
 from finlab.bet_sizing import prob_bet_size
+from finlab.entropy import kontoyiannis_entropy
 from finlab.fracdiff import frac_diff_ffd
 from finlab.hrp import hrp_weights
+from finlab.onc import onc
 from finlab.stats import (
     deflated_sharpe_ratio,
     min_track_record_length,
@@ -115,6 +117,23 @@ def test_bet_size_endpoints_are_plus_or_minus_one():
     out, err = _call("bet_size_from_probability", {"probability": [0.0, 1.0]})
     assert not err
     assert out["bet_size"] == [-1.0, 1.0]
+
+
+def test_kontoyiannis_entropy_matches_library():
+    msg = list("abracadabra" * 8)
+    out, err = _call("kontoyiannis_entropy", {"message": msg})
+    assert not err
+    assert out["entropy"] == pytest.approx(kontoyiannis_entropy(msg), rel=1e-12)
+
+
+def test_onc_clusters_matches_library():
+    corr = [[1.0, 0.9, 0.1, 0.0], [0.9, 1.0, 0.0, 0.1], [0.1, 0.0, 1.0, 0.8], [0.0, 0.1, 0.8, 1.0]]
+    out, err = _call("onc_clusters", {"corr": corr})
+    assert not err
+    res = onc(np.array(corr), seed=0)
+    assert out["labels"] == [int(x) for x in res.labels]
+    assert out["n_clusters"] == res.n_clusters
+    assert out["silhouette"] == pytest.approx(res.silhouette, rel=1e-12)
 
 
 def test_cusum_and_fracdiff_match_library():
