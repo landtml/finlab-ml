@@ -128,6 +128,12 @@ Input lines are read with `json.loads(line, parse_constant=_reject_constant)`, s
 - **Range checks.** `frac_diff_ffd` requires `d` in [0, 1] and `thres` in (0, 1]
   (`test_bad_arguments_are_reported_not_raised`, `test_fracdiff_thres_out_of_range_is_rejected`).
   `onc_clusters` requires an integer `max_k` (`test_onc_max_k_must_be_integer`).
+- **Non-finite floats become `null`.** Every float in a reply goes through `_clean`, which returns
+  `None` for NaN and infinity. **Proved here** from `_clean`, which the tool handlers call for each
+  float. **Checked by test** `test_hrp_and_bet_size_replies_turn_non_finite_values_into_null`, which
+  replaces the output of `hrp_weights` and `prob_bet_size` with non-finite values. Bet sizes are
+  never non-finite for an accepted input: `prob_bet_size` maps z = ±inf (p = 0 or 1) to ±1, and z is
+  never NaN, because the 0/0 case needs p = 1/k and p in {0, 1} at once.
 
 ## 8. Size limits
 
@@ -196,7 +202,9 @@ These tests compare a tool's output with a direct library call.
   description checked. Their library functions are tested in other files.
 - **`Infinity` and `-Infinity` in the arguments** take the same parse-error path as `NaN`, but no
   test sends them.
-- **Non-finite output.** Most float results go through `_clean`, which returns `null` for a
-  value that is not finite. `hrp_weights` and `bet_size_from_probability` return their floats
-  without `_clean`. No test checks a non-finite result from either tool.
+- **Non-finite weights from `hrp_weights`.** Not verified whether any input gives a non-finite
+  weight. The inputs tried (diagonals from 1e-320 to 1e308) gave finite weights or an error. Some
+  large inputs give wrong weights from the library: `[[1e308, 0], [0, 1e308]]` gives `[1, 0]`, since
+  the two cluster variances sum to infinity and the split factor becomes 1. The tool does not
+  correct this; the library owns it.
 - **Memory.** No test measures the allocation the size guards prevent (section 8).

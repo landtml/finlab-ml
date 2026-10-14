@@ -644,3 +644,22 @@ def test_nan_in_arguments_parse_error_reply_keeps_request_id():
     assert reply["id"] == 7
     assert reply["error"]["code"] == -32700
     assert reply["error"]["message"] == "parse error: non-standard constant NaN"
+
+
+def _strict_call(name, arguments):
+    """Like _call, but the reply text must be strict JSON: no NaN or Infinity tokens."""
+    reply = _rpc("tools/call", {"name": name, "arguments": arguments})
+    result = reply["result"]
+    return _strict_loads(result["content"][0]["text"]), result["isError"]
+
+
+def test_hrp_and_bet_size_replies_turn_non_finite_values_into_null(monkeypatch):
+    # The library output is replaced here, since no input found so far makes these calls return a
+    # non-finite value. Each non-finite float must still come back as null, and the text must be strict JSON.
+    monkeypatch.setattr(tl, "hrp_weights", lambda cov, method="single": np.array([np.nan, 0.25, np.inf]))
+    monkeypatch.setattr(tl, "prob_bet_size", lambda p, side, k: np.array([-np.inf, np.nan, 0.5]))
+    cov = [[1.0, 0.3, 0.1], [0.3, 2.0, 0.2], [0.1, 0.2, 0.5]]
+    out, err = _strict_call("hrp_weights", {"cov": cov})
+    assert not err and out == {"weights": [None, 0.25, None]}
+    out, err = _strict_call("bet_size_from_probability", {"probability": [0.6, 0.7, 0.8]})
+    assert not err and out == {"bet_size": [None, None, 0.5]}

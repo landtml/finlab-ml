@@ -376,7 +376,7 @@ def _hrp(args):
     if cov.shape[0] != cov.shape[1]:
         raise ToolError("'cov' must be square")
     w = hrp_weights(cov, method=str(args.get("method", "single")))
-    return {"weights": [float(x) for x in np.asarray(w)]}
+    return {"weights": [_clean(float(x)) for x in np.asarray(w)]}
 
 
 @_tool(
@@ -414,7 +414,7 @@ def _bet(args):
     p = _vec(args, "probability")
     side = args.get("side")
     side_arr = None if side is None else _vec({"side": side}, "side")
-    return {"bet_size": [float(x) for x in prob_bet_size(p, side_arr, _int(args, "num_classes", 2))]}
+    return {"bet_size": [_clean(float(x)) for x in prob_bet_size(p, side_arr, _int(args, "num_classes", 2))]}
 
 
 @_tool(
