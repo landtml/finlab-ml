@@ -10,9 +10,16 @@ import pytest
 from finlab.agent import server as srv
 from finlab.agent import tools as tl
 from finlab.bars import cusum_filter
+from finlab.bet_sizing import prob_bet_size
 from finlab.fracdiff import frac_diff_ffd
 from finlab.hrp import hrp_weights
-from finlab.stats import deflated_sharpe_ratio, sharpe_ratio
+from finlab.stats import (
+    deflated_sharpe_ratio,
+    min_track_record_length,
+    probabilistic_sharpe_ratio,
+    sharpe_ratio,
+)
+from finlab.structural_breaks import sadf
 
 
 def _rpc(method, params=None, req_id=1):
@@ -58,6 +65,50 @@ def test_deflated_sharpe_matches_library():
                      {"sr_hat": 0.3, "n_trials": 40, "var_sr": 0.02, "n_obs": 250})
     assert not err
     assert out["dsr"] == pytest.approx(deflated_sharpe_ratio(0.3, 40, 0.02, 250), rel=1e-12)
+
+
+def test_probabilistic_sharpe_matches_library():
+    out, err = _call("probabilistic_sharpe_ratio",
+                     {"sr_hat": 0.1, "n_obs": 250, "sr_benchmark": 0.05, "skew": -0.3, "kurtosis": 4.5})
+    assert not err
+    assert out["psr"] == pytest.approx(probabilistic_sharpe_ratio(0.1, 0.05, 250, -0.3, 4.5), rel=1e-12)
+
+
+def test_min_track_record_length_matches_library():
+    out, err = _call("min_track_record_length",
+                     {"sr_hat": 0.1, "sr_benchmark": 0.0, "skew": -0.2, "kurt": 5.0, "prob": 0.9})
+    assert not err
+    expected = min_track_record_length(0.1, 0.0, -0.2, 5.0, 0.9)
+    assert out["min_track_record_length"] == pytest.approx(expected, rel=1e-12)
+
+
+def test_sadf_matches_library():
+    s = np.cumsum(np.random.default_rng(4).normal(size=160))
+    out, err = _call("sadf", {"series": s.tolist(), "min_length": 30, "lags": 1})
+    assert not err
+    arr = np.asarray(sadf(s, min_length=30, lags=1), dtype=np.float64).ravel()
+    assert out["n_points"] == arr.size
+    assert out["sadf"] == pytest.approx(float(np.nanmax(arr)), rel=1e-12)
+
+
+def test_bet_size_matches_library():
+    p = [0.2, 0.5, 0.65, 0.9]
+    side = [-1, 1, 1, -1]
+    out, err = _call("bet_size_from_probability", {"probability": p, "side": side})
+    assert not err
+    np.testing.assert_allclose(out["bet_size"], prob_bet_size(np.array(p), np.array(side)), rtol=1e-12)
+    out, err = _call("bet_size_from_probability",
+                     {"probability": [0.4, 0.5, 0.7], "side": [1, -1, 1], "num_classes": 3})
+    assert not err
+    np.testing.assert_allclose(out["bet_size"],
+                               prob_bet_size(np.array([0.4, 0.5, 0.7]), np.array([1, -1, 1]), 3), rtol=1e-12)
+
+
+def test_bet_size_endpoints_are_plus_or_minus_one():
+    # p = 0 and p = 1 give z = -inf and +inf inside the library; the bet is then -1 and +1, finite.
+    out, err = _call("bet_size_from_probability", {"probability": [0.0, 1.0]})
+    assert not err
+    assert out["bet_size"] == [-1.0, 1.0]
 
 
 def test_cusum_and_fracdiff_match_library():

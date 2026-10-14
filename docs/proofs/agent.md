@@ -193,18 +193,20 @@ These tests compare a tool's output with a direct library call.
 | Tool | Test | Check |
 |---|---|---|
 | `sharpe_ratio` | `test_sharpe_matches_library` | `rel=1e-12` |
+| `probabilistic_sharpe_ratio` | `test_probabilistic_sharpe_matches_library` | `rel=1e-12` |
 | `deflated_sharpe_ratio` | `test_deflated_sharpe_matches_library` | `rel=1e-12` |
+| `min_track_record_length` | `test_min_track_record_length_matches_library` | `rel=1e-12` |
 | `cusum_filter`, `frac_diff_ffd` | `test_cusum_and_fracdiff_match_library` | exact events; `rtol=1e-12` |
 | `hrp_weights` | `test_hrp_matches_library` | `rtol=1e-12`; weights sum to 1 |
+| `sadf` | `test_sadf_matches_library` | `rel=1e-12` on the maximum; point count exact |
+| `bet_size_from_probability` | `test_bet_size_matches_library` | `rtol=1e-12`, two and three classes |
+| `bet_size_from_probability` | `test_bet_size_endpoints_are_plus_or_minus_one` | p = 0 gives -1 and p = 1 gives 1 |
 | `cpcv_split_summary` | `test_cpcv_summary_counts` | 15 splits, 5 paths for 6 groups, 2 test groups, horizon 5 |
 | `probability_of_backtest_overfitting` | `test_clean_reply_has_no_warnings_key` | PBO 0.514 (36 of 70 splits, to 1e-6 relative) for a 240 x 12 matrix drawn with seed 21 |
 | `plug_in_entropy` | `test_plug_in_entropy_tool_description_names_bits_per_symbol` | 0.975 for word length 2, to 1e-6 relative |
 
 ## 11. Not verified
 
-- **No value check in `tests/test_agent.py`** for `min_track_record_length`, `sadf`,
-  `bet_size_from_probability`, and `probabilistic_sharpe_ratio`. The last has only its
-  description checked. Their library functions are tested in other files.
 - **Non-finite weights from `hrp_weights`.** Not verified whether any input gives a non-finite
   weight. The inputs tried (diagonals from 1e-320 to 1e308) gave finite weights or an error. Some
   large inputs give wrong weights from the library: `[[1e308, 0], [0, 1e308]]` gives `[1, 0]`, since
