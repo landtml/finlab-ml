@@ -191,9 +191,11 @@ def implied_precision(sl: float, pt: float, freq: float, target_sharpe: float) -
     # The discriminant factors as t2 * (t2 + 4 freq |sl| pt) with t2 = (target * width)**2, so the
     # root is written as a sum of positive terms. Taking b^2 - 4ac directly would cancel when
     # target is 0, where the two roots coincide at -sl / width.
-    t2 = (target * width) ** 2
+    t2 = (target * width) * (target * width)
     minus_b = t2 + 2.0 * freq * (-sl) * width
     root = abs(target) * width * math.sqrt(t2 + 4.0 * freq * (-sl) * pt)
+    if not all(math.isfinite(v) for v in (a, t2, minus_b, root)):
+        raise ValueError("target_sharpe is too large in magnitude for float64 arithmetic")
     if target >= 0.0:
         return float((minus_b + root) / (2.0 * a))
     return float(2.0 * c / (minus_b + root))
@@ -236,7 +238,11 @@ def implied_frequency(sl: float, pt: float, p: float, target_sharpe: float) -> f
     mean = width * p + sl
     if target == 0.0 or mean == 0.0:
         return float("nan")
-    freq = (target * width) ** 2 * p * (1.0 - p) / mean**2
+    # Squared as ratio * ratio: mean * mean would underflow for a mean near zero.
+    ratio = abs(target * width) * math.sqrt(p * (1.0 - p)) / abs(mean)
+    freq = ratio * ratio
+    if not math.isfinite(freq):
+        raise ValueError("target_sharpe is too large in magnitude for float64 arithmetic")
     theta = binomial_sharpe(p, freq, pt, sl)
     if not math.isclose(theta, target, rel_tol=1e-9, abs_tol=1e-12):
         return float("nan")

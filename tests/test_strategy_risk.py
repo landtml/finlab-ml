@@ -444,3 +444,20 @@ def test_probability_of_failure_accepts_returns_near_float_max() -> None:
     base = np.array([1.0, 1.5, -0.5])
     expected = probability_of_failure(base, 52.0, 1.0)
     assert probability_of_failure(base * 1e308, 52.0, 1.0) == pytest.approx(expected, rel=1e-9)
+
+
+@pytest.mark.parametrize("target", [1e200, -1e200])
+def test_implied_precision_names_target_when_its_square_overflows(target: float) -> None:
+    with pytest.raises(ValueError, match="target_sharpe"):
+        implied_precision(-1.0, 1.0, 52.0, target)
+
+
+@pytest.mark.parametrize("target", [1e200, 1e154])
+def test_implied_frequency_names_target_when_the_frequency_overflows(target: float) -> None:
+    with pytest.raises(ValueError, match="target_sharpe"):
+        implied_frequency(-1.0, 1.0, 0.6, target)
+
+
+def test_probability_of_failure_names_target_when_its_square_overflows() -> None:
+    with pytest.raises(ValueError, match="target_sharpe"):
+        probability_of_failure([0.1, -0.1, 0.2], 52.0, 1e200)
