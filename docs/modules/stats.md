@@ -27,7 +27,7 @@ print(round(min_track_record_length(sr, 0.0), 1))
 maximum benchmark) and the inputs. `deflated_sharpe_ratio` returns only the `dsr` float, with
 the same value. Counts must be integers (`n_trials >= 1`, `n_obs >= 2`); bool is rejected.
 
-`sr_hat` and `sr_benchmark` are per-period Sharpe ratios. Compute `sr_hat` with `sharpe_ratio(r, annualize=False)`; the annualised default is about sqrt(252) times too large and pushes the probabilistic and deflated results to the wrong end of [0, 1].
+`sr_hat` and `sr_benchmark` are per-period Sharpe ratios. Compute `sr_hat` with `sharpe_ratio(r, annualize=False)`. The annualised default is sqrt(252), about 15.9, times larger. On the example data above, passing it instead gives a PSR of 1.000 instead of 0.920, and a DSR of 1.000 instead of 0.0001.
 
 ## Bets, concentration and drawdown
 
