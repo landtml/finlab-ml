@@ -44,6 +44,8 @@ from finlab._jit import jit, pjit
 
 __all__ = ["OUFit", "fit_ou", "otr_grid", "ou_half_life", "ou_phi"]
 
+_INT64_MAX = int(np.iinfo(np.int64).max)
+
 
 @dataclass(frozen=True)
 class OUFit:
@@ -263,6 +265,10 @@ def otr_grid(
     st = _finite("start", start)
     n = _nonneg_int("n_iter", n_iter, 2)
     holding = _nonneg_int("max_hp", max_hp, 0)
+    for name, count in (("n_iter", n), ("max_hp", holding)):
+        # The kernel receives both as int64, so a larger value would fail inside numba.
+        if count > _INT64_MAX:
+            raise ValueError(f"{name} must be at most {_INT64_MAX}, got {count}")
     root = _nonneg_int("seed", seed, 0)
     pts = _grid("profit_taking", profit_taking)
     sls = _grid("stop_loss", stop_loss)
@@ -297,7 +303,10 @@ def _finite(name: str, value: object) -> float:
         value = value.item()
     if isinstance(value, (bool, np.bool_)) or not isinstance(value, numbers.Real):
         raise ValueError(f"{name} must be a real number, got {type(value).__name__}")
-    x = float(value)
+    try:
+        x = float(value)
+    except OverflowError:
+        raise ValueError(f"{name} is outside the float64 range") from None
     if not math.isfinite(x):
         raise ValueError(f"{name} must be finite, got {x}")
     return x

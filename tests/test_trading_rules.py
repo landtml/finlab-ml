@@ -407,3 +407,19 @@ def test_ou_phi_rounds_to_endpoints_for_extreme_half_lives() -> None:
     for half_life in (1e-6, 1e17):
         grid = otr_grid(0.0, half_life, n_iter=20, profit_taking=[1.0], stop_loss=[1.0], max_hp=3)
         assert np.isfinite(grid.loc[0, "mean"])
+
+
+def test_scalars_beyond_float64_range_are_refused_by_name() -> None:
+    with pytest.raises(ValueError, match="half_life"):
+        ou_phi(10**400)
+    with pytest.raises(ValueError, match="forecast"):
+        otr_grid(10**400, 5.0, n_iter=10, profit_taking=[1.0], stop_loss=[1.0])
+
+
+@pytest.mark.parametrize("name", ["n_iter", "max_hp"])
+def test_otr_grid_refuses_counts_beyond_int64_by_name(name: str) -> None:
+    # numba receives these as int64, so 2**63 raised OverflowError from the kernel call.
+    kwargs = dict(n_iter=10, max_hp=3, profit_taking=[1.0], stop_loss=[1.0])
+    kwargs[name] = 2**63
+    with pytest.raises(ValueError, match=name):
+        otr_grid(0.0, 5.0, **kwargs)
