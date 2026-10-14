@@ -235,7 +235,8 @@ def otr_grid(
         If any argument is not a finite real number where one is required, if
         ``half_life`` or ``sigma`` is not positive, if ``n_iter`` is below 2, if
         ``max_hp`` or ``seed`` is negative or not an integer, or if a grid is empty,
-        not one-dimensional, non-finite or negative.
+        not one-dimensional, non-finite or negative. Also if ``sigma`` times the grid, or a
+        simulated exit, overflows float64.
 
     Notes
     -----
@@ -268,11 +269,19 @@ def otr_grid(
     pt_col = np.repeat(pts, sls.size)
     sl_col = np.tile(sls, pts.size)
     n_pairs = pt_col.size
+    with np.errstate(over="ignore"):  # overflow is caught by the finiteness check below
+        pt_barrier = pt_col * s
+        sl_barrier = sl_col * s
+    # An infinite barrier would never be hit, so the result would be silently wrong.
+    if not (np.all(np.isfinite(pt_barrier)) and np.all(np.isfinite(sl_barrier))):
+        raise ValueError("sigma times the profit_taking or stop_loss grid overflows float64")
     means = np.empty(n_pairs, dtype=np.float64)
     stds = np.empty(n_pairs, dtype=np.float64)
     _otr_grid_kernel(
-        phi, f, s, st, pt_col * s, sl_col * s, holding, n, _pair_seeds(root, n_pairs), means, stds
+        phi, f, s, st, pt_barrier, sl_barrier, holding, n, _pair_seeds(root, n_pairs), means, stds
     )
+    if not (np.all(np.isfinite(means)) and np.all(np.isfinite(stds))):
+        raise ValueError("simulated exits overflow float64 for this sigma; use a smaller sigma")
 
     sharpe = np.full(n_pairs, np.nan)
     ok = stds > 0.0

@@ -371,3 +371,15 @@ def test_otr_grid_is_scale_free_at_extreme_sigma(sigma: float) -> None:
     grid = otr_grid(sigma=sigma, **kwargs)
     np.testing.assert_allclose(grid["std"], unit["std"] * sigma, rtol=1e-9, atol=0.0)
     np.testing.assert_allclose(grid["sharpe"], unit["sharpe"], rtol=1e-9, atol=0.0)
+
+
+def test_otr_grid_refuses_barriers_that_overflow_float64() -> None:
+    # sigma * 10 is inf, so the profit barrier would be silently absent.
+    with pytest.raises(ValueError, match="sigma"):
+        otr_grid(0.0, 5.0, sigma=1e308, profit_taking=[10.0], stop_loss=[1.0], n_iter=50, max_hp=100, seed=0)
+
+
+def test_otr_grid_refuses_exits_that_overflow_float64() -> None:
+    # Barriers are finite here, but sigma * eps overflows on some draws, so an exit is inf.
+    with pytest.raises(ValueError, match="sigma"):
+        otr_grid(0.0, 5.0, sigma=1e308, profit_taking=[0.5], stop_loss=[0.5], n_iter=50, max_hp=100, seed=0)
