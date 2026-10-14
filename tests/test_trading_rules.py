@@ -357,3 +357,17 @@ def test_fit_ou_is_equivariant_in_price_scale_away_from_float_limits(scale: floa
     assert fit.sigma == pytest.approx(ref.sigma * scale, rel=1e-12)
     assert fit.half_life == pytest.approx(ref.half_life, rel=1e-12)
     assert fit.n_obs == ref.n_obs
+
+
+@pytest.mark.parametrize("sigma", [1e-300, 1e300])
+def test_otr_grid_is_scale_free_at_extreme_sigma(sigma: float) -> None:
+    # Exits scale with sigma, so the Sharpe ratio must not depend on it. Squared deviations of exits
+    # near 1e-300 underflow to zero, and near 1e300 they overflow to inf.
+    kwargs = dict(
+        forecast=0.0, half_life=5.0, profit_taking=[1.0, 2.0], stop_loss=[1.0],
+        n_iter=400, max_hp=20, seed=3,
+    )
+    unit = otr_grid(sigma=1.0, **kwargs)
+    grid = otr_grid(sigma=sigma, **kwargs)
+    np.testing.assert_allclose(grid["std"], unit["std"] * sigma, rtol=1e-9, atol=0.0)
+    np.testing.assert_allclose(grid["sharpe"], unit["sharpe"], rtol=1e-9, atol=0.0)

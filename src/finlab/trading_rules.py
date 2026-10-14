@@ -388,19 +388,28 @@ def _exits_one_pair(phi, forecast, sigma, start, pt, sl, max_hp, n_iter, seed):
 def _mean_std(x):
     """Mean and population standard deviation (ddof=0), two passes in index order.
 
+    The exits are divided by their largest magnitude first, so the squared deviations
+    neither overflow nor underflow. A non-finite exit returns nan for both statistics.
     Written as loops rather than ``np.mean`` and ``np.std``: the NumPy versions add
     about 0.7 s to the first compile of the kernel.
     """
     n = x.shape[0]
+    scale = 0.0
+    for i in range(n):
+        if not math.isfinite(x[i]):
+            return math.nan, math.nan
+        scale = max(scale, abs(x[i]))
+    if scale == 0.0:
+        return 0.0, 0.0
     total = 0.0
     for i in range(n):
-        total += x[i]
+        total += x[i] / scale
     mu = total / n
     ss = 0.0
     for i in range(n):
-        d = x[i] - mu
+        d = x[i] / scale - mu
         ss += d * d
-    return mu, math.sqrt(ss / n)
+    return mu * scale, math.sqrt(ss / n) * scale
 
 
 @pjit
