@@ -809,6 +809,9 @@ def _timed_values(name: str, series: object) -> tuple[np.ndarray, pd.DatetimeInd
 
 def _finite_returns(returns: ArrayLike) -> np.ndarray:
     """Return ``returns`` as a 1-D float array, refusing NaN and infinite values."""
+    if np.ndim(returns) == 0:
+        # A scalar would reshape to one value and come back as NaN, which reads as "no answer".
+        raise ValueError("returns must be a sequence of numbers, got a scalar.")
     x = _as_1d(returns)
     if np.isnan(x).any():
         raise ValueError("returns must not contain NaN; drop missing values before calling.")
