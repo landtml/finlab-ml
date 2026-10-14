@@ -418,6 +418,18 @@ def test_hasbrouck_tstat_matches_hand_computation() -> None:
     assert t == pytest.approx(math.sqrt(1058.0 / 3.0), rel=1e-12)
 
 
+def test_hasbrouck_scales_with_a_tiny_regressor() -> None:
+    # Squares of a regressor near 1e-160 are subnormal, so sum(x^2) loses precision and the
+    # standard error overflowed to inf, which gave t = 0 for a fit with t of about 18.8.
+    bar_close = np.exp([0.0, 2.0, 5.0, 10.0])
+    srdv = np.array([0.0, 1.0, 2.0, 3.0])
+    lam0, t0 = hasbrouck_lambda_tstat(bar_close, srdv)
+    lam, t = hasbrouck_lambda_tstat(bar_close, srdv * 1e-160)
+    assert t == pytest.approx(t0, rel=1e-12)
+    assert lam == pytest.approx(lam0 * 1e160, rel=1e-12)
+    assert hasbrouck_lambda(bar_close, srdv * 1e-160) == pytest.approx(lam0 * 1e160, rel=1e-12)
+
+
 def test_hasbrouck_lambda_rejects_zero_regressor() -> None:
     with pytest.raises(ValueError, match="identically zero"):
         hasbrouck_lambda(np.array([1.0, 2.0, 3.0, 4.0]), np.zeros(4))

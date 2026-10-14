@@ -235,7 +235,9 @@ the book only (not verified against the text).
 1, 1, -1, -1, 0, 1, 1 give rows 2, 4, 6), `test_bet_timing_flat_first_row_is_a_bet_end` (0, 1, 1, 0
 gives rows 0, 3), `test_bet_timing_reports_a_flat_last_row_even_when_it_ends_no_bet` (1, 0, 0 gives
 rows 1, 2), `test_bet_timing_matches_row_by_row_rule_on_random_positions` (20 seeded integer paths
-against the row-by-row statement above).
+against the row-by-row statement above). Flips are read from signs, so
+`test_bet_timing_sees_flips_between_tiny_positions` (sizes 1e-200) and
+`test_bet_timing_is_unchanged_by_scaling_positions` (paths scaled by 1e-200 and 1e-300) hold.
 
 ## 8. Holding period (Snippet 14.2)
 
@@ -267,11 +269,13 @@ first row.
 `test_holding_period_flip_closes_the_old_side_and_restarts_the_entry` (2.5),
 `test_holding_period_uses_fractional_days` (1.5 for 36 hours),
 `test_holding_period_numba_kernel_matches_python_transcription` (30 seeded cases, irregular
-timestamps, relative tolerance 1e-12).
+timestamps, relative tolerance 1e-12). Sizes are scaled by their largest magnitude before the
+kernel, so `test_holding_period_closes_tiny_positions`, `test_holding_period_is_unchanged_by_scaling_random_positions`
+and `test_holding_period_handles_sizes_near_1e306_over_a_long_history` (entry 3000 days in, size 1e306) hold.
 
-**Measured.** `PYTHONPATH=src python3 benchmarks/bench_stats.py`, three runs on 2026-10-13, a shared
-4-vCPU machine. For 100,000 rows the naive Python loop took 0.020 to 0.024 s and the numba kernel
-0.0017 to 0.0019 s, a speedup of 11.8x to 12.7x. The two results agree to 6e-14. Timings vary with
+**Measured.** `PYTHONPATH=src python3 benchmarks/bench_stats.py`, four runs on 2026-10-14, a shared
+4-vCPU machine. For 100,000 rows the naive Python loop took 0.0187 to 0.0212 s and the numba kernel
+0.0016 to 0.0018 s, a speedup of 11.2x to 11.7x. The two results agree to 6e-14. Timings vary with
 the machine and are not tested.
 
 ## 9. Concentration (Snippet 14.3)
@@ -296,7 +300,10 @@ w = (2, -1, 0), so h = 5 and HHI = (5 - 1/3) / (2/3) = 7.
 `test_hhi_two_or_fewer_returns_is_nan`, `test_hhi_refuses_zero_sum_and_missing_values_by_name`,
 `test_return_concentration_hand_computed` (positive 1/12, negative 1/16, time 1/12),
 `test_return_concentration_periods_without_returns_count_as_zero` (time 1/3, with an empty month),
-`test_return_concentration_all_zero_side_is_nan`.
+`test_return_concentration_all_zero_side_is_nan`. The sums are taken after dividing by the
+largest magnitude, so `test_hhi_equal_huge_returns_give_zero` and
+`test_return_concentration_equal_huge_gains_give_zero_not_nan` (three gains of 1e308) hold, and
+`test_hhi_refuses_a_scalar_by_name` covers a scalar input.
 
 **Convention (not from the book).** `positive` takes returns >= 0, so zeros count as positive. A
 component is NaN when its sub-series has two or fewer values, or sums to zero. A positive sub-series
@@ -304,7 +311,7 @@ sums to zero only when every value is zero. The time component uses calendar per
 month end by default (`pd.offsets.MonthEnd()`), and counts periods with no returns as zero.
 
 **Measured.** `pd.Series([1.0], index=pd.DatetimeIndex(["2024-01-01"])).groupby(pd.Grouper(freq="M")).count()`
-raises `ValueError: Invalid frequency: M` on pandas 3.0.6, checked 2026-10-13 on a shared 4-vCPU
+raises `ValueError: Invalid frequency: M` on pandas 3.0.6, checked 2026-10-14 on a shared 4-vCPU
 machine.
 
 **Claimed from the book only.** The HHI formula and the sign and time split of Snippet 14.3, as implemented here.
@@ -333,13 +340,14 @@ one-pass scan).
 
 **Known property of the rule.** Time under water runs from a reported HWM to the next reported
 HWM, not to the next HWM. A mark with no later drawdown in between is skipped, so the interval can
-pass the recovery. Pnl 0, 1, 0.5, 2, 3, 2, 4 on consecutive days gives 3 days for the mark at day 1.
+pass the recovery. Pnl 0, 1, 0.5, 2, 3, 2, 4 on consecutive days, with `dollars=True`, gives 3 days for the mark at day 1.
 Pnl is back above 1 at day 3, so the recovery took 2 days. The rule is Snippet 14.4 as implemented here, claimed from the book only (not verified against the text). The 3-day value
 is checked by test.
 
-**Convention (not from the book).** One year is 365.25 days. The book divides by
-`np.timedelta64(1, 'Y')`. On numpy 2.5.4 that raises `ValueError: Unit Y is not supported`
-(checked 2026-10-13 on a shared 4-vCPU machine), so the conversion is replaced.
+**Convention (not from the book).** One year is 365.25 days. The book divides a `DatetimeIndex`
+difference by `np.timedelta64(1, 'Y')`. On pandas 3.0.6 that raises `ValueError: Unit Y is not
+supported` (checked 2026-10-14 on a shared 4-vCPU machine). A plain numpy array divided by the
+same value raises `TypeError` instead. So the conversion is replaced.
 
 **Claimed from the book only.** The high-water-mark grouping and the dd and tuw definitions of
 Snippet 14.4, as implemented here.
@@ -363,4 +371,4 @@ Snippet 14.4, as implemented here.
 | HHI above 1 with mixed signs (example 7) | Proved here (arithmetic); checked by test (`test_hhi_mixed_sign_can_exceed_one`) |
 | Drawdown runs, dd in (0, 1) for positive pnl | Proved here (contiguous runs of the running maximum) |
 | Time under water skips marks with no later drawdown | Checked by test (`test_drawdown_time_under_water_runs_to_next_drawdown_high_not_next_high`); the rule claimed from the book only |
-| One year = 365.25 days | Convention (not from the book); the book's `'Y'` divisor fails on numpy 2.5.4 (section 10) |
+| One year = 365.25 days | Convention (not from the book); the book's `'Y'` divisor fails on pandas 3.0.6 (section 10) |

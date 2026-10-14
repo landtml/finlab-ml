@@ -522,8 +522,9 @@ def bet_timing(positions: pd.Series) -> pd.DatetimeIndex:
     # The first row is treated as non-flat, the same as the NaN the book code compares.
     was_open = index[np.r_[True, values[:-1] != 0]]
     bets = flat_now.intersection(was_open)
-    products = values[1:] * values[:-1]
-    flips = index[1:][products < 0]
+    # Signs, not the product: the product of two tiny opposite positions underflows to -0.0.
+    signs = np.sign(values)
+    flips = index[1:][signs[1:] * signs[:-1] < 0]
     bets = bets.union(flips).sort_values()
     if index[-1] not in bets:
         bets = bets.append(index[-1:])
@@ -564,6 +565,11 @@ def holding_period(positions: pd.Series) -> float:
     The loop runs in a numba kernel (``finlab._jit.jit``), with fastmath off.
     """
     values, index = _timed_values("positions", positions)
+    # The average is unchanged by a common scale of the sizes. Dividing by the largest size keeps
+    # time x size from overflowing over a long history (a size near 1e306 after 3000 days).
+    largest = float(np.max(np.abs(values)))
+    if largest > 0.0:
+        values = values / largest
     tdiff = np.asarray((index - index[0]) / pd.Timedelta(days=1), dtype=float)
     weighted, closed = _holding_kernel(np.ascontiguousarray(values), np.ascontiguousarray(tdiff))
     if closed > 0.0:
@@ -713,12 +719,12 @@ def drawdown_time_under_water(
     Notes
     -----
     A year is 365.25 days (a convention, not from the book). The book divides by a
-    ``'Y'`` timedelta, which numpy 2.5 rejects with ``ValueError: Unit Y is not supported``.
+    ``'Y'`` timedelta, which pandas 3.0 rejects with ``ValueError: Unit Y is not supported``.
 
     Time under water runs from an HWM to the next HWM that has a drawdown, not to the
     next HWM. If an HWM with no later drawdown falls in between, the interval runs past
-    the true recovery. With pnl ``[0, 1, 0.5, 2, 3, 2, 4]`` the HWM at row 1 gets 3 days,
-    but pnl is back above 1 at row 3, so the true time is 2 days.
+    the true recovery. With ``dollars=True`` and pnl ``[0, 1, 0.5, 2, 3, 2, 4]`` on consecutive
+    days, the HWM at row 1 gets 3 days, but pnl is back above 1 at row 3, so the true time is 2 days.
     """
     if not isinstance(dollars, bool):
         raise TypeError(f"dollars must be a bool, got {type(dollars).__name__}.")
@@ -754,11 +760,13 @@ def _holding_kernel(pos: np.ndarray, tdiff: np.ndarray) -> tuple[float, float]:
     t_entry = 0.0
     for i in range(1, pos.shape[0]):
         p_diff = pos[i] - pos[i - 1]
-        if p_diff * pos[i - 1] >= 0.0:
+        # Same test as p_diff * pos[i-1] >= 0, written on signs: that product underflows to -0.0
+        # for tiny positions, which then read as an increase.
+        if pos[i - 1] == 0.0 or p_diff == 0.0 or (p_diff > 0.0) == (pos[i - 1] > 0.0):
             # Increased or unchanged: the entry time moves to the size-weighted mean.
             if pos[i] != 0.0:
                 t_entry = (t_entry * pos[i - 1] + tdiff[i] * p_diff) / pos[i]
-        elif pos[i] * pos[i - 1] < 0.0:
+        elif pos[i] != 0.0 and (pos[i] > 0.0) != (pos[i - 1] > 0.0):
             # Flip: the whole old position closes, and the new one opens at this row.
             size = abs(pos[i - 1])
             weighted += (tdiff[i] - t_entry) * size
@@ -806,6 +814,9 @@ def _timed_values(name: str, series: object) -> tuple[np.ndarray, pd.DatetimeInd
 
 def _finite_returns(returns: ArrayLike) -> np.ndarray:
     """Return ``returns`` as a 1-D float array, refusing NaN and infinite values."""
+    if np.ndim(returns) == 0:
+        # A scalar would reshape to one value and come back as NaN, which reads as "no answer".
+        raise ValueError("returns must be a sequence of numbers, got a scalar.")
     x = _as_1d(returns)
     if np.isnan(x).any():
         raise ValueError("returns must not contain NaN; drop missing values before calling.")
@@ -819,21 +830,29 @@ def _sums_to_zero(x: np.ndarray) -> bool:
     return bool(abs(float(np.sum(x))) <= 1e-12 * float(np.sum(np.abs(x))))
 
 
+def _unit_scale(x: np.ndarray) -> np.ndarray:
+    """Return ``x`` divided by its largest magnitude, so that sums of it cannot overflow."""
+    # The HHI is scale-free. Without this, three returns of 1e308 sum to inf and look like a zero sum.
+    m = float(np.max(np.abs(x))) if x.size else 0.0
+    return x / m if m > 0.0 else x
+
+
 def _hhi(x: np.ndarray) -> float:
     """HHI of a finite 1-D array; NaN for two or fewer values, refused when the sum is zero."""
     n = x.size
     if n <= 2:
         return float("nan")
-    if _sums_to_zero(x):
+    z = _unit_scale(x)
+    if _sums_to_zero(z):
         raise ValueError("returns sum to zero, so the HHI weights r / sum(r) are undefined.")
-    w = x / float(np.sum(x))
+    w = z / float(np.sum(z))
     h = float(np.sum(w * w))
     return (h - 1.0 / n) / (1.0 - 1.0 / n)
 
 
 def _concentration_or_nan(x: np.ndarray) -> float:
     """HHI of a sub-series; NaN when it is too short or sums to zero, where HHI is undefined."""
-    if x.size <= 2 or _sums_to_zero(x):
+    if x.size <= 2 or _sums_to_zero(_unit_scale(x)):
         return float("nan")
     return _hhi(x)
 
