@@ -737,8 +737,8 @@ def test_bet_timing_is_unchanged_by_scaling_positions(scale: float) -> None:
 )
 @pytest.mark.parametrize("scale", [1.0, 1e-200, 1e-300])
 def test_holding_period_closes_tiny_positions(values: list[float], expected: float, scale: float) -> None:
-    # Holding period does not depend on the unit of size. The tiny products used to read as an
-    # increase, so the closing row was dropped and the result was NaN.
+    # Holding period does not depend on the unit of size. Products of tiny positions underflow to
+    # -0.0 and would read as an increase, which drops the closing row.
     assert holding_period(_daily(np.array(values) * scale)) == pytest.approx(expected, rel=1e-12)
 
 
