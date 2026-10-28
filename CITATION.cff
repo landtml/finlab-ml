@@ -1,0 +1,35 @@
+cff-version: 1.2.0
+message: >-
+  If you use this software, please cite it as below. For the methods themselves,
+  please also cite the book listed under references.
+type: software
+title: "finlab: financial machine learning in Python"
+abstract: >-
+  Python implementations of the methods in Marcos López de Prado's Advances in
+  Financial Machine Learning, organised by chapter, with tests against naive
+  references and proof notes that label each claim.
+authors:
+  - alias: landtml
+version: 0.1.5
+license: MIT
+repository-code: "https://github.com/landtml/finlab-ml"
+url: "https://github.com/landtml/finlab-ml"
+keywords:
+  - financial machine learning
+  - purged cross-validation
+  - combinatorial purged cross-validation
+  - triple-barrier labeling
+  - fractional differentiation
+  - deflated Sharpe ratio
+  - probability of backtest overfitting
+  - hierarchical risk parity
+references:
+  - type: book
+    title: Advances in Financial Machine Learning
+    authors:
+      - family-names: López de Prado
+        given-names: Marcos
+    publisher:
+      name: Wiley
+    year: 2018
+    isbn: 978-1-119-48208-6
