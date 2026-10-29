@@ -7,9 +7,36 @@ All notable changes to this project are documented in this file. The format foll
 
 ### Added
 
+- `distance_of_distances` (AFML 16.4.1) and `hrp_weights(cluster_on="distance_of_distances")`: clustering on the distance of distances, which reproduces the printed Snippet 16.1 call. The default `cluster_on="distance"` is unchanged.
+- `CITATION.cff`, so GitHub shows a "Cite this repository" box with APA and BibTeX exports. It
+  cites AFML as a reference and carries the package version, which `tests/test_citation.py` checks.
+- `SequentialBootstrapBagging` has `get_params`, `set_params`, `score` and the classifier tag, so
+  scikit-learn's `clone`, `cross_val_score` and `GridSearchCV` accept it without finlab importing
+  scikit-learn.
+- A documentation site built from `docs/` and `mkdocs.yml` by `.github/workflows/docs.yml`. The
+  build runs `mkdocs build --strict` on every pull request; the site is served from GitHub Pages
+  once the repository's Pages source is set to GitHub Actions.
 - `sadf_null_quantiles` (`finlab.structural_breaks`, AFML ch. 17): simulated quantiles of `sadf`
   under a random-walk null, pointwise by end point and for the maximum over end points. The
   result is reproducible by `seed`; `constant='nc'` is refused.
+
+### Changed
+
+- `SequentialBootstrapBagging` checks `n_estimators` and `oob_score` in `fit`, not in the
+  constructor, following scikit-learn's convention that a constructor only stores its
+  arguments, so a bad value raises at `fit`.
+- `SequentialBootstrapBagging.fit` refuses a `t1` whose values are not datetimes or integer
+  positions, also when `sequential=False`, where `t1` used to be ignored. Weights passed as the
+  third argument used to fail with an error from inside `finlab.weights`, and date strings used
+  to fit; both now raise a `ValueError` that names the problem.
+
+### Fixed
+
+- `grid_search`, `randomized_search`, `mda`, `sfi` and `SequentialBootstrapBagging` now send
+  `sample_weight` to a scikit-learn `Pipeline`'s final step as `<step>__sample_weight`, through
+  any nested Pipelines (AFML Snippet 9.2). Before, a weighted Pipeline raised `ValueError`.
+- `SequentialBootstrapBagging.predict_proba` averages over the fitted bags. It divided by
+  `n_estimators`, so after the attribute changed without a refit the rows did not sum to 1.
 
 ## [0.1.5] - 2026-10-14
 

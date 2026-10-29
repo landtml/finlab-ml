@@ -1,7 +1,7 @@
 # finlab: Proofs and Checks for `finlab.hrp` (AFML ch. 16)
 
-Component: [`src/finlab/hrp.py`](../../src/finlab/hrp.py).
-Tests: [`tests/test_hrp.py`](../../tests/test_hrp.py).
+Component: [`src/finlab/hrp.py`](https://github.com/landtml/finlab-ml/blob/main/src/finlab/hrp.py).
+Tests: [`tests/test_hrp.py`](https://github.com/landtml/finlab-ml/blob/main/tests/test_hrp.py).
 
 Status tags as in [`microstructure.md`](microstructure.md):
 **[proved here]**, **[checked by test]** (the claim names its test function, for example `test_hrp_bisection_cost_bound_n2_to_30`), **[claimed from the book only]**.
@@ -43,19 +43,33 @@ compares `correlation_distance` with the 4-decimal matrix written in the test, t
 
 ## 2. Tree clustering (AFML 16.4.1, Snippet 16.1)
 
-The tree is `scipy.cluster.hierarchy.linkage(squareform(D), method)`.
+By default the tree is `scipy.cluster.hierarchy.linkage(squareform(D), method)`.
 
 **Implementation note [checked by test: `test_hrp_square_matrix_linkage_heights`].** Snippet 16.1 passes the square matrix
 `D` directly to `linkage`. SciPy treats a square matrix as `N` observation
 vectors, not as a distance matrix, and emits a `ClusterWarning`. For a 3-asset
 example it returns merge heights `0.566` and `0.975`, not the distances
 `0.387` and `0.632` (`tests/test_doc_claims.py::test_hrp_square_matrix_linkage_heights`). The implementation therefore uses `squareform` to condense
-`D` first. This is a deviation from the printed snippet, and it is required for
-the book's stated intent.
+`D` first when `cluster_on="distance"`, the default, and so clusters on the
+correlation distance itself. That default differs from the printed snippet.
 
-**Deviation from the text [noted].** The book's Example 16.2 clusters on the
-Euclidean distance between columns of `D`. We follow Snippet 16.1 and cluster on
-`D` directly, with a choice of linkage (`single` by default).
+**Distance of distances (AFML 16.4.1, second step).** `distance_of_distances(D)` is
+`d~_ij = sqrt(sum_n (D_ni - D_nj)^2)`, the Euclidean distance between columns of `D`.
+The printed call `linkage(D, method)` clusters the rows of `D`, which for symmetric `D` are the
+columns, so it clusters on `d~`, not on `D`. `linkage(squareform(d~), method)` is the same call without
+the warning. `hrp_weights(..., cluster_on="distance_of_distances")` uses `d~`.
+
+**[checked by test]** `test_distance_of_distances_matches_naive_double_loop` (the double sum, rtol 1e-12)
+and `test_distance_of_distances_equals_pdist_square_form` (`squareform(pdist(D))`, rtol 1e-12).
+**[checked by test]** `test_distance_of_distances_linkage_equals_snippet_linkage` (linkage on `d~` equals
+the printed call on the square `D` to rtol 1e-12, for `single` and `ward`; the printed call is run with
+the `ClusterWarning` suppressed). **[checked by test]** `test_hrp_distance_of_distances_matches_snippet_weights`
+(weights equal the printed-snippet path to rtol 1e-12 for `single`, `complete` and `average`).
+**[checked by test]** `test_hrp_distance_of_distances_emits_no_cluster_warning`.
+
+**Default [noted].** `cluster_on="distance"` is the default and clusters on `D` with `squareform`, as
+before this option existed. It is not the printed Snippet 16.1 call. The two options give different trees
+and weights on the same input (`test_hrp_distance_of_distances_differs_from_default_on_block_example`).
 
 ## 3. Quasi-diagonalization (AFML 16.4.2, Snippet 16.2)
 
@@ -207,6 +221,7 @@ is dominated by that step for large `N`.
 |---|---|
 | `d = sqrt(1/2(1-rho))` is a pseudometric on series, a metric on standardized series (Prop. 1.1) | proved here; checked by test for scaled copies (`test_hrp_scaled_copy_has_zero_correlation_distance`); book cites App. 16.A.1 |
 | Example 16.1 distance matrix | checked by test (`test_correlation_distance_book_example_16_1`) |
+| Distance of distances `d~` gives the printed Snippet 16.1 linkage (`cluster_on="distance_of_distances"`) | checked by test (`test_distance_of_distances_linkage_equals_snippet_linkage`, `test_hrp_distance_of_distances_matches_snippet_weights`) |
 | `squareform` is required for `linkage` (Snippet 16.1) | checked by test (`test_hrp_square_matrix_linkage_heights`; deviation from printed snippet) |
 | Quasi-diagonalization is a permutation (Prop. 3.1) | proved here; checked by test (`test_quasi_diagonalize_is_permutation_and_matches_naive`) |
 | Quasi-diagonal order equals Snippet 16.2 (Prop. 3.2) | proved here (sketch); checked by test (`test_quasi_diagonalize_is_permutation_and_matches_naive`) |

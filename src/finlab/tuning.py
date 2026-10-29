@@ -33,6 +33,7 @@ import numpy.typing as npt
 import pandas as pd
 
 from ._checks import _same_index, tz_mismatch_message
+from ._fit import fit_model
 from .importance import _prediction_vector
 
 __all__ = ["cv_score", "grid_search", "randomized_search", "SearchResult"]
@@ -209,11 +210,7 @@ def cv_score(
     for fold, (train_idx, test_idx) in enumerate(_materialize_splits(cv, X)):
         model = model_factory(**params)
         w_tr = None if w is None else w[train_idx]
-        if w_tr is None:
-            # Some bases (KNeighborsClassifier) take no sample_weight keyword at all.
-            model.fit(Xa[train_idx], ya[train_idx])
-        else:
-            model.fit(Xa[train_idx], ya[train_idx], sample_weight=w_tr)
+        fit_model(model, Xa[train_idx], ya[train_idx], w_tr)
         pred = model.predict(Xa[test_idx])
         w_te = None if w is None else w[test_idx]
         if w_te is not None and not np.any(w_te):

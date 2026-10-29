@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from finlab.cv import make_t1
+from finlab.cv import PurgedKFold, make_t1
 from finlab.ensemble import SequentialBootstrapBagging
 from finlab.weights import average_uniqueness, num_co_events
 
@@ -763,5 +763,264 @@ def test_oob_refuses_non_finite_out_of_bag_probabilities():
 
 @pytest.mark.parametrize("value", ["yes", 1, None])
 def test_oob_score_must_be_a_bool(value):
+    X, y, t1 = _data(40, seed=1)
     with pytest.raises(TypeError, match="oob_score"):
-        SequentialBootstrapBagging(NearestCentroid, oob_score=value)
+        SequentialBootstrapBagging(NearestCentroid, oob_score=value).fit(X, y, t1=t1)
+
+
+class _PipelineName:
+    pass
+
+
+# sklearn.pipeline.Pipeline's name and module, which is what finlab checks.
+_PipelineName.__name__ = "Pipeline"
+_PipelineName.__module__ = "sklearn.pipeline"
+
+
+class _FakePipeline(NearestCentroid, _PipelineName):
+    """Stand-in for sklearn.pipeline.Pipeline: steps, and a fit that refuses sample_weight.
+
+    finlab recognises a Pipeline by class name and module, so the stand-in declares that module.
+    """
+
+    def __init__(self):
+        self.steps = [("scale", NearestCentroid()), ("clf", NearestCentroid())]
+        self.named_steps = dict(self.steps)
+        self.fit_params = None
+
+    def fit(self, X, y, **fit_params):
+        if "sample_weight" in fit_params:
+            raise ValueError("Pipeline.fit does not accept the sample_weight parameter.")
+        self.fit_params = fit_params
+        return super().fit(X, y)
+
+
+def test_bagging_pipeline_base_gets_sample_weight_on_final_step() -> None:
+    X, y, _ = _data(120)
+    w = np.random.default_rng(8).uniform(0.5, 1.5, len(y))
+    bag = SequentialBootstrapBagging(_FakePipeline, n_estimators=3, sequential=False, seed=0).fit(
+        X, y, sample_weight=w
+    )
+    assert len(bag.estimators_) == 3
+    for est, draws in zip(bag.estimators_, bag.draws_):
+        np.testing.assert_array_equal(est.fit_params["clf__sample_weight"], w[draws])
+
+
+@pytest.mark.parametrize("final", ["passthrough", None])
+def test_bagging_refuses_pipeline_ending_in_passthrough_or_none(final) -> None:
+    class _Ends(_FakePipeline):
+        def __init__(self) -> None:
+            super().__init__()
+            self.steps = [("scale", NearestCentroid()), ("clf", final)]
+            self.named_steps = dict(self.steps)
+
+    X, y, _ = _data(120)
+    bag = SequentialBootstrapBagging(_Ends, n_estimators=2, sequential=False, seed=0)
+    with pytest.raises(ValueError, match="final step"):
+        bag.fit(X, y, sample_weight=np.ones(len(y)))
+
+
+# scikit-learn compatibility: the class has get_params, set_params, score and a classifier tag,
+# so clone, cross_val_score and GridSearchCV accept it without importing sklearn.
+
+
+def test_get_params_returns_the_constructor_arguments_by_name() -> None:
+    bag = SequentialBootstrapBagging(
+        NearestCentroid, n_estimators=4, sequential=False, max_samples=50, seed=7, oob_score=True
+    )
+    assert bag.get_params() == {
+        "base_factory": NearestCentroid,
+        "n_estimators": 4,
+        "sequential": False,
+        "max_samples": 50,
+        "seed": 7,
+        "oob_score": True,
+    }
+    assert bag.get_params(deep=False) == bag.get_params()
+    assert bag.get_params()["base_factory"] is NearestCentroid
+
+
+def test_set_params_sets_each_argument_and_returns_self() -> None:
+    bag = SequentialBootstrapBagging(NearestCentroid)
+    assert bag.set_params(n_estimators=3, seed=None, oob_score=True) is bag
+    assert (bag.n_estimators, bag.seed, bag.oob_score) == (3, None, True)
+    params = bag.get_params()
+    assert SequentialBootstrapBagging(_Majority).set_params(**params).get_params() == params
+
+
+def test_set_params_refuses_unknown_name_and_changes_nothing() -> None:
+    bag = SequentialBootstrapBagging(NearestCentroid, n_estimators=3)
+    with pytest.raises(ValueError, match="n_estmators"):
+        bag.set_params(n_estmators=5)
+    with pytest.raises(ValueError, match="bogus"):
+        bag.set_params(n_estimators=5, bogus=1)
+    assert bag.n_estimators == 3
+
+
+def test_constructor_accepts_bad_arguments_and_fit_names_them() -> None:
+    # scikit-learn clones by calling the constructor again, so validation belongs in fit.
+    X, y, t1 = _data(40, seed=1)
+    bag = SequentialBootstrapBagging(NearestCentroid, n_estimators=0)
+    with pytest.raises(ValueError, match="n_estimators must be >= 1, got 0"):
+        bag.fit(X, y, t1=t1)
+    with pytest.raises(TypeError, match="oob_score must be a bool"):
+        SequentialBootstrapBagging(NearestCentroid, oob_score="yes").fit(X, y, t1=t1)
+
+
+def test_score_is_the_mean_accuracy_of_predict() -> None:
+    X, y, t1 = _data(160, seed=5)
+    bag = SequentialBootstrapBagging(NearestCentroid, n_estimators=5, seed=1).fit(X, y, t1=t1)
+    assert bag.score(X, y) == pytest.approx(float((bag.predict(X) == y).mean()))
+
+
+def test_score_weights_the_accuracy_by_sample_weight() -> None:
+    X, y, t1 = _data(160, seed=5)
+    bag = SequentialBootstrapBagging(NearestCentroid, n_estimators=5, seed=1).fit(X, y, t1=t1)
+    w = np.random.default_rng(8).uniform(0.5, 2.0, size=len(y))
+    correct = (bag.predict(X) == y).astype(float)
+    assert bag.score(X, y, sample_weight=w) == pytest.approx(float((w * correct).sum() / w.sum()))
+
+
+def test_score_refuses_sample_weight_of_the_wrong_length() -> None:
+    X, y, t1 = _data(60, seed=5)
+    bag = SequentialBootstrapBagging(NearestCentroid, n_estimators=2, seed=1).fit(X, y, t1=t1)
+    with pytest.raises(ValueError, match="sample_weight has shape"):
+        bag.score(X, y, sample_weight=np.ones(59))
+
+
+@pytest.mark.parametrize("sequential", [True, False])
+def test_fit_refuses_float_array_t1_and_names_sample_weight(sequential: bool) -> None:
+    X, y, _ = _data(60, seed=3)
+    bag = SequentialBootstrapBagging(NearestCentroid, n_estimators=2, sequential=sequential)
+    with pytest.raises(ValueError, match=r"^t1 must be a pandas Series.*sample_weight=") as e:
+        bag.fit(X, y, np.ones(60))
+    assert "float64" in str(e.value)
+
+
+def test_fit_refuses_float_series_t1_that_is_really_weights() -> None:
+    # A pandas weight Series passed positionally used to fail deep in weights.py with a TypeError.
+    X, y, t1 = _data(60, seed=3)
+    weights = pd.Series(np.ones(60), index=t1.index)
+    with pytest.raises(ValueError, match="t1 values must be datetimes.*float64.*sample_weight="):
+        SequentialBootstrapBagging(NearestCentroid, n_estimators=2).fit(X, y, weights)
+
+
+def test_sample_weight_still_accepted_as_fourth_positional_argument() -> None:
+    X, y, t1 = _data(60, seed=3)
+    w = np.linspace(0.5, 1.5, 60)
+    positional = SequentialBootstrapBagging(NearestCentroid, n_estimators=3).fit(X, y, t1, w)
+    keyword = SequentialBootstrapBagging(NearestCentroid, n_estimators=3).fit(X, y, t1=t1, sample_weight=w)
+    np.testing.assert_array_equal(positional.predict(X), keyword.predict(X))
+
+
+def test_bagging_is_a_classifier_to_scikit_learn() -> None:
+    pytest.importorskip("sklearn")
+    from sklearn.base import is_classifier
+
+    assert is_classifier(SequentialBootstrapBagging(NearestCentroid))
+
+
+def test_clone_fits_to_the_same_predictions_for_the_same_seed() -> None:
+    pytest.importorskip("sklearn")
+    from sklearn.base import clone
+
+    X, y, t1 = _data(150, seed=6)
+    est = SequentialBootstrapBagging(NearestCentroid, n_estimators=6, seed=4)
+    copy = clone(est)
+    assert copy is not est and copy.get_params() == est.get_params()
+    a = est.fit(X, y, t1=t1).predict_proba(X)
+    b = copy.fit(X, y, t1=t1).predict_proba(X)
+    np.testing.assert_array_equal(a, b)
+
+
+def _sk_param_keyword() -> str:
+    """scikit-learn 1.4 and later take per-fit values as params=; older releases use fit_params=."""
+    import inspect
+
+    from sklearn.model_selection import cross_val_score
+
+    return "params" if "params" in inspect.signature(cross_val_score).parameters else "fit_params"
+
+
+def test_cross_val_score_with_purged_folds_equals_manual_loop() -> None:
+    pytest.importorskip("sklearn")
+    from sklearn.model_selection import cross_val_score
+
+    X, y, t1 = _data(180, seed=7)
+    Xdf = pd.DataFrame(X, index=t1.index)
+    bag = SequentialBootstrapBagging(NearestCentroid, n_estimators=6, seed=4)
+    scores = cross_val_score(
+        bag, Xdf, y, cv=PurgedKFold(n_splits=3, t1=t1), **{_sk_param_keyword(): {"t1": t1}}
+    )
+    manual = []
+    for train, test in PurgedKFold(n_splits=3, t1=t1).split(Xdf, y):
+        fold = SequentialBootstrapBagging(NearestCentroid, n_estimators=6, seed=4)
+        fold.fit(Xdf.iloc[train], y[train], t1=t1.iloc[train])
+        manual.append(fold.score(Xdf.iloc[test], y[test]))
+    assert len(scores) == 3
+    np.testing.assert_array_equal(scores, manual)
+
+
+def test_grid_search_over_n_estimators_routes_t1_to_every_fit() -> None:
+    pytest.importorskip("sklearn")
+    from sklearn.model_selection import GridSearchCV, cross_val_score
+
+    X, y, t1 = _data(180, seed=7)
+    Xdf = pd.DataFrame(X, index=t1.index)
+    search = GridSearchCV(
+        SequentialBootstrapBagging(NearestCentroid, seed=4),
+        {"n_estimators": [2, 6]},
+        cv=PurgedKFold(n_splits=3, t1=t1),
+    ).fit(Xdf, y, t1=t1)
+    assert search.best_params_["n_estimators"] in (2, 6)
+    assert len(search.best_estimator_.estimators_) == search.best_params_["n_estimators"]
+    for value, mean in zip([2, 6], search.cv_results_["mean_test_score"]):
+        bag = SequentialBootstrapBagging(NearestCentroid, n_estimators=value, seed=4)
+        expected = cross_val_score(
+            bag, Xdf, y, cv=PurgedKFold(n_splits=3, t1=t1), **{_sk_param_keyword(): {"t1": t1}}
+        ).mean()
+        assert mean == pytest.approx(expected)
+
+
+def test_t1_of_object_timestamps_fits_like_datetimes_and_strings_are_refused() -> None:
+    # Object Timestamps are datetimes and always worked; string dates are not, so they are refused.
+    X, y, t1 = _data(60, seed=3)
+    objects = pd.Series(t1.to_numpy(dtype=object), index=t1.index, dtype=object)
+    as_dates = SequentialBootstrapBagging(NearestCentroid, n_estimators=2, seed=0).fit(X, y, t1=t1)
+    as_objects = SequentialBootstrapBagging(NearestCentroid, n_estimators=2, seed=0).fit(
+        X, y, t1=objects
+    )
+    for a, b in zip(as_dates.draws_, as_objects.draws_):
+        np.testing.assert_array_equal(a, b)
+    strings = pd.Series(t1.astype(str).to_numpy(), index=t1.index)
+    with pytest.raises(ValueError, match="t1 values must be datetimes"):
+        SequentialBootstrapBagging(NearestCentroid, n_estimators=2).fit(X, y, t1=strings)
+
+
+def test_predict_proba_averages_over_the_fitted_bags_after_set_params() -> None:
+    X, y, t1 = _data(160, seed=5)
+    bag = SequentialBootstrapBagging(NearestCentroid, n_estimators=3, seed=1).fit(X, y, t1=t1)
+    before = bag.predict_proba(X)
+    bag.set_params(n_estimators=6)
+    np.testing.assert_array_equal(bag.predict_proba(X), before)
+    np.testing.assert_allclose(before.sum(axis=1), 1.0, rtol=0, atol=1e-12)
+
+
+def test_score_takes_a_single_column_y_and_refuses_a_wrong_length() -> None:
+    X, y, t1 = _data(160, seed=5)
+    bag = SequentialBootstrapBagging(NearestCentroid, n_estimators=3, seed=1).fit(X, y, t1=t1)
+    y_arr = np.asarray(y)
+    assert bag.score(X, y_arr.reshape(-1, 1)) == bag.score(X, y_arr)
+    with pytest.raises(ValueError, match="one label per row"):
+        bag.score(X, y_arr[:-1])
+
+
+def test_t1_of_object_dtype_integer_positions_is_accepted() -> None:
+    X, y, _ = _data(60, seed=3)
+    positions = pd.Series(np.minimum(np.arange(60) + 5, 59))
+    as_int = SequentialBootstrapBagging(NearestCentroid, n_estimators=2).fit(X, y, t1=positions)
+    as_obj = SequentialBootstrapBagging(NearestCentroid, n_estimators=2).fit(
+        X, y, t1=positions.astype(object)
+    )
+    for a, b in zip(as_int.draws_, as_obj.draws_):
+        np.testing.assert_array_equal(a, b)

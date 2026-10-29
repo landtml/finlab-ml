@@ -34,6 +34,25 @@ Nested CV is needed for an unbiased estimate and is not implemented here.
 - `cv_score` equals a manual loop over the splits (mean and standard deviation).
 - An empty grid is rejected.
 
+## Pipeline weights (AFML Snippet 9.2)
+
+Snippet 9.2 (`MyPipeline`) overrides `Pipeline.fit` so that `sample_weight` reaches the last
+step as `<last step>__sample_weight`. `finlab.tuning` makes the same routing in
+`fit_model`, which `cv_score` calls. The routing is not a book result; it is a rule of this
+module.
+
+**Checked by test** `test_pipeline_gets_sample_weight_on_its_final_step`: with weights, the
+fit of a Pipeline model receives `thresh__sample_weight` equal to `w[train]` on every fold, and
+`test_pipeline_without_sample_weight_is_fit_with_no_fit_params` shows that no weights means no
+fit parameters.
+
+**Checked by test** `test_grid_search_with_sklearn_pipeline_matches_manual_weighted_loop`: the
+score from `grid_search` on a scikit-learn `Pipeline` equals, exactly, a manual loop that fits
+the same Pipeline with `lr__sample_weight` on each fold.
+
+**Checked by test** `test_grid_search_with_sklearn_pipeline_and_metadata_routing_matches_manual_loop`:
+with `enable_metadata_routing=True`, the same score comes from passing `sample_weight` directly.
+
 ## Not covered
 
 Nested CV, Bayesian search, and multiple-testing correction of the selected score

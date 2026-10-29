@@ -75,10 +75,10 @@ jobs:
           # tests/test_doc_examples.py reads docs/modules, and the example tests
           # read examples/, relative to the repository root, so both are copied
           # next to tests/. pyproject.toml is copied so the pytest markers resolve
-          # as they do in the checkout.
+          # as they do in the checkout. CITATION.cff is copied for its version check.
           suite="$RUNNER_TEMP/suite"
           rm -rf "$suite" && mkdir "$suite"
-          cp -r tests docs examples tools pyproject.toml "$suite/"
+          cp -r tests docs examples tools pyproject.toml CITATION.cff "$suite/"
           cd "$suite"
           "$RUNNER_TEMP/venv/bin/python" -m pytest -q
 

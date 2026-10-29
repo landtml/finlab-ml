@@ -8,13 +8,15 @@ book derives.
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import pandas as pd
 import pytest
 import scipy.cluster.hierarchy as sch
-from scipy.spatial.distance import squareform
+from scipy.spatial.distance import pdist, squareform
 
-from finlab.hrp import correlation_distance, hrp_weights, quasi_diagonalize
+from finlab.hrp import correlation_distance, distance_of_distances, hrp_weights, quasi_diagonalize
 
 
 # ---------------------------------------------------------------------------
@@ -500,3 +502,154 @@ def test_hrp_split_survives_variances_near_the_float64_maximum() -> None:
     big = np.asarray(hrp_weights(np.array([[1e308, 0.0], [0.0, 1.7e308]])))
     small = np.asarray(hrp_weights(np.array([[1.0, 0.0], [0.0, 1.7]])))
     assert big == pytest.approx(small, rel=1e-12)
+
+
+# ---------------------------------------------------------------------------
+# Clustering on the distance of distances (AFML 16.4.1, Snippet 16.1)
+# ---------------------------------------------------------------------------
+def block_cov(seed: int, T: int = 500, N: int = 10) -> np.ndarray:
+    """Ten assets in three correlated blocks plus two independent assets, with seeded volatilities."""
+    rng = np.random.default_rng(seed)
+    X = rng.normal(size=(T, N))
+    f = rng.normal(size=(T, 3))
+    X[:, 0:3] += 1.5 * f[:, [0]]
+    X[:, 3:6] += 1.5 * f[:, [1]]
+    X[:, 6:8] += 1.5 * f[:, [2]]
+    X *= rng.uniform(0.5, 3.0, size=N)
+    return np.cov(X, rowvar=False).reshape(N, N)
+
+
+def square_correlation_distance(C: np.ndarray) -> np.ndarray:
+    sd = np.sqrt(np.diag(C))
+    D = np.asarray(correlation_distance(C / np.outer(sd, sd)), dtype=np.float64)
+    np.fill_diagonal(D, 0.0)
+    return D
+
+
+def snippet_16_1_weights(C: np.ndarray, method: str) -> np.ndarray:
+    """Snippet 16.1 as printed: linkage on the square D, then the same ordering and bisection."""
+    D = square_correlation_distance(C)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", sch.ClusterWarning)
+        link = sch.linkage(D, method=method)
+    return naive_bisection(C, quasi_diagonalize(link))
+
+
+def test_hrp_cluster_on_distance_is_the_default_bit_for_bit() -> None:
+    C = block_cov(0)
+    np.testing.assert_array_equal(hrp_weights(C, cluster_on="distance"), hrp_weights(C))
+
+
+@pytest.mark.parametrize("seed", range(4))
+def test_distance_of_distances_matches_naive_double_loop(seed: int) -> None:
+    rng = np.random.default_rng(seed)
+    n = int(rng.integers(2, 12))
+    D = square_correlation_distance(random_cov(rng, n, T=3 * n))
+    naive = np.zeros((n, n))
+    for i in range(n):
+        for j in range(n):
+            naive[i, j] = np.sqrt(sum((D[k, i] - D[k, j]) ** 2 for k in range(n)))
+    np.testing.assert_allclose(distance_of_distances(D), naive, rtol=1e-12, atol=0.0)
+
+
+@pytest.mark.parametrize("seed", range(4))
+def test_distance_of_distances_equals_pdist_square_form(seed: int) -> None:
+    rng = np.random.default_rng(seed)
+    n = int(rng.integers(2, 12))
+    D = square_correlation_distance(random_cov(rng, n, T=3 * n))
+    np.testing.assert_allclose(distance_of_distances(D), squareform(pdist(D)), rtol=1e-12, atol=0.0)
+
+
+def test_distance_of_distances_zero_diagonal_and_type_follows_input() -> None:
+    D = square_correlation_distance(block_cov(1))
+    out = distance_of_distances(D)
+    assert isinstance(out, np.ndarray)
+    assert out.shape == D.shape
+    assert np.all(np.diag(out) == 0.0)
+    labels = list("abcdefghij")
+    outdf = distance_of_distances(pd.DataFrame(D, index=labels, columns=labels))
+    assert isinstance(outdf, pd.DataFrame)
+    assert list(outdf.index) == labels and list(outdf.columns) == labels
+    np.testing.assert_array_equal(outdf.to_numpy(), out)
+
+
+def test_distance_of_distances_refuses_bad_input() -> None:
+    with pytest.raises(ValueError, match="square"):
+        distance_of_distances(np.ones((2, 3)))
+    with pytest.raises(ValueError, match="symmetric"):
+        distance_of_distances(np.array([[0.0, 0.2], [0.5, 0.0]]))
+    with pytest.raises(ValueError, match="finite"):
+        distance_of_distances(np.array([[0.0, np.nan], [np.nan, 0.0]]))
+
+
+@pytest.mark.parametrize("method", ["single", "ward"])
+@pytest.mark.parametrize("seed", range(3))
+def test_distance_of_distances_linkage_equals_snippet_linkage(method: str, seed: int) -> None:
+    D = square_correlation_distance(block_cov(seed))
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", sch.ClusterWarning)
+        snippet = sch.linkage(D, method=method)
+    ours = sch.linkage(squareform(distance_of_distances(D), checks=False), method=method)
+    np.testing.assert_allclose(ours, snippet, rtol=1e-12, atol=0.0)
+
+
+@pytest.mark.parametrize("method", ["single", "complete", "average"])
+@pytest.mark.parametrize("seed", range(6))
+def test_hrp_distance_of_distances_matches_snippet_weights(method: str, seed: int) -> None:
+    rng = np.random.default_rng(seed)
+    n = int(rng.integers(3, 13))
+    C = random_cov(rng, n, T=3 * n)
+    w = hrp_weights(C, method=method, cluster_on="distance_of_distances")
+    np.testing.assert_allclose(w, snippet_16_1_weights(C, method), rtol=1e-12, atol=0.0)
+
+
+def test_hrp_distance_of_distances_differs_from_default_on_block_example() -> None:
+    C = block_cov(1)
+    gap = np.max(np.abs(hrp_weights(C) - hrp_weights(C, cluster_on="distance_of_distances")))
+    assert gap > 1e-3
+
+
+def test_hrp_distance_of_distances_emits_no_cluster_warning() -> None:
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
+        hrp_weights(block_cov(0), cluster_on="distance_of_distances")
+    assert not any(issubclass(r.category, sch.ClusterWarning) for r in record)
+
+
+def _corr_of(cov: np.ndarray) -> np.ndarray:
+    sd = np.sqrt(np.diag(cov))
+    return cov / np.outer(sd, sd)
+
+
+def test_hrp_distance_of_distances_accepts_corr_asymmetric_within_tolerance() -> None:
+    # Two assets correlated at 1 - 1e-12, with corr asymmetric by 5e-7 (inside the 1e-6 tolerance):
+    # D differs by about 5e-4 across the diagonal, which distance_of_distances alone would refuse.
+    cov = block_cov(0)
+    R = _corr_of(cov)
+    R[0, 1] = R[1, 0] = 1.0 - 1e-12
+    R[0, 1] -= 5e-7
+    w_default = hrp_weights(cov, corr=R)
+    w_dd = hrp_weights(cov, corr=R, cluster_on="distance_of_distances")
+    for w in (w_default, w_dd):
+        assert np.all(np.isfinite(w)) and w.sum() == pytest.approx(1.0, abs=1e-12)
+
+
+def test_hrp_distance_of_distances_zeroes_the_diagonal_first() -> None:
+    # A corr diagonal of 1 - 5e-7 passes the unit-diagonal check but gives D_ii of about 5e-4;
+    # the weights must equal those of an exact unit diagonal.
+    cov = block_cov(1)
+    R = _corr_of(cov)
+    R_near = R.copy()
+    np.fill_diagonal(R_near, 1.0 - 5e-7)
+    np.fill_diagonal(R, 1.0)
+    w_exact = hrp_weights(cov, corr=R, cluster_on="distance_of_distances")
+    w_near = hrp_weights(cov, corr=R_near, cluster_on="distance_of_distances")
+    np.testing.assert_allclose(w_near, w_exact, rtol=1e-12, atol=0.0)
+
+
+@pytest.mark.parametrize("bad", ["ward", "Distance", None])
+def test_hrp_cluster_on_refuses_unknown_value(bad: object) -> None:
+    with pytest.raises(ValueError) as info:
+        hrp_weights(block_cov(0), cluster_on=bad)  # type: ignore[arg-type]
+    assert "cluster_on" in str(info.value)
+    assert repr(bad) in str(info.value)

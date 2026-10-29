@@ -1,0 +1,83 @@
+name: Docs
+
+on:
+  pull_request:
+    branches: ["**"]
+  push:
+    branches: ["main"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    # Runs on every pull request and every push to main. A warning fails the build.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install MkDocs and the Material theme
+        run: pip install "mkdocs==1.6.1" "mkdocs-material==9.8.0"
+
+      - name: Build the site with warnings as errors
+        run: mkdocs build --strict
+
+      - name: Upload the site for deployment
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/
+
+  pages-source:
+    # Deployment needs the repository's Pages source set to "GitHub Actions". When it is
+    # not, this job reports false and the deploy job is skipped instead of failing.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: read
+    outputs:
+      enabled: ${{ steps.check.outputs.enabled }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          if body=$(gh api "repos/$REPO/pages" 2>"$RUNNER_TEMP/gh.err"); then
+            if [ "$(printf '%s' "$body" | jq -r '.build_type')" = "workflow" ]; then
+              enabled=true
+            else
+              enabled=false
+            fi
+          elif grep -q 'HTTP 404' "$RUNNER_TEMP/gh.err"; then
+            enabled=false
+          else
+            # Any other error (a 403, a network failure) is shown and the deploy skipped.
+            echo "::warning::Could not read the Pages settings: $(tr '\n' ' ' < "$RUNNER_TEMP/gh.err")"
+            enabled=false
+          fi
+          if [ "$enabled" = "false" ]; then
+            echo "::notice::GitHub Pages source is not set to GitHub Actions; skipping deploy."
+          fi
+          echo "enabled=$enabled" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    needs: [build, pages-source]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.pages-source.outputs.enabled == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      pages: write
+      id-token: write
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
