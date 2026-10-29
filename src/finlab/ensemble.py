@@ -87,11 +87,11 @@ def _check_t1_values(t1: Any) -> None:
             "t1 must be a pandas Series indexed by event start, with event end times as values; "
             f"got {got}.{hint}"
         )
-    # An object Series of Timestamps is datetimes too, as the bags have always accepted it.
-    is_datetimes = pd.api.types.is_datetime64_any_dtype(t1) or (
-        pd.api.types.infer_dtype(t1, skipna=False) == "datetime"
-    )
-    if not (is_datetimes or pd.api.types.is_integer_dtype(t1)):
+    # An object Series of Timestamps or of ints is accepted, as the bags have always accepted it.
+    inferred = pd.api.types.infer_dtype(t1, skipna=False)
+    is_datetimes = pd.api.types.is_datetime64_any_dtype(t1) or inferred == "datetime"
+    is_positions = pd.api.types.is_integer_dtype(t1) or inferred == "integer"
+    if not (is_datetimes or is_positions):
         raise ValueError(
             "t1 values must be datetimes (event end times) or integer positions; "
             f"got a Series of dtype {t1.dtype}.{hint}"
@@ -239,7 +239,16 @@ class SequentialBootstrapBagging:
         -------
         float
         """
-        correct = np.asarray(self.predict(X)) == np.asarray(y)
+        pred = np.asarray(self.predict(X))
+        y_true = np.asarray(y)
+        if y_true.ndim > 1 and y_true.size == pred.size:
+            # A single-column y, (n, 1), would otherwise broadcast to an (n, n) comparison.
+            y_true = y_true.reshape(pred.shape)
+        if y_true.shape != pred.shape:
+            raise ValueError(
+                f"y has shape {y_true.shape} but predict gives {pred.shape}; pass one label per row of X."
+            )
+        correct = pred == y_true
         if sample_weight is None:
             return float(correct.mean())
         w = np.asarray(sample_weight, dtype=float)
@@ -550,7 +559,8 @@ class SequentialBootstrapBagging:
                 raise AttributeError("base estimator has no predict_proba.")
             p = np.asarray(est.predict_proba(Xa))
             total[:, self._proba_columns(est)] += p
-        return total / self.n_estimators
+        # The fitted bags, not n_estimators, which set_params can change after fit.
+        return total / len(self.estimators_)
 
     def predict(self, X: npt.ArrayLike | pd.DataFrame) -> np.ndarray:
         """Predict by averaged probability if available, else by majority vote."""

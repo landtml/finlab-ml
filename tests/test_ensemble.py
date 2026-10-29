@@ -943,3 +943,32 @@ def test_t1_of_object_timestamps_fits_like_datetimes_and_strings_are_refused() -
     strings = pd.Series(t1.astype(str).to_numpy(), index=t1.index)
     with pytest.raises(ValueError, match="t1 values must be datetimes"):
         SequentialBootstrapBagging(NearestCentroid, n_estimators=2).fit(X, y, t1=strings)
+
+
+def test_predict_proba_averages_over_the_fitted_bags_after_set_params() -> None:
+    X, y, t1 = _data(160, seed=5)
+    bag = SequentialBootstrapBagging(NearestCentroid, n_estimators=3, seed=1).fit(X, y, t1=t1)
+    before = bag.predict_proba(X)
+    bag.set_params(n_estimators=6)
+    np.testing.assert_array_equal(bag.predict_proba(X), before)
+    np.testing.assert_allclose(before.sum(axis=1), 1.0, rtol=0, atol=1e-12)
+
+
+def test_score_takes_a_single_column_y_and_refuses_a_wrong_length() -> None:
+    X, y, t1 = _data(160, seed=5)
+    bag = SequentialBootstrapBagging(NearestCentroid, n_estimators=3, seed=1).fit(X, y, t1=t1)
+    y_arr = np.asarray(y)
+    assert bag.score(X, y_arr.reshape(-1, 1)) == bag.score(X, y_arr)
+    with pytest.raises(ValueError, match="one label per row"):
+        bag.score(X, y_arr[:-1])
+
+
+def test_t1_of_object_dtype_integer_positions_is_accepted() -> None:
+    X, y, _ = _data(60, seed=3)
+    positions = pd.Series(np.minimum(np.arange(60) + 5, 59))
+    as_int = SequentialBootstrapBagging(NearestCentroid, n_estimators=2).fit(X, y, t1=positions)
+    as_obj = SequentialBootstrapBagging(NearestCentroid, n_estimators=2).fit(
+        X, y, t1=positions.astype(object)
+    )
+    for a, b in zip(as_int.draws_, as_obj.draws_):
+        np.testing.assert_array_equal(a, b)

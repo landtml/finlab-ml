@@ -14,10 +14,17 @@ All notable changes to this project are documented in this file. The format foll
 ### Changed
 
 - `SequentialBootstrapBagging` checks `n_estimators` and `oob_score` in `fit`, not in the
-  constructor, as scikit-learn's `clone` requires, so a bad value raises at `fit`.
+  constructor, following scikit-learn's convention that a constructor only stores its
+  arguments, so a bad value raises at `fit`.
 - `SequentialBootstrapBagging.fit` refuses a `t1` whose values are not datetimes or integer
-  positions. Weights passed as the third argument used to fail inside `finlab.weights` with a
-  pandas `TypeError`, and date strings used to fit; both now raise a `ValueError`.
+  positions, also when `sequential=False`, where `t1` used to be ignored. Weights passed as the
+  third argument used to fail with an error from inside `finlab.weights`, and date strings used
+  to fit; both now raise a `ValueError` that names the problem.
+
+### Fixed
+
+- `SequentialBootstrapBagging.predict_proba` averages over the fitted bags. It divided by
+  `n_estimators`, so after the attribute changed without a refit the rows did not sum to 1.
 
 ## [0.1.5] - 2026-10-14
 
