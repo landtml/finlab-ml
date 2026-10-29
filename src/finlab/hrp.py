@@ -377,7 +377,9 @@ def hrp_weights(
         D = np.asarray(correlation_distance(R), dtype=np.float64)
         np.fill_diagonal(D, 0.0)
         if cluster_on == "distance_of_distances":
-            D = np.asarray(distance_of_distances(D), dtype=np.float64)
+            # Near rho = 1 the square root magnifies an asymmetry corr is allowed (1e-6) past
+            # distance_of_distances' own check, so D is symmetrised first.
+            D = np.asarray(distance_of_distances(0.5 * (D + D.T)), dtype=np.float64)
         link = sch.linkage(squareform(D, checks=False), method=method)
         order = np.asarray(quasi_diagonalize(link), dtype=np.int64)
         Cs = np.ascontiguousarray(C[np.ix_(order, order)])

@@ -616,6 +616,37 @@ def test_hrp_distance_of_distances_emits_no_cluster_warning() -> None:
     assert not any(issubclass(r.category, sch.ClusterWarning) for r in record)
 
 
+def _corr_of(cov: np.ndarray) -> np.ndarray:
+    sd = np.sqrt(np.diag(cov))
+    return cov / np.outer(sd, sd)
+
+
+def test_hrp_distance_of_distances_accepts_corr_asymmetric_within_tolerance() -> None:
+    # Two assets correlated at 1 - 1e-12, with corr asymmetric by 5e-7 (inside the 1e-6 tolerance):
+    # D differs by about 5e-4 across the diagonal, which distance_of_distances alone would refuse.
+    cov = block_cov(0)
+    R = _corr_of(cov)
+    R[0, 1] = R[1, 0] = 1.0 - 1e-12
+    R[0, 1] -= 5e-7
+    w_default = hrp_weights(cov, corr=R)
+    w_dd = hrp_weights(cov, corr=R, cluster_on="distance_of_distances")
+    for w in (w_default, w_dd):
+        assert np.all(np.isfinite(w)) and w.sum() == pytest.approx(1.0, abs=1e-12)
+
+
+def test_hrp_distance_of_distances_zeroes_the_diagonal_first() -> None:
+    # A corr diagonal of 1 - 5e-7 passes the unit-diagonal check but gives D_ii of about 5e-4;
+    # the weights must equal those of an exact unit diagonal.
+    cov = block_cov(1)
+    R = _corr_of(cov)
+    R_near = R.copy()
+    np.fill_diagonal(R_near, 1.0 - 5e-7)
+    np.fill_diagonal(R, 1.0)
+    w_exact = hrp_weights(cov, corr=R, cluster_on="distance_of_distances")
+    w_near = hrp_weights(cov, corr=R_near, cluster_on="distance_of_distances")
+    np.testing.assert_allclose(w_near, w_exact, rtol=1e-12, atol=0.0)
+
+
 @pytest.mark.parametrize("bad", ["ward", "Distance", None])
 def test_hrp_cluster_on_refuses_unknown_value(bad: object) -> None:
     with pytest.raises(ValueError) as info:
