@@ -1,8 +1,8 @@
 # finlab.entropy: derivations and status (AFML ch. 18)
 
-Component under test: [`src/finlab/entropy.py`](../../src/finlab/entropy.py).
-Tests: [`tests/test_entropy.py`](../../tests/test_entropy.py).
-Benchmark: [`benchmarks/bench_entropy.py`](../../benchmarks/bench_entropy.py).
+Component under test: [`src/finlab/entropy.py`](https://github.com/landtml/finlab-ml/blob/main/src/finlab/entropy.py).
+Tests: [`tests/test_entropy.py`](https://github.com/landtml/finlab-ml/blob/main/tests/test_entropy.py).
+Benchmark: [`benchmarks/bench_entropy.py`](https://github.com/landtml/finlab-ml/blob/main/benchmarks/bench_entropy.py).
 
 Status tags: **[proved here]**, **[checked by test]** (the claim names its test function, for example `test_kontoyiannis_expanding_matches_naive`; numerical evidence on
 seeded inputs), **[claimed from the book only]** (stated in AFML or its cited

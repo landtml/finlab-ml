@@ -5,6 +5,11 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+### Added
+
+- Documentation site at https://landtml.github.io/finlab-ml/, built from `docs/` and `mkdocs.yml`
+  by `.github/workflows/docs.yml`. The build runs `mkdocs build --strict` on every pull request.
+
 ## [0.1.5] - 2026-10-14
 
 ### Added

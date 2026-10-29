@@ -1,7 +1,7 @@
 # finlab: Proofs and Checks for `finlab.hrp` (AFML ch. 16)
 
-Component: [`src/finlab/hrp.py`](../../src/finlab/hrp.py).
-Tests: [`tests/test_hrp.py`](../../tests/test_hrp.py).
+Component: [`src/finlab/hrp.py`](https://github.com/landtml/finlab-ml/blob/main/src/finlab/hrp.py).
+Tests: [`tests/test_hrp.py`](https://github.com/landtml/finlab-ml/blob/main/tests/test_hrp.py).
 
 Status tags as in [`microstructure.md`](microstructure.md):
 **[proved here]**, **[checked by test]** (the claim names its test function, for example `test_hrp_bisection_cost_bound_n2_to_30`), **[claimed from the book only]**.

@@ -29,7 +29,7 @@ information from the test set into the training set, and (2) an empirical
 certificate from a large-scale run over real market data. It also states the
 confidence level and the scope/limits of the guarantee.
 
-Component under test: [`src/finlab/cv/_cpcv.py`](src/finlab/cv/_cpcv.py)
+Component under test: [`src/finlab/cv/_cpcv.py`](https://github.com/landtml/finlab-ml/blob/main/src/finlab/cv/_cpcv.py)
 · `CombinatorialPurgedCV` (AFML, López de Prado, ch. 7).
 
 ---
@@ -172,7 +172,7 @@ FINLAB LEAKAGE VERIFICATION CERTIFICATE
 ```
 
 The block is the certificate that `python tools/verify_leakage.py` prints on live data (see
-[tools/verify_leakage.py](../../tools/verify_leakage.py)); the tool's `data source` line is not reproduced here. The purge and embargo arithmetic it checks is the arithmetic the theorems describe.
+[tools/verify_leakage.py](https://github.com/landtml/finlab-ml/blob/main/tools/verify_leakage.py)); the tool's `data source` line is not reproduced here. The purge and embargo arithmetic it checks is the arithmetic the theorems describe.
 
 Unit suite: `tests/test_cpcv.py` collects 102 items (`pytest --collect-only -q tests/test_cpcv.py`; incl. the live-yfinance integration test,
 which skips offline), covering counts, no-leakage, embargo, disjointness, the
