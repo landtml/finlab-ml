@@ -7,8 +7,9 @@ All notable changes to this project are documented in this file. The format foll
 
 ### Added
 
-- Documentation site at https://landtml.github.io/finlab-ml/, built from `docs/` and `mkdocs.yml`
-  by `.github/workflows/docs.yml`. The build runs `mkdocs build --strict` on every pull request.
+- A documentation site built from `docs/` and `mkdocs.yml` by `.github/workflows/docs.yml`. The
+  build runs `mkdocs build --strict` on every pull request; the site is served from GitHub Pages
+  once the repository's Pages source is set to GitHub Actions.
 
 ## [0.1.5] - 2026-10-14
 

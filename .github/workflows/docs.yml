@@ -56,8 +56,9 @@ jobs:
           elif grep -q 'HTTP 404' "$RUNNER_TEMP/gh.err"; then
             enabled=false
           else
-            cat "$RUNNER_TEMP/gh.err" >&2
-            exit 1
+            # Any other error (a 403, a network failure) is shown and the deploy skipped.
+            echo "::warning::Could not read the Pages settings: $(tr '\n' ' ' < "$RUNNER_TEMP/gh.err")"
+            enabled=false
           fi
           if [ "$enabled" = "false" ]; then
             echo "::notice::GitHub Pages source is not set to GitHub Actions; skipping deploy."
