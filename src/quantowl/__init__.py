@@ -7,4 +7,4 @@ numba; scikit-learn is not a dependency.
 Subpackages are imported on demand, e.g. ``from quantowl.cv import PurgedKFold``.
 """
 
-__version__ = "0.1.5"
+__version__ = "0.1.6"

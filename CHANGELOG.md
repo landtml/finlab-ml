@@ -5,9 +5,13 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-10-29
+
 ### Added
 
-- `distance_of_distances` (AFML 16.4.1) and `hrp_weights(cluster_on="distance_of_distances")`: clustering on the distance of distances, which reproduces the printed Snippet 16.1 call. The default `cluster_on="distance"` is unchanged.
+- `distance_of_distances` (AFML 16.4.1) and `hrp_weights(cluster_on="distance_of_distances")`:
+  clustering on the distance of distances, which reproduces the printed Snippet 16.1 call. The
+  default `cluster_on="distance"` is unchanged.
 - `CITATION.cff`, so GitHub shows a "Cite this repository" box with APA and BibTeX exports. It
   cites AFML as a reference and carries the package version, which `tests/test_citation.py` checks.
 - `SequentialBootstrapBagging` has `get_params`, `set_params`, `score` and the classifier tag, so
@@ -22,6 +26,11 @@ All notable changes to this project are documented in this file. The format foll
 
 ### Changed
 
+- The package is renamed `quantowl`: `import quantowl`, distribution name `quantowl`, and the
+  `quantowl-mcp` command. There is no `finlab` module any more; replace `finlab` with
+  `quantowl` in imports, and uninstall the old distribution with `pip uninstall finlab`. The
+  repository moves to `landtml/quantowl`, and the test variable `FINLAB_TEST_NUMBA_CACHE` is
+  now `QUANTOWL_TEST_NUMBA_CACHE`.
 - `SequentialBootstrapBagging` checks `n_estimators` and `oob_score` in `fit`, not in the
   constructor, following scikit-learn's convention that a constructor only stores its
   arguments, so a bad value raises at `fit`.
@@ -29,11 +38,6 @@ All notable changes to this project are documented in this file. The format foll
   positions, also when `sequential=False`, where `t1` used to be ignored. Weights passed as the
   third argument used to fail with an error from inside `quantowl.weights`, and date strings used
   to fit; both now raise a `ValueError` that names the problem.
-- The package is renamed `quantowl`: `import quantowl`, distribution name `quantowl`, and the
-  `quantowl-mcp` command. There is no `finlab` module any more; replace `finlab` with
-  `quantowl` in imports, and uninstall the old distribution with `pip uninstall finlab`. The
-  repository moves to `landtml/quantowl`, and the test variable `FINLAB_TEST_NUMBA_CACHE` is
-  now `QUANTOWL_TEST_NUMBA_CACHE`.
 
 ### Fixed
 
@@ -42,6 +46,16 @@ All notable changes to this project are documented in this file. The format foll
   any nested Pipelines (AFML Snippet 9.2). Before, a weighted Pipeline raised `ValueError`.
 - `SequentialBootstrapBagging.predict_proba` averages over the fitted bags. It divided by
   `n_estimators`, so after the attribute changed without a refit the rows did not sum to 1.
+
+### Known limitations
+
+- `sadf_null_quantiles` simulates a driftless Gaussian random walk. Its quantiles are not compared
+  with the published Phillips, Shi and Yu (2015) tables, and under `constant="c"` they do not
+  cover a series with drift.
+- The scikit-learn interface of `SequentialBootstrapBagging` is tested with scikit-learn 1.9.1;
+  `params={"t1": t1}` needs scikit-learn 1.4 or later.
+- The documentation site is published only after the repository's Pages source is set to GitHub
+  Actions.
 
 ## [0.1.5] - 2026-10-14
 
@@ -334,7 +348,8 @@ Changes since 0.1.0.
 
 First tagged release. No changelog was kept for it. Its source is at the `v0.1.0` tag.
 
-[Unreleased]: https://github.com/landtml/finlab-ml/compare/v0.1.5...HEAD
+[Unreleased]: https://github.com/landtml/quantowl/compare/v0.1.6...HEAD
+[0.1.6]: https://github.com/landtml/quantowl/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/landtml/finlab-ml/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/landtml/finlab-ml/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/landtml/finlab-ml/compare/v0.1.2...v0.1.3
