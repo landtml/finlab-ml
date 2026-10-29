@@ -65,10 +65,10 @@ jobs:
           whl="$(ls "$RUNNER_TEMP"/dist/*.whl)"
           "$RUNNER_TEMP/venv/bin/python" -m pip install "${whl}${{ matrix.extras }}" "pytest>=7.4"
 
-      - name: Confirm finlab imports from the installed venv
+      - name: Confirm quantowl imports from the installed venv
         run: |
           cd "$RUNNER_TEMP"
-          "$RUNNER_TEMP/venv/bin/python" -c "import finlab, os, sys; print(finlab.__file__); assert finlab.__file__.startswith(sys.prefix), finlab.__file__; assert not finlab.__file__.startswith(os.environ['GITHUB_WORKSPACE']), finlab.__file__"
+          "$RUNNER_TEMP/venv/bin/python" -c "import quantowl, os, sys; print(quantowl.__file__); assert quantowl.__file__.startswith(sys.prefix), quantowl.__file__; assert not quantowl.__file__.startswith(os.environ['GITHUB_WORKSPACE']), quantowl.__file__"
 
       - name: Run test suite against the installed package
         run: |

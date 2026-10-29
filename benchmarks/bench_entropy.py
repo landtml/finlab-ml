@@ -1,4 +1,4 @@
-"""Benchmark finlab.entropy against literal naive loops (not run by CI).
+"""Benchmark quantowl.entropy against literal naive loops (not run by CI).
 
 Usage: PYTHONPATH=src python3 benchmarks/bench_entropy.py
 """
@@ -11,7 +11,7 @@ from collections import Counter
 
 import numpy as np
 
-from finlab.entropy import kontoyiannis_entropy, lempel_ziv_parse, plug_in_entropy
+from quantowl.entropy import kontoyiannis_entropy, lempel_ziv_parse, plug_in_entropy
 
 
 def best_of(fn, repeat: int = 3) -> float:

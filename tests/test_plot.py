@@ -1,4 +1,4 @@
-"""Tests for finlab.plot (optional plotly figures of PBO, deflated Sharpe and Monte Carlo results).
+"""Tests for quantowl.plot (optional plotly figures of PBO, deflated Sharpe and Monte Carlo results).
 
 The plotting tests need plotly and skip without it. The tests that check the
 missing-plotly error, the module import and the static guard always run.
@@ -15,12 +15,12 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-import finlab.plot as plot
-from finlab.monte_carlo import bootstrap_uniqueness_mc
-from finlab.pbo import probability_of_backtest_overfitting
-from finlab.stats import deflated_sharpe
+import quantowl.plot as plot
+from quantowl.monte_carlo import bootstrap_uniqueness_mc
+from quantowl.pbo import probability_of_backtest_overfitting
+from quantowl.stats import deflated_sharpe
 
-INSTALL_HINT = "plotly is required for finlab.plot. Install it with: pip install 'finlab[plot]'"
+INSTALL_HINT = "plotly is required for quantowl.plot. Install it with: pip install 'quantowl[plot]'"
 
 
 @pytest.fixture(scope="module")
@@ -75,7 +75,7 @@ def test_each_function_raises_install_hint_without_plotly(
 def test_module_imports_without_plotly():
     code = (
         "import sys; sys.modules['plotly'] = None; sys.modules['plotly.graph_objects'] = None; "
-        "import finlab.plot as p; assert callable(p.pbo_distribution)"
+        "import quantowl.plot as p; assert callable(p.pbo_distribution)"
     )
     proc = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=120)
     assert proc.returncode == 0, proc.stderr

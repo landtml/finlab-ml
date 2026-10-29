@@ -1,4 +1,4 @@
-# `finlab.pbo`: Probability of backtest overfitting via CSCV (AFML ch. 11)
+# `quantowl.pbo`: Probability of backtest overfitting via CSCV (AFML ch. 11)
 
 Given returns of many candidate strategies, estimates how often the in-sample best
 strategy ranks below the median out of sample. Under pure noise the expectation is 1/2
@@ -10,7 +10,7 @@ Runs as written; `tests/test_doc_examples.py` executes it on every test run.
 
 ```python
 import numpy as np
-from finlab.pbo import probability_of_backtest_overfitting
+from quantowl.pbo import probability_of_backtest_overfitting
 
 rng = np.random.default_rng(7)
 returns = rng.normal(0, 0.01, size=(320, 20))   # rows = time, columns = strategies

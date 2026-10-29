@@ -7,8 +7,8 @@ import json
 import numpy as np
 
 from _timing import best_of
-from finlab.agent.server import handle_message
-from finlab.stats import sharpe_ratio
+from quantowl.agent.server import handle_message
+from quantowl.stats import sharpe_ratio
 
 
 def main():

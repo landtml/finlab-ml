@@ -1,4 +1,4 @@
-"""HTML display helpers for finlab result objects in notebooks.
+"""HTML display helpers for quantowl result objects in notebooks.
 
 Notebook front ends call ``_repr_html_`` on the last expression of a cell. The
 helpers here build a small, self-contained HTML fragment: inline ``style``

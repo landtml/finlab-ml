@@ -3,7 +3,7 @@
 ONC chooses the number of clusters for a correlation-based clustering, and is
 used to group related instruments before hierarchical risk parity or feature
 clustering. It is **not** part of AFML's text (the book's clustering uses
-hierarchical linkage, see :mod:`finlab.hrp`); it is from López de Prado, Lewis
+hierarchical linkage, see :mod:`quantowl.hrp`); it is from López de Prado, Lewis
 and Boudt (2019), "Clustering with ONC". Its source is that paper, outside AFML.
 
 Method implemented here

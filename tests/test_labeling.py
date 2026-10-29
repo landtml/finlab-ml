@@ -1,4 +1,4 @@
-"""Tests for finlab.labeling (AFML Chapter 3 and trend scanning).
+"""Tests for quantowl.labeling (AFML Chapter 3 and trend scanning).
 
 Each fast function is checked against a brute-force reference written
 independently in this file: the triple barrier against a pandas path loop in
@@ -15,7 +15,7 @@ import pandas as pd
 import pytest
 from scipy import stats
 
-from finlab.labeling import (
+from quantowl.labeling import (
     add_vertical_barrier,
     drop_labels,
     get_bins,
@@ -538,7 +538,7 @@ def test_get_daily_vol_rejects_non_positive_prices(bad_price: float) -> None:
 def test_get_events_rejects_non_finite_min_ret(bad_min_ret: float) -> None:
     # A NaN min_ret made "target > min_ret" False for every event, so all events were dropped
     # silently. Non-finite pt_sl values are already rejected.
-    from finlab.labeling import get_events
+    from quantowl.labeling import get_events
 
     idx = pd.date_range("2020-01-01", periods=10, freq="D")
     close = pd.Series(np.arange(100.0, 110.0), idx)
@@ -548,7 +548,7 @@ def test_get_events_rejects_non_finite_min_ret(bad_min_ret: float) -> None:
 
 def test_trend_scanning_rejects_non_integral_window() -> None:
     # A window of 3.9 was silently truncated to 3.
-    from finlab.labeling import trend_scanning_labels
+    from quantowl.labeling import trend_scanning_labels
 
     cs = pd.Series(np.exp(np.linspace(0, 1, 10)), pd.date_range("2020-01-01", periods=10))
     with pytest.raises(ValueError, match="window"):
@@ -557,7 +557,7 @@ def test_trend_scanning_rejects_non_integral_window() -> None:
 
 def test_get_events_side_none_uses_pt_sl_zero_for_the_stop() -> None:
     # With side omitted, the stop width came from pt_sl[1], not pt_sl[0].
-    from finlab.labeling import get_events
+    from quantowl.labeling import get_events
 
     idx = pd.date_range("2020-01-01", periods=6, freq="D")
     close = pd.Series([100.0, 98.0, 97.0, 96.0, 95.0, 94.0], index=idx)
@@ -572,7 +572,7 @@ def test_get_events_side_none_uses_pt_sl_zero_for_the_stop() -> None:
 
 def test_get_events_rejects_non_positive_target_when_min_ret_is_negative() -> None:
     # A negative target passed the filter trgt > min_ret and gave a stop on bar 1.
-    from finlab.labeling import get_events
+    from quantowl.labeling import get_events
 
     idx = pd.date_range("2020-01-01", periods=6, freq="D")
     close = pd.Series([100.0, 98.0, 97.0, 96.0, 95.0, 94.0], index=idx)
@@ -614,7 +614,7 @@ def test_add_vertical_barrier_rejects_bad_num_days(bad: float) -> None:
 def test_get_events_side_none_rejects_one_zero_barrier() -> None:
     # With side omitted both barriers use pt_sl[0], so (0, 2) silently switched the stop off and
     # (2, 0) put a stop at 2. Those one-sided specs are refused by name.
-    from finlab.labeling import get_events
+    from quantowl.labeling import get_events
 
     idx = pd.date_range("2020-01-01", periods=6, freq="D")
     close = pd.Series([100.0, 98.0, 97.0, 96.0, 95.0, 94.0], index=idx)
@@ -632,7 +632,7 @@ def test_get_events_side_none_rejects_one_zero_barrier() -> None:
 def test_trend_scanning_accepts_one_shot_window_iterable() -> None:
     # The integer-window loop consumed a generator, so the windows read after it were empty and the
     # call raised. A one-shot iterable gives the same result as a list.
-    from finlab.labeling import trend_scanning_labels
+    from quantowl.labeling import trend_scanning_labels
 
     c = pd.Series([100, 100, 95, 100, 101, 102, 103, 104.0], index=pd.date_range("2020-01-01", periods=8))
     want = trend_scanning_labels(c, [3, 4])
@@ -643,7 +643,7 @@ def test_trend_scanning_accepts_one_shot_window_iterable() -> None:
 def test_get_events_accepts_negative_infinite_min_ret() -> None:
     # Every non-finite min_ret used to be refused. Only NaN and +inf are refused now (both drop every
     # event, which is what the guard is for). -inf drops none.
-    from finlab.labeling import get_events
+    from quantowl.labeling import get_events
 
     idx = pd.date_range("2020-01-01", periods=8, freq="D")
     c = pd.Series([100, 100, 95, 100, 101, 102, 103, 104.0], index=idx)
@@ -654,7 +654,7 @@ def test_get_events_accepts_negative_infinite_min_ret() -> None:
 def test_add_vertical_barrier_rejects_unsorted_close_index() -> None:
     # searchsorted ran on an unsorted grid and gave expiries at the end of the series. get_events
     # already refuses an unsorted close, so this function refuses it too.
-    from finlab.labeling import add_vertical_barrier
+    from quantowl.labeling import add_vertical_barrier
 
     idx = pd.date_range("2020-01-01", periods=10, freq="D")
     c = pd.Series(range(100, 110), index=idx, dtype=float)
@@ -667,7 +667,7 @@ def test_add_vertical_barrier_rejects_unsorted_close_index() -> None:
 def test_get_events_names_a_duplicate_target_index() -> None:
     # A target with a repeated label made reindex raise pandas' duplicate-label error. close and
     # t_events already get a named message, so target gets one too.
-    from finlab.labeling import get_events
+    from quantowl.labeling import get_events
 
     idx = pd.date_range("2020-01-01", periods=8, freq="D")
     c = pd.Series([100, 100, 95, 100, 101, 102, 103, 104.0], index=idx)
@@ -686,7 +686,7 @@ def _ev_fixture():
 def test_get_events_warns_when_pt_sl_1_is_ignored_without_side() -> None:
     # With side omitted, pt_sl[0] sets both barriers (documented), so pt_sl = (1, 2) ran with a stop
     # of 1 and no sign of pt_sl[1]. The value is kept; the call now warns.
-    from finlab.labeling import get_events
+    from quantowl.labeling import get_events
 
     idx, close = _ev_fixture()
     with pytest.warns(UserWarning, match=r"pt_sl\[1\] is ignored"):
@@ -697,7 +697,7 @@ def test_get_events_warns_when_pt_sl_1_is_ignored_without_side() -> None:
 def test_get_events_refuses_zero_width_targets_under_negative_min_ret() -> None:
     # A zero width is refused under a negative min_ret: a retained zero width would stop out on its
     # first bar. The docstring now says so.
-    from finlab.labeling import get_events
+    from quantowl.labeling import get_events
 
     idx, close = _ev_fixture()
     target = pd.Series(0.02, index=idx)
@@ -712,7 +712,7 @@ def test_get_events_refuses_zero_width_targets_under_negative_min_ret() -> None:
 def test_add_vertical_barrier_refuses_duplicate_grid_timestamps() -> None:
     # The docstring says "strictly increasing" for close, but a duplicated timestamp passed
     # is_monotonic_increasing, so expiries were computed on a grid get_events then refuses.
-    from finlab.labeling import add_vertical_barrier
+    from quantowl.labeling import add_vertical_barrier
 
     idx = pd.date_range("2020-01-01", periods=10)
     c = pd.Series(100.0 + np.arange(10.0), index=idx)
@@ -724,7 +724,7 @@ def test_add_vertical_barrier_refuses_duplicate_grid_timestamps() -> None:
 def test_trend_scanning_refuses_negative_threshold() -> None:
     # The threshold bounds |t|, so a negative one labelled every bar +1 or -1 and none 0. It must be
     # non-negative.
-    from finlab.labeling import trend_scanning_labels
+    from quantowl.labeling import trend_scanning_labels
 
     idx = pd.date_range("2020-01-01", periods=50, freq="D")
     close = pd.Series(100 * np.exp(np.cumsum(np.random.default_rng(0).normal(0, 0.01, 50))), index=idx)
@@ -736,7 +736,7 @@ def test_trend_scanning_refuses_negative_threshold() -> None:
 
 def test_trend_scanning_refuses_string_window_sizes() -> None:
     # float('3') parsed the string, so ['3'] ran as window 3.
-    from finlab.labeling import trend_scanning_labels
+    from quantowl.labeling import trend_scanning_labels
 
     idx = pd.date_range("2020-01-01", periods=50, freq="D")
     close = pd.Series(100 * np.exp(np.cumsum(np.random.default_rng(0).normal(0, 0.01, 50))), index=idx)
@@ -749,7 +749,7 @@ def test_get_events_side_with_missing_rows_names_the_coverage() -> None:
     # index is what is missing. The message now names the coverage.
     import pandas as pd
 
-    from finlab import labeling as L
+    from quantowl import labeling as L
 
     idx = pd.date_range("2020-01-01", periods=60, freq="D")
     rng = np.random.default_rng(0)
@@ -764,7 +764,7 @@ def test_get_events_refuses_one_zero_pt_sl_with_side_omitted_as_intended() -> No
     # warning. Both rules are intended.
     import pandas as pd
 
-    from finlab import labeling as L
+    from quantowl import labeling as L
 
     idx = pd.date_range("2020-01-01", periods=60, freq="D")
     rng = np.random.default_rng(0)
@@ -791,7 +791,7 @@ def test_get_events_refuses_non_datetime_close_index() -> None:
 def test_get_events_refuses_target_that_labels_no_event() -> None:
     # A target stamped at noon against midnight events reindexed to all NaN, so every event was
     # dropped with no message.
-    from finlab.labeling import get_events
+    from quantowl.labeling import get_events
 
     idx = pd.date_range("2020-01-01", periods=30, freq="D")
     close = pd.Series(100.0 + np.arange(30.0), index=idx)
@@ -802,7 +802,7 @@ def test_get_events_refuses_target_that_labels_no_event() -> None:
 
 def test_get_events_refuses_vertical_barriers_that_label_no_event() -> None:
     # Vertical barriers with a default RangeIndex lost every expiry silently.
-    from finlab.labeling import add_vertical_barrier, get_events
+    from quantowl.labeling import add_vertical_barrier, get_events
 
     idx = pd.date_range("2020-01-01", periods=30, freq="D")
     close = pd.Series(100.0 + np.arange(30.0), index=idx)

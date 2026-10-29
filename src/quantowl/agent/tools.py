@@ -1,4 +1,4 @@
-"""Tool registry for the finlab agent server.
+"""Tool registry for the quantowl agent server.
 
 Every tool is a pure function from JSON arguments to a JSON-serialisable dict. Inputs
 are checked against a size limit before any array is allocated, so one request

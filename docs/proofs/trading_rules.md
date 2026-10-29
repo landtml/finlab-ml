@@ -1,4 +1,4 @@
-# Proofs and derivations: `finlab.trading_rules` (AFML ch. 13, Snippets 13.1 and 13.2)
+# Proofs and derivations: `quantowl.trading_rules` (AFML ch. 13, Snippets 13.1 and 13.2)
 
 Status labels used below:
 
@@ -175,7 +175,7 @@ loop does not include those draws.
 
 **Measured (docs page example, cold numba cache, 2026-10-14, a shared 4-vCPU machine).** The code block
 alone, after the imports, took 1.62 s, 1.65 s and 2.03 s over three cold-cache runs, and 0.38 s on a warm
-cache. The whole process, including the imports of numba, pandas and finlab, took 2.35 s, 2.38 s and 2.40 s.
+cache. The whole process, including the imports of numba, pandas and quantowl, took 2.35 s, 2.38 s and 2.40 s.
 The slowest cold run is above the 2 s target.
 
 ---

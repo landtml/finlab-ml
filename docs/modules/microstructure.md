@@ -1,4 +1,4 @@
-# `finlab.microstructure`: Microstructure features (AFML ch. 19)
+# `quantowl.microstructure`: Microstructure features (AFML ch. 19)
 
 Spread and liquidity estimators from prices and volumes: tick rule, Roll and Corwin-Schultz
 spreads, Kyle and Hasbrouck price-impact lambdas, Amihud illiquidity, and VPIN order-flow toxicity.
@@ -9,7 +9,7 @@ Runs as written; `tests/test_doc_examples.py` executes it on every test run.
 
 ```python
 import numpy as np
-from finlab.microstructure import (
+from quantowl.microstructure import (
     tick_rule, roll_measure, corwin_schultz_spread, kyle_lambda, vpin,
     hasbrouck_lambda, signed_root_dollar_volume,
 )

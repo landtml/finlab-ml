@@ -3,7 +3,7 @@ requires = ["setuptools>=77.0.3", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "finlab"
+name = "quantowl"
 version = "0.1.5"
 description = "High-performance toolkit for financial machine learning, implementing Advances in Financial Machine Learning (Lopez de Prado)."
 readme = "README.md"
@@ -59,20 +59,20 @@ plot = ["plotly>=5.0"]
 notebooks = ["jupyter>=1.0", "nbconvert>=7.0", "jupytext>=1.16", "ipykernel>=6.0"]
 
 [project.scripts]
-finlab-mcp = "finlab.agent.server:main"
+quantowl-mcp = "quantowl.agent.server:main"
 
 [project.urls]
-Homepage = "https://github.com/landtml/finlab-ml"
-Repository = "https://github.com/landtml/finlab-ml"
-Documentation = "https://github.com/landtml/finlab-ml/tree/main/docs"
-Issues = "https://github.com/landtml/finlab-ml/issues"
-Changelog = "https://github.com/landtml/finlab-ml/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/landtml/quantowl"
+Repository = "https://github.com/landtml/quantowl"
+Documentation = "https://github.com/landtml/quantowl/tree/main/docs"
+Issues = "https://github.com/landtml/quantowl/issues"
+Changelog = "https://github.com/landtml/quantowl/blob/main/CHANGELOG.md"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-finlab = ["py.typed"]
+quantowl = ["py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -82,7 +82,7 @@ markers = [
 ]
 
 [tool.mypy]
-files = ["src/finlab"]
+files = ["src/quantowl"]
 # Some dependencies ship without type stubs.
 ignore_missing_imports = true
 

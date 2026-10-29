@@ -1,4 +1,4 @@
-"""Tests for finlab.bet_sizing (AFML ch. 10). Book worked examples are included."""
+"""Tests for quantowl.bet_sizing (AFML ch. 10). Book worked examples are included."""
 import math
 import warnings
 
@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from finlab.bet_sizing import (
+from quantowl.bet_sizing import (
     average_active_signals,
     calibrate_sigmoid_width,
     discretize_signal,
@@ -396,7 +396,7 @@ def test_limit_price_rejects_non_integer_max_position(bad_cap: float) -> None:
 
 def test_sigmoid_bet_size_infinite_divergence_is_at_limit() -> None:
     # inf / hypot(sqrt(w), inf) was inf / inf, which gave NaN.
-    from finlab.bet_sizing import sigmoid_bet_size, target_position
+    from quantowl.bet_sizing import sigmoid_bet_size, target_position
 
     assert float(sigmoid_bet_size(1.0, float("inf"))) == 1.0
     assert float(sigmoid_bet_size(1.0, float("-inf"))) == -1.0
@@ -406,7 +406,7 @@ def test_sigmoid_bet_size_infinite_divergence_is_at_limit() -> None:
 def test_calibrate_sigmoid_width_rejects_underflowing_width() -> None:
     # x * x underflowed to 0 at x = 1e-170, so the width was 0 and sigmoid_bet_size then raised.
     # At 1e-160 the width was subnormal and did not round-trip.
-    from finlab.bet_sizing import calibrate_sigmoid_width
+    from quantowl.bet_sizing import calibrate_sigmoid_width
 
     with pytest.raises(ValueError, match="underflows"):
         calibrate_sigmoid_width(1e-170, 0.95)
@@ -414,7 +414,7 @@ def test_calibrate_sigmoid_width_rejects_underflowing_width() -> None:
     # of a subnormal width. It now returns a width whose round trip is within that precision.
     w = calibrate_sigmoid_width(1e-160, 0.95)
     assert w > 0.0
-    from finlab.bet_sizing import sigmoid_bet_size
+    from quantowl.bet_sizing import sigmoid_bet_size
 
     assert float(sigmoid_bet_size(w, 1e-160)) == pytest.approx(0.95, abs=1e-3)
 
@@ -422,7 +422,7 @@ def test_calibrate_sigmoid_width_rejects_underflowing_width() -> None:
 def test_calibrate_sigmoid_width_tiny_target_raises_value_error() -> None:
     # abs(m_star) ** -2 raised a raw OverflowError for m_star below ~1e-154, before the width guard
     # was reached. It is a ValueError like the other width overflows.
-    from finlab.bet_sizing import calibrate_sigmoid_width
+    from quantowl.bet_sizing import calibrate_sigmoid_width
 
     with pytest.raises(ValueError, match="overflows"):
         calibrate_sigmoid_width(1.0, 1e-200)
@@ -431,7 +431,7 @@ def test_calibrate_sigmoid_width_tiny_target_raises_value_error() -> None:
 def test_calibrate_sigmoid_width_keeps_representable_width() -> None:
     # x * x overflowed before the factor (below 1) was applied, so a width of about 2e304 was
     # rejected as an overflow. Scaling before squaring keeps it.
-    from finlab.bet_sizing import calibrate_sigmoid_width, sigmoid_bet_size
+    from quantowl.bet_sizing import calibrate_sigmoid_width, sigmoid_bet_size
 
     w = calibrate_sigmoid_width(1e155, 0.999999)
     assert w == pytest.approx(2.000003000004e304, rel=1e-9)
@@ -441,7 +441,7 @@ def test_calibrate_sigmoid_width_keeps_representable_width() -> None:
 def test_calibrate_sigmoid_width_keeps_subnormal_width_that_round_trips() -> None:
     # The subnormal-width guard rejected every subnormal width, even one that calibrates back to
     # m_star within float tolerance. The round trip decides now, not the magnitude.
-    from finlab.bet_sizing import calibrate_sigmoid_width, sigmoid_bet_size
+    from quantowl.bet_sizing import calibrate_sigmoid_width, sigmoid_bet_size
 
     w = calibrate_sigmoid_width(1e-155, 0.5)
     assert 0.0 < w < np.finfo(np.float64).tiny
@@ -452,7 +452,7 @@ def test_calibrate_sigmoid_width_keeps_subnormal_width_that_round_trips() -> Non
 
 def test_target_position_rejects_non_integer_cap() -> None:
     # limit_price refused a float cap, but target_position accepted 2.5 and returned 0 with no error.
-    from finlab.bet_sizing import target_position
+    from quantowl.bet_sizing import target_position
 
     with pytest.raises(ValueError, match="max_position must be an integer"):
         target_position(1.0, 0.6, 0.4, 2.5)
@@ -460,7 +460,7 @@ def test_target_position_rejects_non_integer_cap() -> None:
 
 def test_limit_price_rejects_bool_position() -> None:
     # bool is a numbers.Integral, so True was accepted as a target of 1.
-    from finlab.bet_sizing import limit_price
+    from quantowl.bet_sizing import limit_price
 
     with pytest.raises(ValueError, match="target must be an integer"):
         limit_price(True, 0, 0.5, 1.0, 10)
@@ -471,7 +471,7 @@ def test_limit_price_rejects_bool_position() -> None:
 def test_target_position_rejects_non_finite_width_and_price() -> None:
     # An infinite width gave 0 and an infinite market price gave a full short, while limit_price
     # rejects the same width. An infinite forecast stays valid (the sigmoid limit is +/-1).
-    from finlab.bet_sizing import target_position
+    from quantowl.bet_sizing import target_position
 
     with pytest.raises(ValueError, match="w must be > 0 and finite"):
         target_position(float("inf"), 0.6, 0.4, 10)
@@ -485,7 +485,7 @@ def test_target_position_rejects_non_finite_width_and_price() -> None:
 def test_average_active_signals_naive_grid_with_aware_signals() -> None:
     # Comparing Index objects made a naive grid against tz-aware signals raise TypeError inside the
     # sweep. The expected values are [1, .75, .75, .5, 0, 0] (UTC instants).
-    from finlab.bet_sizing import average_active_signals
+    from quantowl.bet_sizing import average_active_signals
 
     d = pd.date_range("2020-01-01", periods=2, freq="D", tz="UTC")
     sig = pd.Series([1.0, 0.5], index=d)
@@ -497,7 +497,7 @@ def test_average_active_signals_naive_grid_with_aware_signals() -> None:
 
 def test_average_active_signals_naive_t1_with_aware_signals() -> None:
     # The before-start check compared a naive t1 with aware signals and raised.
-    from finlab.bet_sizing import average_active_signals
+    from quantowl.bet_sizing import average_active_signals
 
     d = pd.date_range("2020-01-01", periods=2, freq="D", tz="UTC")
     sig = pd.Series([1.0, 0.5], index=d)
@@ -511,7 +511,7 @@ def test_average_active_signals_naive_t1_with_aware_signals() -> None:
 def test_discretize_signal_rejects_step_whose_quotient_overflows() -> None:
     # For steps below about 1.7e-309, signal / step overflowed to inf, and the clip turned a 0.3 bet
     # into a full 1.0 with no error. Such a step is refused instead.
-    from finlab.bet_sizing import discretize_signal
+    from quantowl.bet_sizing import discretize_signal
 
     with pytest.raises(ValueError, match="step is too small"):
         discretize_signal([0.3], 1e-309)
@@ -521,7 +521,7 @@ def test_discretize_signal_rejects_step_whose_quotient_overflows() -> None:
 def test_prob_bet_size_negative_zero_is_probability_zero() -> None:
     # -0.0 is the same probability as 0.0, but 1 / sqrt(-0.0) flipped the sign, so the largest short
     # became the largest long. np.round(-0.0001, 3) is -0.0 in practice.
-    from finlab.bet_sizing import prob_bet_size
+    from quantowl.bet_sizing import prob_bet_size
 
     assert prob_bet_size([-0.0]).tolist() == prob_bet_size([0.0]).tolist() == [-1.0]
     assert prob_bet_size(np.round([-0.0001], 3)).tolist() == [-1.0]
@@ -530,7 +530,7 @@ def test_prob_bet_size_negative_zero_is_probability_zero() -> None:
 def test_prob_bet_size_rejects_non_integer_num_classes() -> None:
     # num_classes=2.5 took the "> 2" branch and was computed with 2.5, while the error said side was
     # required. It is now refused as a non-integer.
-    from finlab.bet_sizing import prob_bet_size
+    from quantowl.bet_sizing import prob_bet_size
 
     with pytest.raises(ValueError, match="num_classes must be an integer"):
         prob_bet_size([0.9], side=[1], num_classes=2.5)
@@ -538,7 +538,7 @@ def test_prob_bet_size_rejects_non_integer_num_classes() -> None:
 
 def test_prob_bet_size_accepts_integral_float_num_classes() -> None:
     # 2.0 is a whole number and is accepted. Only non-integral values such as 2.5 are refused.
-    from finlab.bet_sizing import prob_bet_size
+    from quantowl.bet_sizing import prob_bet_size
 
     assert np.allclose(prob_bet_size([0.7], num_classes=2.0), prob_bet_size([0.7], num_classes=2))
     with pytest.raises(ValueError, match="num_classes must be an integer"):
@@ -547,7 +547,7 @@ def test_prob_bet_size_accepts_integral_float_num_classes() -> None:
 
 def test_prob_bet_size_scalar_prob_with_length_one_side_names_shapes() -> None:
     # The message said "side has length 1 but prob has length 1".
-    from finlab.bet_sizing import prob_bet_size
+    from quantowl.bet_sizing import prob_bet_size
 
     with pytest.raises(ValueError, match="side shape \\(1,\\) does not match prob shape \\(\\)"):
         prob_bet_size(0.7, side=[1])
@@ -556,7 +556,7 @@ def test_prob_bet_size_scalar_prob_with_length_one_side_names_shapes() -> None:
 def test_average_active_signals_integer_index_is_averaged() -> None:
     # The tz check read .tz on a plain Index and raised AttributeError. The expected result is
     # [0.5, 0.4].
-    from finlab.bet_sizing import average_active_signals
+    from quantowl.bet_sizing import average_active_signals
 
     out = average_active_signals(pd.Series([0.5, 0.3], index=[1, 2]), pd.Series([2, 3], index=[1, 2]))
     assert out.tolist() == [0.5, 0.4]
@@ -564,7 +564,7 @@ def test_average_active_signals_integer_index_is_averaged() -> None:
 
 def test_average_active_signals_mismatched_index_types_raise_value_error() -> None:
     # A non-datetime index with datetime end times must fail as ValueError.
-    from finlab.bet_sizing import average_active_signals
+    from quantowl.bet_sizing import average_active_signals
 
     t1 = pd.Series(pd.date_range("2020-01-02", periods=2), index=[1, 2])
     with pytest.raises(ValueError):
@@ -573,7 +573,7 @@ def test_average_active_signals_mismatched_index_types_raise_value_error() -> No
 
 def test_average_active_signals_mixed_awareness_keeps_caller_timezone() -> None:
     # The UTC conversion leaked into the result index (naive, shifted by 8 h).
-    from finlab.bet_sizing import average_active_signals
+    from quantowl.bet_sizing import average_active_signals
 
     idx = pd.date_range("2020-01-01", periods=2, tz="Asia/Taipei")
     t1 = pd.Series(pd.date_range("2020-01-02", periods=2), index=idx)
@@ -585,7 +585,7 @@ def test_average_active_signals_mixed_awareness_keeps_caller_timezone() -> None:
 def test_limit_price_rejects_zero_width_like_target_position() -> None:
     # target_position refused w = 0 while limit_price returned the forecast. Both now refuse, since
     # w must be > 0.
-    from finlab.bet_sizing import limit_price, target_position
+    from quantowl.bet_sizing import limit_price, target_position
 
     with pytest.raises(ValueError, match="w must be"):
         limit_price(2, 0, 0.6, 0.0, 10)
@@ -595,7 +595,7 @@ def test_limit_price_rejects_zero_width_like_target_position() -> None:
 
 def test_calibrate_sigmoid_width_exact_for_representable_input() -> None:
     # The sqrt((1-m)(1+m)) step gave 299.99999999999994 where the exact width is 300.0.
-    from finlab.bet_sizing import calibrate_sigmoid_width
+    from quantowl.bet_sizing import calibrate_sigmoid_width
 
     assert calibrate_sigmoid_width(10.0, 0.5) == 300.0
     assert calibrate_sigmoid_width(np.float32(10), 0.5) == 300.0
@@ -603,7 +603,7 @@ def test_calibrate_sigmoid_width_exact_for_representable_input() -> None:
 
 def test_calibrate_sigmoid_width_large_x_does_not_overflow_the_square() -> None:
     # x * x overflows near 1e154 but the width is representable, so the scaling must still hold.
-    from finlab.bet_sizing import calibrate_sigmoid_width
+    from quantowl.bet_sizing import calibrate_sigmoid_width
 
     w = calibrate_sigmoid_width(1e155, 0.99999)
     assert math.isfinite(w) and w > 0
@@ -612,7 +612,7 @@ def test_calibrate_sigmoid_width_large_x_does_not_overflow_the_square() -> None:
 def test_calibrate_sigmoid_width_subnormal_width_that_calibrates_is_returned() -> None:
     # (1e-160, 0.5) returns the subnormal width 3e-320; an earlier guard refused it because the 1e-9
     # round trip ignores the precision of a subnormal width.
-    from finlab.bet_sizing import calibrate_sigmoid_width, sigmoid_bet_size
+    from quantowl.bet_sizing import calibrate_sigmoid_width, sigmoid_bet_size
 
     w = calibrate_sigmoid_width(1e-160, 0.5)
     assert w == pytest.approx(3e-320, rel=1e-2, abs=0.0)  # abs=0: subnormal values are below the 1e-12 default
@@ -624,7 +624,7 @@ def test_calibrate_sigmoid_width_subnormal_width_that_calibrates_is_returned() -
 def test_calibrate_sigmoid_width_pin_subnormal_widths_that_calibrate() -> None:
     # Subnormal widths whose rounding step moves the bet by at most 1e-3 are still returned, so the
     # refusal must not catch these.
-    from finlab.bet_sizing import calibrate_sigmoid_width, sigmoid_bet_size
+    from quantowl.bet_sizing import calibrate_sigmoid_width, sigmoid_bet_size
 
     for x, m in ((1e-160, 0.5), (1e-160, 0.999), (1e-155, 0.5)):
         w = calibrate_sigmoid_width(x, m)
@@ -636,7 +636,7 @@ def test_calibrate_sigmoid_width_refuses_subnormal_width_too_coarse_to_calibrate
     # At x = 1.15e-162 the only subnormal width is 5e-324, one rounding step. Its bet was 0.41 for a
     # target of 0.5 (0.09 off), yet the tolerance was m/2 because x * x underflowed, so the width was
     # accepted. The width must be refused instead.
-    from finlab.bet_sizing import calibrate_sigmoid_width, sigmoid_bet_size
+    from quantowl.bet_sizing import calibrate_sigmoid_width, sigmoid_bet_size
 
     with pytest.raises(ValueError, match="underflows"):
         calibrate_sigmoid_width(1.15084165586488e-162, 0.6746939996559512)
@@ -657,7 +657,7 @@ def test_calibrate_sigmoid_width_refuses_subnormal_width_too_coarse_to_calibrate
 def test_limit_price_refuses_zero_width_as_intended() -> None:
     # w = 0 is refused by limit_price, as target_position refuses it. The zero width is refused on
     # purpose rather than priced at the forecast.
-    from finlab.bet_sizing import limit_price, target_position
+    from quantowl.bet_sizing import limit_price, target_position
 
     with pytest.raises(ValueError, match="w must be > 0"):
         limit_price(1, 0, 12.0, 0.0, 5)
@@ -668,7 +668,7 @@ def test_limit_price_refuses_zero_width_as_intended() -> None:
 def test_position_arguments_refuse_whole_float_as_intended() -> None:
     # A position argument must be an integer type, so 5.0 is refused by both limit_price and
     # target_position. numpy integers are still accepted.
-    from finlab.bet_sizing import limit_price, target_position
+    from quantowl.bet_sizing import limit_price, target_position
 
     with pytest.raises(ValueError, match="max_position must be an integer"):
         limit_price(2, 0, 12.0, 1.0, 5.0)
@@ -683,7 +683,7 @@ def test_calibrate_sigmoid_width_is_accurate_when_m_is_near_one() -> None:
     # 1 - 1e-8). Factoring 1 - m * m as (1 - m)(1 + m) keeps it near 1e-15.
     from decimal import Decimal, localcontext
 
-    from finlab.bet_sizing import calibrate_sigmoid_width, sigmoid_bet_size
+    from quantowl.bet_sizing import calibrate_sigmoid_width, sigmoid_bet_size
 
     m = 1 - 1e-8
     w = calibrate_sigmoid_width(10.0, m)
@@ -698,7 +698,7 @@ def test_calibrate_sigmoid_width_is_accurate_when_m_is_near_one() -> None:
 def test_target_position_large_cap_is_not_snapped() -> None:
     # The snap tolerance scaled with |k|, so at 5e5 shares it moved a bet 0.00025 share up to the
     # next integer. int(m * cap) gives -500484 (truncation toward zero).
-    from finlab.bet_sizing import target_position
+    from quantowl.bet_sizing import target_position
 
     assert target_position(4.084685686539295, -1.1683697144921645, 0.0, 10**6) == -500484
     # A bet clearly below the position still truncates; this is a documented limit, not a snap.
@@ -708,7 +708,7 @@ def test_target_position_large_cap_is_not_snapped() -> None:
 def test_discretize_signal_step_floor_is_documented() -> None:
     # Overflow starts for a step below about |signal| * 5.6e-309, so a step of 1e-308 is valid and a
     # step of 1e-309 is refused by name. The docstring states this floor.
-    from finlab.bet_sizing import discretize_signal
+    from quantowl.bet_sizing import discretize_signal
 
     assert discretize_signal([0.3], 1e-308).tolist() == pytest.approx([0.3])
     assert discretize_signal([-0.3], 1e-308).tolist() == pytest.approx([-0.3])

@@ -1,4 +1,4 @@
-"""Tests for finlab.weights (AFML Chapter 4).
+"""Tests for quantowl.weights (AFML Chapter 4).
 
 Fast functions are checked against brute-force references written in this
 file: concurrency and uniqueness by explicit double loops over bars and labels,
@@ -12,9 +12,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
-import finlab.weights as weights
-from finlab._jit import jit
-from finlab.weights import (
+import quantowl.weights as weights
+from quantowl._jit import jit
+from quantowl.weights import (
     average_uniqueness,
     indicator_matrix,
     num_co_events,

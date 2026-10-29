@@ -1,4 +1,4 @@
-# Proofs and derivations: `finlab.stats` (AFML ch. 14: section 14.7 and snippets 14.1 to 14.4)
+# Proofs and derivations: `quantowl.stats` (AFML ch. 14: section 14.7 and snippets 14.1 to 14.4)
 
 Status labels used throughout:
 

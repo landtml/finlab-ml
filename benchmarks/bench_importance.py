@@ -11,7 +11,7 @@ import time
 
 import numpy as np
 
-from finlab.importance import mdi_from_matrix
+from quantowl.importance import mdi_from_matrix
 
 
 def naive_mdi(imp: list[list[float]]) -> tuple[list[float], list[float]]:

@@ -1,4 +1,4 @@
-"""Benchmark: naive recursive HRP vs jitted hrp_weights in finlab.hrp.
+"""Benchmark: naive recursive HRP vs jitted hrp_weights in quantowl.hrp.
 
 Not run by CI. Usage::
 
@@ -19,7 +19,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tests"))
 
-from finlab.hrp import hrp_weights  # noqa: E402
+from quantowl.hrp import hrp_weights  # noqa: E402
 from test_hrp import naive_hrp  # noqa: E402
 
 

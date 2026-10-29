@@ -6,7 +6,7 @@ import time
 
 import numpy as np
 
-from finlab.onc import silhouette_scores
+from quantowl.onc import silhouette_scores
 
 
 def naive_silhouette(d, labels):

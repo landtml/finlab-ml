@@ -1,4 +1,4 @@
-# `finlab.bars`: Information-driven bars and the CUSUM event filter (AFML ch. 2)
+# `quantowl.bars`: Information-driven bars and the CUSUM event filter (AFML ch. 2)
 
 Sampling by activity rather than clock time. Tick, volume and dollar bars close after a
 fixed amount of activity; imbalance and run bars close when the order flow becomes
@@ -10,7 +10,7 @@ Runs as written; `tests/test_doc_examples.py` executes it on every test run.
 
 ```python
 import numpy as np
-from finlab.bars import tick_bars, dollar_bars, cusum_filter
+from quantowl.bars import tick_bars, dollar_bars, cusum_filter
 
 rng = np.random.default_rng(1)
 prices = 100 + np.cumsum(rng.normal(0, 0.1, 2000))

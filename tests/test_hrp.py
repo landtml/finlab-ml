@@ -1,4 +1,4 @@
-"""Tests for finlab.hrp (AFML ch. 16, Hierarchical Risk Parity).
+"""Tests for quantowl.hrp (AFML ch. 16, Hierarchical Risk Parity).
 
 The fast quasi-diagonalization and recursive bisection are cross-checked
 against recursive, list-based references on seeded random covariances. The
@@ -16,7 +16,7 @@ import pytest
 import scipy.cluster.hierarchy as sch
 from scipy.spatial.distance import pdist, squareform
 
-from finlab.hrp import correlation_distance, distance_of_distances, hrp_weights, quasi_diagonalize
+from quantowl.hrp import correlation_distance, distance_of_distances, hrp_weights, quasi_diagonalize
 
 
 # ---------------------------------------------------------------------------
@@ -274,7 +274,7 @@ def test_quasi_diagonalize_rejects_non_finite_link(bad) -> None:
 
 def test_hrp_rejects_non_psd_covariance() -> None:
     # This matrix has a negative eigenvalue; weights came out negative.
-    from finlab.hrp import hrp_weights
+    from quantowl.hrp import hrp_weights
 
     C = np.array(
         [
@@ -289,7 +289,7 @@ def test_hrp_rejects_non_psd_covariance() -> None:
 
 
 def test_hrp_rejects_asymmetric_covariance() -> None:
-    from finlab.hrp import hrp_weights
+    from quantowl.hrp import hrp_weights
 
     C = np.array([[1.0, 0.5], [0.1, 1.0]])
     with pytest.raises(ValueError, match="symmetric"):
@@ -298,7 +298,7 @@ def test_hrp_rejects_asymmetric_covariance() -> None:
 
 def test_hrp_singular_psd_covariance_still_accepted() -> None:
     # Rank-deficient but PSD: float noise on the zero eigenvalues must not trigger the check.
-    from finlab.hrp import hrp_weights
+    from quantowl.hrp import hrp_weights
 
     rng = np.random.default_rng(3)
     A = rng.normal(size=(6, 2))
@@ -317,7 +317,7 @@ def test_correlation_distance_rejects_non_finite_or_out_of_range(bad: float) -> 
 
 def test_hrp_weights_nan_corr_fails_naming_corr() -> None:
     # NaN used to fail late inside scipy with a message that did not name corr.
-    from finlab.hrp import hrp_weights
+    from quantowl.hrp import hrp_weights
 
     C = np.diag([0.04, 0.09, 0.0625])
     R = np.array([[1.0, np.nan, 0.1], [np.nan, 1.0, 0.1], [0.1, 0.1, 1.0]])
@@ -327,7 +327,7 @@ def test_hrp_weights_nan_corr_fails_naming_corr() -> None:
 
 def test_hrp_weights_rejects_asymmetric_corr() -> None:
     # Only the upper triangle of corr was read, so lower-triangle edits did nothing.
-    from finlab.hrp import hrp_weights
+    from quantowl.hrp import hrp_weights
 
     C = np.diag([0.04, 0.09, 0.0625, 0.25])
     Ra = np.eye(4)
@@ -340,7 +340,7 @@ def test_hrp_weights_rejects_asymmetric_corr() -> None:
 def test_hrp_weights_weights_nonnegative_for_tiny_negative_eigenvalue() -> None:
     # A cluster variance could come out negative, pushing alpha above 1 and giving negative weights,
     # against the documented long-only contract.
-    from finlab.hrp import hrp_weights
+    from quantowl.hrp import hrp_weights
 
     b = -1 - 1e-10
     C = np.array([[1.0, b, 0, 0], [b, 1.0, 0, 0], [0, 0, 1.0, 0], [0, 0, 0, 1.0]])
@@ -360,7 +360,7 @@ def test_hrp_weights_single_asset_rejects_out_of_range_corr() -> None:
 
 def test_hrp_weights_refuses_string_covariance_entries() -> None:
     # '1' and '0' were coerced to floats, so this gave [0.5, 0.5].
-    from finlab.hrp import hrp_weights
+    from quantowl.hrp import hrp_weights
 
     with pytest.raises(ValueError, match="must be real numbers"):
         hrp_weights([["1", "0"], ["0", "1"]])
@@ -369,7 +369,7 @@ def test_hrp_weights_refuses_string_covariance_entries() -> None:
 
 def test_correlation_distance_refuses_non_unit_diagonal() -> None:
     # The diagonal was never checked, so self-distances came out as 0.63 and 0.5.
-    from finlab.hrp import correlation_distance
+    from quantowl.hrp import correlation_distance
 
     with pytest.raises(ValueError, match="unit diagonal"):
         correlation_distance([[0.5, 0.2], [0.2, 0.5]])
@@ -380,7 +380,7 @@ def test_correlation_distance_refuses_non_unit_diagonal() -> None:
 
 def test_hrp_weights_refuses_partially_overlapping_corr_labels() -> None:
     # corr.loc[labels, labels] raised a KeyError that did not name the mismatch.
-    from finlab.hrp import hrp_weights
+    from quantowl.hrp import hrp_weights
 
     cov = pd.DataFrame([[1, 0.2], [0.2, 1]], index=["a", "b"], columns=["a", "b"])
     corr = pd.DataFrame([[1, 0.1], [0.1, 1]], index=["x", "y"], columns=["x", "y"])
@@ -390,7 +390,7 @@ def test_hrp_weights_refuses_partially_overlapping_corr_labels() -> None:
 
 def test_hrp_weights_pin_refuses_clearly_non_psd_and_asymmetric_cov() -> None:
     # A real negative eigenvalue and a real asymmetry are still refused.
-    from finlab.hrp import hrp_weights
+    from quantowl.hrp import hrp_weights
 
     with pytest.raises(ValueError, match="positive semidefinite"):
         hrp_weights(np.array([[1.0, 2.0], [2.0, 1.0]]))
@@ -401,7 +401,7 @@ def test_hrp_weights_pin_refuses_clearly_non_psd_and_asymmetric_cov() -> None:
 def test_hrp_weights_accepts_float32_rounded_singular_cov() -> None:
     # A rank-deficient covariance (3 observations, 6 assets) stored in float32 has a smallest
     # eigenvalue of -2.6e-12, past the 1e-9 PSD floor, so a valid input was refused.
-    from finlab.hrp import hrp_weights
+    from quantowl.hrp import hrp_weights
 
     rng = np.random.default_rng(7)
     X = rng.standard_normal((3, 6)) * 0.01
@@ -413,7 +413,7 @@ def test_hrp_weights_accepts_float32_rounded_singular_cov() -> None:
 
 def test_hrp_weights_accepts_float32_rounded_symmetry() -> None:
     # An asymmetry of 1e-8 relative (float32 storage) was refused by the 1e-9 rtol.
-    from finlab.hrp import hrp_weights
+    from quantowl.hrp import hrp_weights
 
     w = hrp_weights(np.array([[4.0, 1.0], [1.0 + 1e-8, 9.0]]))
     assert w == pytest.approx([0.69230769, 0.30769231], abs=1e-6)
@@ -421,7 +421,7 @@ def test_hrp_weights_accepts_float32_rounded_symmetry() -> None:
 
 def test_hrp_weights_refuses_non_unit_corr_diagonal_for_one_asset() -> None:
     # N = 1 skipped the unit-diagonal check that N = 2 runs through correlation_distance.
-    from finlab.hrp import hrp_weights
+    from quantowl.hrp import hrp_weights
 
     with pytest.raises(ValueError, match="unit diagonal"):
         hrp_weights(np.array([[0.04]]), corr=np.array([[0.5]]))
@@ -433,7 +433,7 @@ def test_hrp_weights_refuses_non_unit_corr_diagonal_for_one_asset() -> None:
 def test_hrp_weights_refuses_non_psd_correlation_at_any_scale() -> None:
     # The PSD test used max|C| as its scale, so the refusal depended on the units of the assets. A
     # non-PSD correlation structure is refused at every scale.
-    from finlab.hrp import hrp_weights
+    from quantowl.hrp import hrp_weights
 
     R = np.array([[1.0, 0.9, 0.9], [0.9, 1.0, -0.9], [0.9, -0.9, 1.0]])
     with pytest.raises(ValueError, match="positive semidefinite"):
@@ -446,7 +446,7 @@ def test_hrp_weights_refuses_non_psd_correlation_at_any_scale() -> None:
 def test_hrp_weights_pin_psd_refusal_and_float32_singular_cov_at_scale() -> None:
     # A non-PSD matrix is still refused, and a float32-stored singular covariance is still accepted
     # when its assets are rescaled, so the normalized tolerance keeps both behaviours.
-    from finlab.hrp import hrp_weights
+    from quantowl.hrp import hrp_weights
 
     C = np.array(
         [
@@ -468,7 +468,7 @@ def test_hrp_weights_pin_psd_refusal_and_float32_singular_cov_at_scale() -> None
 
 def test_correlation_distance_refuses_out_of_range_and_non_finite_after_tolerance() -> None:
     # A real out-of-range entry, inf and NaN are still refused, at the wider tolerance too.
-    from finlab.hrp import correlation_distance
+    from quantowl.hrp import correlation_distance
 
     for bad in (-2.0, 2.0, 1.01, np.inf, np.nan):
         with pytest.raises(ValueError):
@@ -477,7 +477,7 @@ def test_hrp_weights_accepts_float32_rounded_correlation() -> None:
     # A valid correlation stored in float32 has an entry of 1.0000001192 and a diagonal of
     # 0.99999988. The range and diagonal checks at 1e-9 refused it, while the covariance checks
     # already accept float32 rounding.
-    from finlab.hrp import hrp_weights
+    from quantowl.hrp import hrp_weights
 
     X = np.random.default_rng(7).standard_normal((60, 4)).astype(np.float32)
     C = np.cov(X, rowvar=False).astype(np.float32)
@@ -495,7 +495,7 @@ def test_hrp_weights_accepts_float32_rounded_correlation() -> None:
 def test_hrp_split_survives_variances_near_the_float64_maximum() -> None:
     # Two cluster variances of 1e308 overflow their sum. The split depends only on their ratio,
     # so equal variances must still give equal weights, and a 1:3 ratio the same weights as 1:3.
-    from finlab.hrp import hrp_weights
+    from quantowl.hrp import hrp_weights
 
     w = hrp_weights(np.array([[1e308, 0.0], [0.0, 1e308]]))
     assert np.asarray(w) == pytest.approx([0.5, 0.5])

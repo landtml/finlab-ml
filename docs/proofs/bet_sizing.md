@@ -1,6 +1,6 @@
-# Proof notes: finlab.bet_sizing (AFML ch. 10)
+# Proof notes: quantowl.bet_sizing (AFML ch. 10)
 
-Module: `src/finlab/bet_sizing.py`. Tests: `tests/test_bet_sizing.py`.
+Module: `src/quantowl/bet_sizing.py`. Tests: `tests/test_bet_sizing.py`.
 
 Notation: `Phi` is the standard normal CDF, `m` a bet size, `w > 0` the sigmoid
 width, `x = f - p` the divergence between forecast `f` and market price `p`.

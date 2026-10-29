@@ -1,11 +1,11 @@
-"""Tests for finlab.ensemble (AFML ch. 6)."""
+"""Tests for quantowl.ensemble (AFML ch. 6)."""
 import numpy as np
 import pandas as pd
 import pytest
 
-from finlab.cv import PurgedKFold, make_t1
-from finlab.ensemble import SequentialBootstrapBagging
-from finlab.weights import average_uniqueness, num_co_events
+from quantowl.cv import PurgedKFold, make_t1
+from quantowl.ensemble import SequentialBootstrapBagging
+from quantowl.weights import average_uniqueness, num_co_events
 
 
 class NearestCentroid:
@@ -198,7 +198,7 @@ class _ProbaWithClasses(_ProbaNoClasses):
 def test_bags_missing_a_class_without_classes_attr_fail_at_fit_with_a_named_error() -> None:
     # A bag that missed class 2 returned 2 columns and predict_proba failed with a raw broadcast error
     # far from the cause. The mismatch is now named at fit time.
-    from finlab.ensemble import SequentialBootstrapBagging
+    from quantowl.ensemble import SequentialBootstrapBagging
 
     X = np.arange(40.0).reshape(-1, 1)
     y = np.array([0] * 38 + [1, 2])
@@ -207,7 +207,7 @@ def test_bags_missing_a_class_without_classes_attr_fail_at_fit_with_a_named_erro
 
 
 def test_bags_with_classes_attr_missing_a_class_still_predict() -> None:
-    from finlab.ensemble import SequentialBootstrapBagging
+    from quantowl.ensemble import SequentialBootstrapBagging
 
     X = np.arange(40.0).reshape(-1, 1)
     y = np.array([0] * 38 + [1, 2])
@@ -219,8 +219,8 @@ def test_bags_with_classes_attr_missing_a_class_still_predict() -> None:
 
 def test_sequential_bagging_rejects_t1_with_mismatched_index() -> None:
     # t1 was only length-checked, so its own labels drove the uniqueness weights.
-    from finlab.cv import make_t1
-    from finlab.ensemble import SequentialBootstrapBagging
+    from quantowl.cv import make_t1
+    from quantowl.ensemble import SequentialBootstrapBagging
 
     class Majority:
         def fit(self, X, y, sample_weight=None):
@@ -249,7 +249,7 @@ class _Majority:
 def test_ensemble_refuses_fractional_max_samples() -> None:
     # max_samples=2.7 was truncated to 2 with no message. The integer rule of make_t1 applies here
     # too: an integral value such as 2.0 is accepted, 2.7 is refused.
-    from finlab.ensemble import SequentialBootstrapBagging
+    from quantowl.ensemble import SequentialBootstrapBagging
 
     idx = pd.date_range("2020", periods=12)
     X = np.arange(24.0).reshape(12, 2)
@@ -264,7 +264,7 @@ def test_ensemble_refuses_fractional_max_samples() -> None:
 
 def test_ensemble_refuses_t1_that_is_not_a_series() -> None:
     # An ndarray t1 reached t1.index and failed with an AttributeError.
-    from finlab.ensemble import SequentialBootstrapBagging
+    from quantowl.ensemble import SequentialBootstrapBagging
 
     idx = pd.date_range("2020", periods=12)
     with pytest.raises(ValueError, match="t1 must be a pandas Series"):
@@ -276,7 +276,7 @@ def test_ensemble_refuses_t1_that_is_not_a_series() -> None:
 def test_sequential_bagging_checks_t1_against_a_shifted_range_index() -> None:
     # The t1 check skipped any pd.RangeIndex on X, so a RangeIndex starting at 5 accepted t1 labelled by
     # dates. Only the default 0..n-1 index is unlabelled.
-    from finlab.ensemble import SequentialBootstrapBagging
+    from quantowl.ensemble import SequentialBootstrapBagging
 
     class Const:
         def fit(self, X, y, sample_weight=None):
@@ -295,7 +295,7 @@ def test_sequential_bagging_checks_t1_against_a_shifted_range_index() -> None:
 
 def test_sequential_bagging_refuses_string_max_samples() -> None:
     # max_samples='7' was read as 7 through float(), while make_t1 refuses strings.
-    from finlab.ensemble import SequentialBootstrapBagging
+    from quantowl.ensemble import SequentialBootstrapBagging
 
     class Const:
         def fit(self, X, y, sample_weight=None):
@@ -315,7 +315,7 @@ def test_sequential_bagging_refuses_string_max_samples() -> None:
 def test_sequential_bagging_refuses_nat_end_times() -> None:
     # A NaT end time in t1 was read as "spans to the end of the grid", so the event took about six
     # bars instead of four. It is refused, as average_active_signals refuses it.
-    from finlab.ensemble import SequentialBootstrapBagging
+    from quantowl.ensemble import SequentialBootstrapBagging
 
     class Const:
         def fit(self, X, y, sample_weight=None):
@@ -345,7 +345,7 @@ class _ConstLabel:
 def test_sequential_bagging_refuses_series_x_with_shifted_y_index() -> None:
     # The y and sample_weight index checks ran only for a DataFrame X, so a Series X with y shifted by
     # one day was used by position. Tuning and importance refuse it.
-    from finlab.ensemble import SequentialBootstrapBagging
+    from quantowl.ensemble import SequentialBootstrapBagging
 
     ix = pd.date_range("2021-01-01", periods=40)
     xs = pd.Series(np.random.default_rng(0).normal(size=40), index=ix)
@@ -360,7 +360,7 @@ def test_sequential_bagging_refuses_series_x_with_shifted_y_index() -> None:
 def test_sequential_bagging_refuses_labelled_range_t1_against_default_x() -> None:
     # The t1 check was skipped for any default X, so t1 labelled 5..44 was matched to rows 0..39 by
     # position. A labelled t1 is checked against X, as a labelled X is.
-    from finlab.ensemble import SequentialBootstrapBagging
+    from quantowl.ensemble import SequentialBootstrapBagging
 
     X = pd.DataFrame(np.random.default_rng(0).normal(size=(40, 2)))
     y = pd.Series(np.arange(40) % 2)
@@ -376,8 +376,8 @@ def test_sequential_bagging_refuses_labelled_range_t1_against_default_x() -> Non
 def test_nat_t1_refusal_is_documented_for_get_events_and_bagging() -> None:
     # get_events leaves t1 NaT for unresolved events, and bagging refuses NaT. The refusal is
     # documented on both functions, so a caller knows to drop those events first.
-    from finlab.ensemble import SequentialBootstrapBagging
-    from finlab.labeling import get_events
+    from quantowl.ensemble import SequentialBootstrapBagging
+    from quantowl.labeling import get_events
 
     assert "NaT" in (SequentialBootstrapBagging.fit.__doc__ or "") + (SequentialBootstrapBagging.__doc__ or "")
     assert "NaT" in (get_events.__doc__ or "")
@@ -386,7 +386,7 @@ def test_nat_t1_refusal_is_documented_for_get_events_and_bagging() -> None:
 def test_bagging_accepts_unlabelled_y_against_date_x_as_tuning_does() -> None:
     # Tuning matches an unlabelled y to a date-indexed X by position, and the ensemble used to refuse
     # it. The ensemble now agrees; a reversed labelled y is still refused.
-    from finlab.ensemble import SequentialBootstrapBagging
+    from quantowl.ensemble import SequentialBootstrapBagging
 
     ix = pd.date_range("2021-01-01", periods=40)
     X = pd.DataFrame(np.random.default_rng(0).normal(size=(40, 2)), index=ix)
@@ -402,7 +402,7 @@ def test_t1_int64_index_labels_follow_the_value_rule() -> None:
     # An Int64 Index with labels 0..n-1 is the same unlabelled index as a RangeIndex, so it is matched
     # by position to a default X. Labels 5..44 are named and refused for both index classes, instead
     # of the class deciding the answer.
-    from finlab.ensemble import SequentialBootstrapBagging
+    from quantowl.ensemble import SequentialBootstrapBagging
 
     X = pd.DataFrame(np.random.default_rng(0).normal(size=(40, 2)))
     y = pd.Series(np.arange(40) % 2)
@@ -645,7 +645,7 @@ def _factory_from(values):
 def _fixed_draws(monkeypatch, draws):
     it = iter(draws)
     monkeypatch.setattr(
-        "finlab.ensemble.sequential_bootstrap", lambda ind, n_samples, seed: np.array(next(it))
+        "quantowl.ensemble.sequential_bootstrap", lambda ind, n_samples, seed: np.array(next(it))
     )
 
 
@@ -772,7 +772,7 @@ class _PipelineName:
     pass
 
 
-# sklearn.pipeline.Pipeline's name and module, which is what finlab checks.
+# sklearn.pipeline.Pipeline's name and module, which is what quantowl checks.
 _PipelineName.__name__ = "Pipeline"
 _PipelineName.__module__ = "sklearn.pipeline"
 
@@ -780,7 +780,7 @@ _PipelineName.__module__ = "sklearn.pipeline"
 class _FakePipeline(NearestCentroid, _PipelineName):
     """Stand-in for sklearn.pipeline.Pipeline: steps, and a fit that refuses sample_weight.
 
-    finlab recognises a Pipeline by class name and module, so the stand-in declares that module.
+    quantowl recognises a Pipeline by class name and module, so the stand-in declares that module.
     """
 
     def __init__(self):

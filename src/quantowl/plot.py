@@ -1,6 +1,6 @@
-"""Plotly figures for finlab results (optional extra: ``pip install 'finlab[plot]'``).
+"""Plotly figures for quantowl results (optional extra: ``pip install 'quantowl[plot]'``).
 
-Each function takes a result that finlab has already computed and returns a
+Each function takes a result that quantowl has already computed and returns a
 :class:`plotly.graph_objects.Figure`. The functions only bin, group and draw
 the numbers they receive. They compute no statistics: a value such as the PBO
 or the deflated Sharpe ratio is read from the result object and shown as is.
@@ -31,12 +31,12 @@ from ._checks import _require_type
 if TYPE_CHECKING:
     import plotly.graph_objects as go
 
-    from finlab.pbo import PBOResult
-    from finlab.stats import DeflatedSharpeResult
+    from quantowl.pbo import PBOResult
+    from quantowl.stats import DeflatedSharpeResult
 
 __all__ = ["pbo_distribution", "deflated_sharpe_comparison", "monte_carlo_histogram"]
 
-_INSTALL_HINT = "plotly is required for finlab.plot. Install it with: pip install 'finlab[plot]'"
+_INSTALL_HINT = "plotly is required for quantowl.plot. Install it with: pip install 'quantowl[plot]'"
 
 
 def _require_plotly() -> Any:
@@ -53,8 +53,8 @@ def pbo_distribution(result: PBOResult, *, title: str | None = None) -> go.Figur
 
     Parameters
     ----------
-    result : finlab.pbo.PBOResult
-        Output of :func:`finlab.pbo.probability_of_backtest_overfitting`. Its
+    result : quantowl.pbo.PBOResult
+        Output of :func:`quantowl.pbo.probability_of_backtest_overfitting`. Its
         ``logits``, ``pbo`` and ``n_combinations`` attributes are read and drawn
         as they are.
     title : str, optional
@@ -102,8 +102,8 @@ def deflated_sharpe_comparison(
 
     Parameters
     ----------
-    results : finlab.stats.DeflatedSharpeResult or sequence of them
-        Output of :func:`finlab.stats.deflated_sharpe`. For each result the bars
+    results : quantowl.stats.DeflatedSharpeResult or sequence of them
+        Output of :func:`quantowl.stats.deflated_sharpe`. For each result the bars
         show ``sr_hat`` and ``sr_star``. The label under each group shows the
         ``dsr`` value of that result.
     title : str, optional
@@ -151,7 +151,7 @@ def monte_carlo_histogram(
     Parameters
     ----------
     frame : pandas.DataFrame
-        Output of :func:`finlab.monte_carlo.bootstrap_uniqueness_mc`, one row per
+        Output of :func:`quantowl.monte_carlo.bootstrap_uniqueness_mc`, one row per
         trial.
     columns : sequence of str, default ("std_u", "seq_u")
         Columns to draw, one histogram each.

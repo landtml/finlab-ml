@@ -1,9 +1,9 @@
-# `finlab.plot`: Plotly figures for PBO, deflated Sharpe and Monte Carlo results (optional)
+# `quantowl.plot`: Plotly figures for PBO, deflated Sharpe and Monte Carlo results (optional)
 
-Three functions that draw results finlab has already computed. Each returns a plotly
+Three functions that draw results quantowl has already computed. Each returns a plotly
 `Figure`. The functions bin, group and draw the numbers they receive and compute no
 statistics: the PBO, deflated Sharpe and uniqueness values on the figures are read from the
-result objects as they are. Needs the `plot` extra: `pip install 'finlab[plot]'`.
+result objects as they are. Needs the `plot` extra: `pip install 'quantowl[plot]'`.
 
 ## Example
 
@@ -12,9 +12,9 @@ it prints the install hint instead of drawing.
 
 ```python
 import numpy as np
-from finlab import plot
-from finlab.pbo import probability_of_backtest_overfitting
-from finlab.stats import deflated_sharpe
+from quantowl import plot
+from quantowl.pbo import probability_of_backtest_overfitting
+from quantowl.stats import deflated_sharpe
 
 rng = np.random.default_rng(0)
 res = probability_of_backtest_overfitting(rng.normal(0.0, 0.01, size=(64, 6)), n_partitions=8)
@@ -50,7 +50,7 @@ else:
 
 ## Without plotly
 
-`import finlab.plot` works without plotly (`test_module_imports_without_plotly`). Calling any
+`import quantowl.plot` works without plotly (`test_module_imports_without_plotly`). Calling any
 of the three functions then raises `ImportError` with the install hint
 (`test_each_function_raises_install_hint_without_plotly`). The plotting tests in
 `tests/test_plot.py` skip when plotly is missing.

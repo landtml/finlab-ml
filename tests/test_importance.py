@@ -1,4 +1,4 @@
-"""Tests for finlab.importance (AFML chapter 8).
+"""Tests for quantowl.importance (AFML chapter 8).
 
 No sklearn. The model under test is a tiny nearest-centroid classifier written in
 numpy. Each fast implementation is cross-checked against a naive, loop-based
@@ -11,8 +11,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from finlab.cv import PurgedKFold
-from finlab.importance import (
+from quantowl.cv import PurgedKFold
+from quantowl.importance import (
     OrthogonalFeatures,
     mda,
     mdi_from_matrix,
@@ -394,7 +394,7 @@ def test_mda_warns_on_zero_weight_test_fold_and_keeps_values():
 
 
 def test_check_xy_accepts_same_instants_in_another_timezone():
-    from finlab.importance import _check_xy
+    from quantowl.importance import _check_xy
 
     utc = pd.date_range("2020-01-01", periods=10, freq="D", tz="UTC")
     X = pd.DataFrame(np.random.default_rng(0).normal(size=(10, 2)), index=utc)
@@ -404,7 +404,7 @@ def test_check_xy_accepts_same_instants_in_another_timezone():
 
 
 def test_check_xy_rejects_shifted_instants_across_timezones():
-    from finlab.importance import _check_xy
+    from quantowl.importance import _check_xy
 
     utc = pd.date_range("2020-01-01", periods=10, freq="D", tz="UTC")
     X = pd.DataFrame(np.random.default_rng(0).normal(size=(10, 2)), index=utc)
@@ -415,7 +415,7 @@ def test_check_xy_rejects_shifted_instants_across_timezones():
 
 def test_mdi_from_matrix_rejects_negative_impurity_decreases() -> None:
     # A negative decrease was averaged in and credited to a feature.
-    from finlab.importance import mdi_from_matrix
+    from quantowl.importance import mdi_from_matrix
 
     with pytest.raises(ValueError, match="negative"):
         mdi_from_matrix(np.array([[0.5, -0.1], [0.4, 0.2]]))
@@ -434,7 +434,7 @@ def test_orthogonal_features_transform_rejects_reordered_columns() -> None:
 def test_mda_one_column_dataframe_label_matches_series() -> None:
     # A (n, 1) label stayed 2-D, so the accuracy compared every row with every prediction by
     # broadcasting and the importances came out 0. A one-column label is a 1-D label.
-    from finlab.importance import mda
+    from quantowl.importance import mda
 
     rng = np.random.default_rng(3)
     X = pd.DataFrame(rng.normal(size=(60, 3)), columns=["a", "b", "c"])
@@ -453,7 +453,7 @@ def test_mda_one_column_dataframe_label_matches_series() -> None:
 def test_mdi_from_matrix_normalizes_when_the_sum_overflows() -> None:
     # Two finite decreases whose sum overflows to inf made every normalized mean 0.0 with no error.
     # The means are scaled by their peak before they are summed.
-    from finlab.importance import mdi_from_matrix
+    from quantowl.importance import mdi_from_matrix
 
     got = mdi_from_matrix(np.array([[1e308, 1e308]]))["mean"].tolist()
     assert got == pytest.approx([0.5, 0.5])
@@ -463,7 +463,7 @@ def test_mdi_from_matrix_accepts_rounding_level_negative() -> None:
     # A -1e-17 (rounding of a zero decrease) was refused by the strict sign rule. A rounding-level
     # negative is now taken as the zero it is, and the feature still counts as drawn, so the mean is
     # [1/3, 2/3].
-    from finlab.importance import mdi_from_matrix
+    from quantowl.importance import mdi_from_matrix
 
     out = mdi_from_matrix(np.array([[-1e-17, 1.0], [1.0, 1.0]]))
     assert out["mean"].to_numpy() == pytest.approx([1 / 3, 2 / 3], rel=1e-12)
@@ -472,7 +472,7 @@ def test_mdi_from_matrix_accepts_rounding_level_negative() -> None:
 def test_mdi_from_matrix_does_not_overflow_large_impurities() -> None:
     # Only the across-column sum was scaled; the within-column sum overflowed.
     # All the inputs are finite and positive, so each result must be finite.
-    from finlab.importance import mdi_from_matrix
+    from quantowl.importance import mdi_from_matrix
 
     out = mdi_from_matrix(np.array([[1e308, 1e308], [1e308, 1e308]]))
     assert out["mean"].tolist() == pytest.approx([0.5, 0.5])
@@ -488,7 +488,7 @@ def test_mdi_rounding_negative_keeps_draw_at_large_scale(scale: float) -> None:
     # The rounding-level negative was set to tiny before scaling by the largest impurity, so at scale
     # 1e16 it underflowed to 0 and the feature lost a draw. The means are ratios and must not depend on
     # the scale.
-    from finlab.importance import mdi_from_matrix
+    from quantowl.importance import mdi_from_matrix
 
     M = np.array([[scale, -1e-16 * scale], [scale, scale]])
     mean = mdi_from_matrix(M)["mean"].to_numpy()
@@ -499,7 +499,7 @@ def test_mdi_refuses_a_real_negative_of_1e_minus_12_relative() -> None:
     # The rounding tolerance was 1e-12 of the largest impurity, about 4500 times float64 rounding, so
     # -1e-12 was read as a zero decrease. Only rounding-level negatives are set to zero now (1e-14); a
     # larger one is refused as a negative decrease.
-    from finlab.importance import mdi_from_matrix
+    from quantowl.importance import mdi_from_matrix
 
     with pytest.raises(ValueError, match="negative"):
         mdi_from_matrix(np.array([[1.0, -1e-12], [1.0, 1.0]]))
@@ -513,7 +513,7 @@ def test_mdi_refuses_a_real_negative_of_1e_minus_12_relative() -> None:
 def test_mda_accepts_unlabelled_y_against_date_x_as_tuning_does() -> None:
     # Tuning matches an unlabelled 0..n-1 y to a date-indexed X by position, but mda used to refuse
     # it. The importance check now agrees. A reversed, labelled y is still refused.
-    from finlab.cv import PurgedKFold
+    from quantowl.cv import PurgedKFold
 
     X, y = make_data(n=300, p=3, seed=0)
     X = pd.DataFrame(np.asarray(X), index=pd.date_range("2021-01-01", periods=len(X)))
@@ -528,7 +528,7 @@ def test_mdi_positive_impurity_below_peak_stays_drawn() -> None:
     # Dividing by the peak made a positive impurity of 1e-320 against a peak of 1e300 divide to 0.0,
     # which was read as "not drawn", so the feature's mean was NaN. It is drawn in every tree, so its
     # share is about 1e-620 (0.0 after rounding) and must not be NaN.
-    from finlab.importance import mdi_from_matrix
+    from quantowl.importance import mdi_from_matrix
 
     m = np.array([[1e-320, 1e300], [1e-320, 1e300], [1e-320, 1e300]])
     out = mdi_from_matrix(m)
@@ -656,7 +656,7 @@ class _PipelineName:
     pass
 
 
-# sklearn.pipeline.Pipeline's name and module, which is what finlab checks.
+# sklearn.pipeline.Pipeline's name and module, which is what quantowl checks.
 _PipelineName.__name__ = "Pipeline"
 _PipelineName.__module__ = "sklearn.pipeline"
 
@@ -664,7 +664,7 @@ _PipelineName.__module__ = "sklearn.pipeline"
 class _FakePipeline(NearestCentroid, _PipelineName):
     """Stand-in for sklearn.pipeline.Pipeline: steps, and a fit that refuses sample_weight.
 
-    finlab recognises a Pipeline by class name and module, so the stand-in declares that module.
+    quantowl recognises a Pipeline by class name and module, so the stand-in declares that module.
     """
 
     def __init__(self):

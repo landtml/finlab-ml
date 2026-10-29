@@ -39,8 +39,8 @@ import numpy as np
 import pandas as pd
 from numba import prange
 
-from finlab._checks import _require_real_values
-from finlab._jit import jit, pjit
+from quantowl._checks import _require_real_values
+from quantowl._jit import jit, pjit
 
 __all__ = ["OUFit", "fit_ou", "otr_grid", "ou_half_life", "ou_phi"]
 

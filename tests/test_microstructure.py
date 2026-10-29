@@ -1,4 +1,4 @@
-"""Tests for finlab.microstructure (AFML ch. 19).
+"""Tests for quantowl.microstructure (AFML ch. 19).
 
 Each fast implementation is cross-checked against a brute-force reference on
 seeded random inputs. Hand-made examples pin down sign and boundary behaviour.
@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from finlab.microstructure import (
+from quantowl.microstructure import (
     amihud_illiquidity,
     becker_parkinson_volatility,
     bulk_volume_classification,
@@ -765,7 +765,7 @@ def test_hl_estimators_reject_infinite_prices() -> None:
 
 def test_roll_measure_large_prices_stay_finite() -> None:
     # The product of price changes must not overflow for prices near 1e160.
-    from finlab.microstructure import roll_measure
+    from quantowl.microstructure import roll_measure
 
     s = roll_measure(np.array([1e160, 3e160] * 5))
     assert np.isfinite(s)
@@ -774,7 +774,7 @@ def test_roll_measure_large_prices_stay_finite() -> None:
 
 def test_amihud_regression_large_dollar_volume_stays_finite() -> None:
     # dot(dv, dv) must not overflow for dollar volume near 1e160, which would give NaN.
-    from finlab.microstructure import amihud_illiquidity
+    from quantowl.microstructure import amihud_illiquidity
 
     dv = 1e160 * np.array([1.0, 2.0, 3.0])
     assert amihud_illiquidity(dv, dv) == pytest.approx(1.0, rel=1e-12)
@@ -785,7 +785,7 @@ def test_amihud_regression_large_dollar_volume_stays_finite() -> None:
 
 def test_kyle_lambda_tstat_large_volume_is_finite() -> None:
     # sum(x*x) must not overflow for volume near 1e160, which would make lambda and t NaN.
-    from finlab.microstructure import kyle_lambda, kyle_lambda_tstat
+    from quantowl.microstructure import kyle_lambda, kyle_lambda_tstat
 
     v = 1e160 * np.array([1.0, 2.0, 3.0, 4.0])
     p = np.r_[0.0, np.cumsum(2 * v)]
@@ -798,7 +798,7 @@ def test_kyle_lambda_tstat_large_volume_is_finite() -> None:
 
 def test_becker_parkinson_huge_sl_raises_value_error() -> None:
     # sl = 10**20 must raise ValueError, not reach the numba kernel and leak a raw OverflowError.
-    from finlab.microstructure import becker_parkinson_volatility
+    from quantowl.microstructure import becker_parkinson_volatility
 
     h = np.ones(50) * 1.01
     lo = np.ones(50)
@@ -809,7 +809,7 @@ def test_becker_parkinson_huge_sl_raises_value_error() -> None:
 def test_amihud_regression_fallback_keeps_a_representable_tiny_value() -> None:
     # The rescaled denominator m * sum(dv^2) must not overflow once m * n is above
     # about 1.8e308, so the result was 0.0 where the true value 1.5e-310 is representable.
-    from finlab.microstructure import amihud_illiquidity
+    from quantowl.microstructure import amihud_illiquidity
 
     # abs=0 is needed: pytest.approx adds an absolute tolerance of 1e-12 by default, which would
     # accept the 0.0 this bug returned.

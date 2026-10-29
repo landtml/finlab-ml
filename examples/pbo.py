@@ -22,18 +22,18 @@
 # (CSCV, AFML ch. 11): the T x N return matrix is cut into S contiguous row
 # blocks, and every choice of S/2 blocks is used once as the training set.
 #
-# This notebook uses `finlab.pbo.probability_of_backtest_overfitting` on two
+# This notebook uses `quantowl.pbo.probability_of_backtest_overfitting` on two
 # simulated matrices with a fixed seed:
 #
 # 1. pure noise, where no strategy has any edge;
 # 2. one real strategy with a small positive mean among noise strategies.
 #
-# It runs in a few seconds with the base finlab install. The plot is optional.
+# It runs in a few seconds with the base quantowl install. The plot is optional.
 
 # %%
 import numpy as np
 
-from finlab.pbo import probability_of_backtest_overfitting
+from quantowl.pbo import probability_of_backtest_overfitting
 
 T = 320  # time observations (rows)
 N = 60  # candidate strategies (columns)
@@ -85,19 +85,19 @@ print(f"one real edge: PBO = {edge_result.pbo:.4f} over {edge_result.n_combinati
 # Each split gives a logit lambda = log(w / (1 - w)), where w is the relative
 # out-of-sample rank of the in-sample winner. PBO is the share of logits at or
 # below zero. The figure shows the logits of the pure-noise matrix, with the
-# zero line and the PBO value. It uses `finlab.plot.pbo_distribution`, which
+# zero line and the PBO value. It uses `quantowl.plot.pbo_distribution`, which
 # needs plotly. Without plotly the cell prints the install hint and the rest of
 # the notebook still runs.
 
 # %%
 try:
-    from finlab.plot import pbo_distribution
+    from quantowl.plot import pbo_distribution
 
     fig = pbo_distribution(noise_result, title="Pure noise: logit distribution")
 except ImportError as exc:
     fig = None
     print(exc)
-    print("Install the optional plotting extra with: pip install 'finlab[plot]'")
+    print("Install the optional plotting extra with: pip install 'quantowl[plot]'")
 fig
 
 # %% [markdown]

@@ -1,6 +1,6 @@
-# Proof notes: finlab.tuning (AFML ch. 9)
+# Proof notes: quantowl.tuning (AFML ch. 9)
 
-Module: `src/finlab/tuning.py`. Tests: `tests/test_tuning.py`.
+Module: `src/quantowl/tuning.py`. Tests: `tests/test_tuning.py`.
 
 ## Proved here
 
@@ -12,7 +12,7 @@ only on strict improvement (`mean > best`). ∎
 
 **T2 (leakage-freeness is inherited, not re-proved).** The search is leakage-free
 exactly when the splitter passed to it is: each `score_k` is computed on a test
-block after purging and embargo from `finlab.cv`, whose no-leakage property is proved
+block after purging and embargo from `quantowl.cv`, whose no-leakage property is proved
 in `docs/proofs/cpcv.md`. The tuner adds no training data beyond what the splitter
 yields.
 
@@ -37,7 +37,7 @@ Nested CV is needed for an unbiased estimate and is not implemented here.
 ## Pipeline weights (AFML Snippet 9.2)
 
 Snippet 9.2 (`MyPipeline`) overrides `Pipeline.fit` so that `sample_weight` reaches the last
-step as `<last step>__sample_weight`. `finlab.tuning` makes the same routing in
+step as `<last step>__sample_weight`. `quantowl.tuning` makes the same routing in
 `fit_model`, which `cv_score` calls. The routing is not a book result; it is a rule of this
 module.
 
@@ -56,5 +56,5 @@ with `enable_metadata_routing=True`, the same score comes from passing `sample_w
 ## Not covered
 
 Nested CV, Bayesian search, and multiple-testing correction of the selected score
-(see `finlab.stats.deflated_sharpe_ratio` for one such correction in the backtest
+(see `quantowl.stats.deflated_sharpe_ratio` for one such correction in the backtest
 setting).

@@ -1,4 +1,4 @@
-"""Tests for finlab.pbo (AFML ch. 11-12: CSCV and probability of backtest overfitting)."""
+"""Tests for quantowl.pbo (AFML ch. 11-12: CSCV and probability of backtest overfitting)."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from finlab.pbo import PBOResult, _sharpe_of_mask, probability_of_backtest_overfitting
+from quantowl.pbo import PBOResult, _sharpe_of_mask, probability_of_backtest_overfitting
 
 
 # ---------------------------------------------------------------------------

@@ -1,4 +1,4 @@
-"""Tests for finlab.fracdiff (AFML ch. 5).
+"""Tests for quantowl.fracdiff (AFML ch. 5).
 
 The fast numba kernels are cross-checked against naive references written with
 explicit Python loops and ``np.dot`` (the book's Snippets 5.2 and 5.3 style).
@@ -13,7 +13,7 @@ import pandas as pd
 import pytest
 from scipy.special import binom
 
-from finlab.fracdiff import (
+from quantowl.fracdiff import (
     find_min_d,
     frac_diff,
     frac_diff_ffd,
@@ -353,7 +353,7 @@ def test_frac_diff_warns_at_d_at_or_below_minus_one() -> None:
     # Refusing d <= -1 broke the docstring's "any real value" and removed the output. d <= -1
     # returns the expanding-window values, with a warning that most of them are NaN.
     # frac_diff_ffd keeps its refusal.
-    from finlab.fracdiff import frac_diff
+    from quantowl.fracdiff import frac_diff
 
     rw = np.cumsum(np.random.default_rng(5).standard_normal(80)) + 10
     for d in (-1.0, -1.5):
@@ -366,7 +366,7 @@ def test_frac_diff_warns_at_d_at_or_below_minus_one() -> None:
 def test_find_min_d_refuses_descending_index() -> None:
     # A descending index must be refused by find_min_d as well as frac_diff_ffd. Without the check,
     # which differenced the reversed values under the reversed labels (d = 0.4 against 0.3 sorted).
-    from finlab import fracdiff as fd
+    from quantowl import fracdiff as fd
 
     def adf_p(x):
         return 0.01  # every grid value passes, so the first d decides the result
@@ -380,7 +380,7 @@ def test_find_min_d_refuses_descending_index() -> None:
 
 def test_frac_diff_names_duplicate_column_labels() -> None:
     # Duplicate column names must be named by the check, not fail inside pandas with a length message.
-    from finlab import fracdiff as fd
+    from quantowl import fracdiff as fd
 
     with pytest.raises(ValueError, match="column names must be unique"):
         fd.frac_diff(pd.DataFrame(np.ones((5, 2)), columns=["a", "a"]), 0.4)
@@ -407,7 +407,7 @@ def test_find_min_d_refuses_a_multi_column_input_by_name() -> None:
 
 
 def test_find_min_d_refuses_descending_index_on_one_column_frame() -> None:
-    from finlab import fracdiff as fd
+    from quantowl import fracdiff as fd
 
     def adf_p(x):
         return 0.01

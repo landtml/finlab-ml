@@ -1,4 +1,4 @@
-"""Tests for finlab.monte_carlo: run_trials and the bootstrap uniqueness experiment.
+"""Tests for quantowl.monte_carlo: run_trials and the bootstrap uniqueness experiment.
 
 The naive references (``naive_indicator``, ``naive_sequential_draws`` and
 ``naive_sample_avg_uniqueness``) are copied from ``tests/test_weights.py``. The
@@ -8,14 +8,14 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from finlab.monte_carlo import (
+from quantowl.monte_carlo import (
     _trial_uniqueness,
     bootstrap_uniqueness_mc,
     bootstrap_uniqueness_trial,
     random_t1,
     run_trials,
 )
-from finlab.weights import sample_average_uniqueness
+from quantowl.weights import sample_average_uniqueness
 
 
 def _normal_trial(rng):

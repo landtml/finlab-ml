@@ -1,4 +1,4 @@
-"""Benchmark finlab.monte_carlo: the bootstrap-uniqueness trial and its throughput.
+"""Benchmark quantowl.monte_carlo: the bootstrap-uniqueness trial and its throughput.
 
 Not run by CI. Usage (from the repository root):
 
@@ -40,13 +40,13 @@ import time
 import numpy as np
 
 from _timing import best_of
-from finlab.monte_carlo import (
+from quantowl.monte_carlo import (
     _trial_uniqueness,
     bootstrap_uniqueness_mc,
     bootstrap_uniqueness_trial,
     random_t1,
 )
-from finlab.weights import sample_average_uniqueness
+from quantowl.weights import sample_average_uniqueness
 
 N_OBS, N_BARS, MAX_H = 10, 100, 5
 N_KERNEL_TRIALS = 5_000

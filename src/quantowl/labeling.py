@@ -321,7 +321,7 @@ def get_events(
 
         ``t1``
             Time of the first barrier touch (NaT if none was touched and there
-            is no vertical barrier). :class:`finlab.ensemble.SequentialBootstrapBagging`
+            is no vertical barrier). :class:`quantowl.ensemble.SequentialBootstrapBagging`
             refuses a NaT ``t1``, so drop those events before bagging on this output.
         ``trgt``
             Unit barrier width used for the event.

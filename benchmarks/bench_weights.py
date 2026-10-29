@@ -1,4 +1,4 @@
-"""Benchmark finlab.weights against brute-force references.
+"""Benchmark quantowl.weights against brute-force references.
 
 Not run by CI. Usage:
 
@@ -15,8 +15,8 @@ import time
 import numpy as np
 import pandas as pd
 
-from finlab import weights
-from finlab.weights import indicator_matrix, num_co_events, sequential_bootstrap
+from quantowl import weights
+from quantowl.weights import indicator_matrix, num_co_events, sequential_bootstrap
 
 REPEATS = 3
 

@@ -1,7 +1,7 @@
-# Proofs and derivations: `finlab.monte_carlo`
+# Proofs and derivations: `quantowl.monte_carlo`
 
 Scope: `run_trials`, `random_t1`, `bootstrap_uniqueness_trial` and `bootstrap_uniqueness_mc`
-in `src/finlab/monte_carlo.py`. The kernels it uses from `finlab.weights` are described in
+in `src/quantowl/monte_carlo.py`. The kernels it uses from `quantowl.weights` are described in
 [weights.md](weights.md).
 
 The experiment follows the printed listings of AFML Snippets 4.7 and 4.8 (section 4.5.4).
@@ -23,7 +23,7 @@ Labels have start bars `s_j` and end bars `e_j = s_j + l_j`, with `l_j >= 1`. La
 `L_j = {s_j, ..., e_j}`. For a sample of draws `d_1, ..., d_n` (repeats allowed), `c_t` is the number
 of draws whose span contains bar `t`, and `S = (1/n) sum_k (1/|L_{d_k}|) sum_{t in L_{d_k}} 1/c_t`
 is the sample average uniqueness. This is the same quantity as
-`finlab.weights.sample_average_uniqueness`.
+`quantowl.weights.sample_average_uniqueness`.
 
 ## 1. Proved here
 
@@ -33,7 +33,7 @@ to `F(i)` for every `k >= 1`.
 
 *Proof.* Each row is computed by `_trial_molecule` from a freshly made `G(s, i)` and the same
 `func` and `kwargs`. `mp_pandas_obj` splits the index into molecules and concatenates the piece
-results in molecule order (`pd.concat(pieces)` in `finlab.parallel`). The molecule split decides
+results in molecule order (`pd.concat(pieces)` in `quantowl.parallel`). The molecule split decides
 only which process computes row `i`, not its value. So the frame is the same for every `k`.
 The argument assumes `func` is a deterministic function of its arguments, and draws only from
 the generator it is given. If `func` reads other state, the claim does not hold. *(Proved here,
@@ -140,7 +140,7 @@ Differences from the book's run, which the comparison has to allow for:
   The same integer seed does not give the book's random stream, so no single trial is the book's
   trial.
 * The book's run uses 1E6 iterations and its own job engine (`mpEngine`, Chapter 20). This module
-  runs `n_iter` trials through `finlab.parallel.mp_pandas_obj`.
+  runs `n_iter` trials through `quantowl.parallel.mp_pandas_obj`.
 
 ## 4. Measured (not a proof)
 

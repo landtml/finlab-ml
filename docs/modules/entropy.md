@@ -1,4 +1,4 @@
-# `finlab.entropy`: Entropy features (AFML ch. 18)
+# `quantowl.entropy`: Entropy features (AFML ch. 18)
 
 Estimators of how predictable a symbol sequence is. Encoders map returns to symbols by
 quantile, by sigma bins, or by sign, so the entropy estimators can be applied to returns.
@@ -9,7 +9,7 @@ Runs as written; `tests/test_doc_examples.py` executes it on every test run.
 
 ```python
 import numpy as np
-from finlab.entropy import plug_in_entropy, kontoyiannis_entropy, encode_quantile, encode_binary
+from quantowl.entropy import plug_in_entropy, kontoyiannis_entropy, encode_quantile, encode_binary
 
 rng = np.random.default_rng(10)
 returns = rng.normal(size=500)

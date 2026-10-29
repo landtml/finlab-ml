@@ -1,4 +1,4 @@
-# `finlab.weights`: Concurrency, uniqueness, sample weights and sequential bootstrap (AFML ch. 4)
+# `quantowl.weights`: Concurrency, uniqueness, sample weights and sequential bootstrap (AFML ch. 4)
 
 When labels overlap in time, observations are not independent. Average uniqueness measures
 how much information each label adds. Sequential bootstrap draws labels that are more
@@ -10,8 +10,8 @@ Runs as written; `tests/test_doc_examples.py` executes it on every test run.
 
 ```python
 import pandas as pd
-from finlab.cv import make_t1
-from finlab.weights import num_co_events, average_uniqueness, indicator_matrix, sequential_bootstrap
+from quantowl.cv import make_t1
+from quantowl.weights import num_co_events, average_uniqueness, indicator_matrix, sequential_bootstrap
 
 idx = pd.date_range("2020-01-01", periods=60, freq="D")
 t1 = make_t1(idx, horizon=10)
@@ -25,6 +25,6 @@ print(len(draws), "draws")
 
 ## Notes
 
-Proof: [weights.md](../proofs/weights.md). Scope: the sequential-bootstrap uniqueness gain is modest in measured settings. For a Monte Carlo comparison of standard and sequential bootstrap uniqueness, see [`finlab.monte_carlo`](monte_carlo.md).
+Proof: [weights.md](../proofs/weights.md). Scope: the sequential-bootstrap uniqueness gain is modest in measured settings. For a Monte Carlo comparison of standard and sequential bootstrap uniqueness, see [`quantowl.monte_carlo`](monte_carlo.md).
 
 Full signatures: [API reference](../API.md).

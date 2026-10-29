@@ -1,4 +1,4 @@
-"""Tests for finlab.bars (AFML ch. 2).
+"""Tests for quantowl.bars (AFML ch. 2).
 
 Every fast (numba) bar and CUSUM routine is cross-checked against a naive,
 pure-Python reference on seeded random inputs. The naive imbalance and runs
@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from finlab.bars import (
+from quantowl.bars import (
     OHLCV_COLUMNS,
     _tick_rule,
     cusum_filter,
@@ -482,7 +482,7 @@ def test_cusum_filter_single_column_input_unchanged() -> None:
 @pytest.mark.parametrize("bad_init_T", [float("inf"), float("nan")])
 def test_imbalance_bars_non_finite_init_T_is_value_error(bad_init_T: float) -> None:
     # int(inf) raised OverflowError, bypassing the usual ValueError.
-    from finlab.bars import imbalance_bars
+    from quantowl.bars import imbalance_bars
 
     with pytest.raises(ValueError, match="init_T"):
         imbalance_bars(np.array([1.0, 2, 1, 2.0]), init_T=bad_init_T)
@@ -490,7 +490,7 @@ def test_imbalance_bars_non_finite_init_T_is_value_error(bad_init_T: float) -> N
 
 def test_tick_bars_rejects_fractional_threshold() -> None:
     # A threshold of 2.5 silently built bars of 3 ticks.
-    from finlab.bars import tick_bars
+    from quantowl.bars import tick_bars
 
     with pytest.raises(ValueError, match="integer"):
         tick_bars(np.arange(1.0, 11.0), 2.5)
@@ -499,7 +499,7 @@ def test_tick_bars_rejects_fractional_threshold() -> None:
 
 def test_dollar_bars_rejects_overflowing_dollar_product() -> None:
     # price * volume overflowed to inf, and inf showed up in dollar_value.
-    from finlab.bars import dollar_bars
+    from quantowl.bars import dollar_bars
 
     with pytest.raises(ValueError, match="overflow"):
         dollar_bars(np.array([1e300] * 3), np.array([1e10] * 3), 1e300)
@@ -516,7 +516,7 @@ def test_time_bars_rejects_zero_length_freq() -> None:
 def test_cusum_filter_one_column_dataframe_returns_labels() -> None:
     # A one-column DataFrame returned integer positions, while a Series returns its index labels,
     # which is what the docstring promises for a labelled input.
-    from finlab.bars import cusum_filter
+    from quantowl.bars import cusum_filter
 
     rw = np.cumsum(np.random.default_rng(5).standard_normal(60)) + 10
     idx = pd.date_range("2024-01-01", periods=60, freq="D")
@@ -529,7 +529,7 @@ def test_bar_sums_that_overflow_are_refused() -> None:
     # A per-tick price * volume overflow was refused, but the bar sums were not checked, so a bar
     # dollar value or volume of inf was returned with no error. Every bar kind and time_bars now
     # refuses it. Only inf is tested: NaN volume is the valid "no volume" case.
-    from finlab.bars import dollar_bars, time_bars, volume_bars
+    from quantowl.bars import dollar_bars, time_bars, volume_bars
 
     with pytest.raises(ValueError, match="overflows"):
         dollar_bars(np.array([1e300, 1e300]), np.array([1e8, 1e8]), 1.7e308)
@@ -543,7 +543,7 @@ def test_bar_sums_that_overflow_are_refused() -> None:
 def test_volume_bars_are_not_refused_for_dollar_only_overflow() -> None:
     # The bar-sum check tested the dollar column for volume bars, which never use it. Four 1-tick
     # bars with volume 1e200 (and dollar inf) are now returned.
-    from finlab.bars import volume_bars
+    from quantowl.bars import volume_bars
 
     out = volume_bars(np.full(4, 1e200), np.full(4, 1e200), threshold=1e200)
     assert out["volume"].tolist() == [1e200] * 4
@@ -552,7 +552,7 @@ def test_volume_bars_are_not_refused_for_dollar_only_overflow() -> None:
 
 def test_cusum_filter_refuses_single_row_multi_column_input() -> None:
     # A 1 x 2 array was flattened and returned column positions as event positions.
-    from finlab.bars import cusum_filter
+    from quantowl.bars import cusum_filter
 
     with pytest.raises(ValueError, match="one-dimensional or one column"):
         cusum_filter(np.array([[1.0, 2.0]]), threshold=0.5)
@@ -561,7 +561,7 @@ def test_cusum_filter_refuses_single_row_multi_column_input() -> None:
 
 def test_tick_bars_refuses_bool_threshold() -> None:
     # threshold=True was read as one tick per bar.
-    from finlab.bars import tick_bars
+    from quantowl.bars import tick_bars
 
     with pytest.raises(ValueError, match="positive integer"):
         tick_bars(np.arange(1.0, 9.0), threshold=True)
@@ -570,7 +570,7 @@ def test_tick_bars_refuses_bool_threshold() -> None:
 def test_imbalance_and_run_dollar_bars_refuse_overflowing_dollar_product() -> None:
     # price * volume overflowed for every tick, so imbalance_bars(kind="dollar") formed no bars and
     # returned an empty frame with no error. dollar_bars and run_bars refuse it.
-    from finlab.bars import imbalance_bars, run_bars
+    from quantowl.bars import imbalance_bars, run_bars
 
     rng = np.random.default_rng(4)
     p = 100 * np.exp(np.cumsum(rng.normal(0, 0.001, 400)))
@@ -584,7 +584,7 @@ def test_imbalance_and_run_dollar_bars_refuse_overflowing_dollar_product() -> No
 def test_tick_bars_keep_the_dollar_overflow_refusal_as_intended() -> None:
     # Tick and time bars keep the dollar check, so their refusal stays; only the volume kind skips it.
     # volume_bars accepts the same ticks and returns them.
-    from finlab.bars import imbalance_bars, tick_bars, volume_bars
+    from quantowl.bars import imbalance_bars, tick_bars, volume_bars
 
     assert volume_bars(np.full(400, 1e160), np.full(400, 1e160), 1e10).shape == (400, 7)
     with pytest.raises(ValueError, match="overflows"):
@@ -597,7 +597,7 @@ def test_tick_bars_keep_the_dollar_overflow_refusal_as_intended() -> None:
 def test_bars_and_cusum_refuse_bool_init_t_and_threshold() -> None:
     # init_T=True and cusum_filter(threshold=True) were read as 1. tick_bars already refuses a bool
     # threshold, so the siblings now agree.
-    from finlab.bars import cusum_filter, imbalance_bars, tick_bars
+    from quantowl.bars import cusum_filter, imbalance_bars, tick_bars
 
     p = np.linspace(100, 101, 40)
     with pytest.raises(ValueError, match="init_T"):

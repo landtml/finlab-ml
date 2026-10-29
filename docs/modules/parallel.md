@@ -1,4 +1,4 @@
-# `finlab.parallel`: Multiprocessing helpers (AFML ch. 20)
+# `quantowl.parallel`: Multiprocessing helpers (AFML ch. 20)
 
 `mp_pandas_obj` applies a function to contiguous chunks of an index, serially or in a
 process pool, and concatenates the results in order. `lin_parts` and `nested_parts`
@@ -10,7 +10,7 @@ Runs as written; `tests/test_doc_examples.py` executes it on every test run.
 
 ```python
 import pandas as pd
-from finlab.parallel import mp_pandas_obj, lin_parts
+from quantowl.parallel import mp_pandas_obj, lin_parts
 
 def square(molecule, offset=0):
     return pd.Series(molecule.astype(float) ** 2 + offset, index=molecule)

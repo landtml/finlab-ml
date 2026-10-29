@@ -1,4 +1,4 @@
-# `finlab.labeling`: Triple-barrier, meta-labels and trend-scanning labels (AFML ch. 3)
+# `quantowl.labeling`: Triple-barrier, meta-labels and trend-scanning labels (AFML ch. 3)
 
 Labels that account for when an outcome resolves. Triple-barrier labels stop at a profit
 target, a stop loss, or a vertical time barrier. Meta-labels say whether a primary side
@@ -12,7 +12,7 @@ Runs as written; `tests/test_doc_examples.py` executes it on every test run.
 ```python
 import numpy as np
 import pandas as pd
-from finlab.labeling import get_daily_vol, get_events, get_bins, drop_labels
+from quantowl.labeling import get_daily_vol, get_events, get_bins, drop_labels
 
 rng = np.random.default_rng(2)
 close = pd.Series(100 * np.exp(np.cumsum(rng.normal(0, 0.01, 400))),

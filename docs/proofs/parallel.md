@@ -1,6 +1,6 @@
-# Proof notes: finlab.parallel (AFML ch. 20)
+# Proof notes: quantowl.parallel (AFML ch. 20)
 
-Module: `src/finlab/parallel.py`. Tests: `tests/test_parallel.py`.
+Module: `src/quantowl/parallel.py`. Tests: `tests/test_parallel.py`.
 
 ## Proved here
 

@@ -1,4 +1,4 @@
-"""Tests for finlab.stats (AFML ch. 14: Sharpe, PSR, expected max SR, DSR, minTRL)."""
+"""Tests for quantowl.stats (AFML ch. 14: Sharpe, PSR, expected max SR, DSR, minTRL)."""
 
 from __future__ import annotations
 
@@ -13,8 +13,8 @@ import pytest
 from scipy.integrate import quad
 from scipy.stats import norm
 
-import finlab.stats as stats_module
-from finlab.stats import (
+import quantowl.stats as stats_module
+from quantowl.stats import (
     DeflatedSharpeResult,
     bet_timing,
     deflated_sharpe,
@@ -440,21 +440,21 @@ def test_sharpe_ratio_single_column_and_row_vector_unchanged() -> None:
 @pytest.mark.parametrize("kurt", [float("inf"), float("nan")])
 def test_psr_rejects_non_finite_kurtosis(kurt: float) -> None:
     # Infinite kurtosis gave exactly 0.5 ("no skill") with no warning.
-    from finlab.stats import probabilistic_sharpe_ratio
+    from quantowl.stats import probabilistic_sharpe_ratio
 
     with pytest.raises(ValueError, match="kurtosis must be finite"):
         probabilistic_sharpe_ratio(1.0, 0.0, 100, 0.0, kurt)
 
 
 def test_psr_rejects_non_finite_skew() -> None:
-    from finlab.stats import probabilistic_sharpe_ratio
+    from quantowl.stats import probabilistic_sharpe_ratio
 
     with pytest.raises(ValueError, match="skew must be finite"):
         probabilistic_sharpe_ratio(1.0, 0.0, 100, float("inf"), 3.0)
 
 
 def test_psr_finite_skew_kurtosis_unchanged() -> None:
-    from finlab.stats import probabilistic_sharpe_ratio
+    from quantowl.stats import probabilistic_sharpe_ratio
 
     assert probabilistic_sharpe_ratio(1.0, 0.0, 100, 0.0, 3.0) == pytest.approx(
         0.9999999999999998, rel=1e-12
@@ -484,14 +484,14 @@ def test_sharpe_ratio_rejects_single_row_multi_column_ndarray() -> None:
 
 def test_min_track_record_length_rejects_non_finite_skew_with_clear_message() -> None:
     # A NaN skew must be named as the cause, not reported as "skew/kurtosis incompatible".
-    from finlab.stats import min_track_record_length
+    from quantowl.stats import min_track_record_length
 
     with pytest.raises(ValueError, match="skew must be finite"):
         min_track_record_length(0.2, 0.1, skew=float("nan"))
 
 
 def test_min_track_record_length_rejects_non_finite_kurtosis_with_clear_message() -> None:
-    from finlab.stats import min_track_record_length
+    from quantowl.stats import min_track_record_length
 
     with pytest.raises(ValueError, match="kurt must be finite"):
         min_track_record_length(0.2, 0.1, kurt=float("inf"))
@@ -528,7 +528,7 @@ def test_sharpe_ratio_unused_periods_per_year_ignored_when_not_annualized() -> N
 def test_psr_rejects_nan_benchmark() -> None:
     # A NaN sr_benchmark returned NaN with a warning, while minTRL refuses it. An infinite benchmark
     # stays a documented value (0.0).
-    from finlab.stats import probabilistic_sharpe_ratio
+    from quantowl.stats import probabilistic_sharpe_ratio
 
     with pytest.raises(ValueError, match="sr_benchmark must not be NaN"):
         probabilistic_sharpe_ratio(0.1, float("nan"), 100)
@@ -538,7 +538,7 @@ def test_probabilistic_sharpe_accepts_zero_dim_array_skew() -> None:
     # A 0-d array holds one real number, so it is accepted (0.8395...).
     import numpy as np
 
-    from finlab.stats import min_track_record_length, probabilistic_sharpe_ratio
+    from quantowl.stats import min_track_record_length, probabilistic_sharpe_ratio
 
     assert probabilistic_sharpe_ratio(0.1, 0.0, 100, np.array(0.0), 3.0) == pytest.approx(
         0.8395254171844497, rel=1e-12
@@ -552,7 +552,7 @@ def test_probabilistic_sharpe_accepts_zero_dim_array_skew() -> None:
 
 def test_sharpe_ratio_refuses_strings_bools_and_none() -> None:
     # Strings became floats, bools became 1/0 and None became NaN.
-    from finlab.stats import sharpe_ratio
+    from quantowl.stats import sharpe_ratio
 
     with pytest.raises(ValueError, match="returns must be real numbers"):
         sharpe_ratio(["0.01", "0.02", "-0.01"])
@@ -565,7 +565,7 @@ def test_sharpe_ratio_refuses_strings_bools_and_none() -> None:
 def test_sharpe_ratio_refuses_none_entries_as_intended() -> None:
     # A None entry is refused by name in a list. A pandas Series converts None to NaN before the
     # function sees it, so only the list form is refused here.
-    from finlab.stats import sharpe_ratio
+    from quantowl.stats import sharpe_ratio
 
     with pytest.raises(ValueError, match="real numbers"):
         sharpe_ratio([0.01, None, -0.02, 0.03])
@@ -574,7 +574,7 @@ def test_sharpe_ratio_refuses_none_entries_as_intended() -> None:
 def test_min_track_record_length_refuses_prob_at_or_below_half() -> None:
     # For sr_hat > sr_benchmark, PSR(T) is above 0.5 for every T, so prob <= 0.5 has no solution. The
     # function used to return a T that solves PSR = 1 - prob (0.95 at T = 273 for prob 0.05).
-    from finlab.stats import min_track_record_length, probabilistic_sharpe_ratio
+    from quantowl.stats import min_track_record_length, probabilistic_sharpe_ratio
 
     with pytest.raises(ValueError, match="prob"):
         min_track_record_length(0.1, 0.0, prob=0.05)
@@ -589,7 +589,7 @@ def test_min_track_record_length_refuses_prob_at_or_below_half() -> None:
 def test_min_track_record_length_prob_half_gives_the_root() -> None:
     # At prob = 0.5 the root is T = 1 (z = 0), which is returned. The refusal is for prob < 0.5
     # only, where PSR(T) stays above 0.5 for every T.
-    from finlab.stats import min_track_record_length
+    from quantowl.stats import min_track_record_length
 
     assert min_track_record_length(0.1, 0.0, prob=0.5) == pytest.approx(1.0)
     with pytest.raises(ValueError, match="prob"):

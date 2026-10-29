@@ -36,7 +36,7 @@ contiguous blocks as in the book), no stochastic subsampling of combinations.
 
 Not covered: the performance-degradation and probability-of-loss statistics of
 Bailey et al. (2017), the stochastic dominance test, and CPCV paths (see
-``finlab.cv``).
+``quantowl.cv``).
 """
 
 from __future__ import annotations
@@ -51,8 +51,8 @@ from typing import Callable, Optional, Union
 import numpy as np
 import pandas as pd
 
-from finlab._display import html_table
-from finlab._jit import jit
+from quantowl._display import html_table
+from quantowl._jit import jit
 
 __all__ = ["PBOResult", "probability_of_backtest_overfitting"]
 

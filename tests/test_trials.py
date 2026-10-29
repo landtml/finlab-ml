@@ -1,4 +1,4 @@
-"""Tests for finlab.trials (trial registry feeding PBO and the deflated Sharpe ratio)."""
+"""Tests for quantowl.trials (trial registry feeding PBO and the deflated Sharpe ratio)."""
 
 from __future__ import annotations
 
@@ -11,9 +11,9 @@ import numpy as np
 import pytest
 from scipy.stats import kurtosis, skew
 
-from finlab.pbo import probability_of_backtest_overfitting
-from finlab.stats import deflated_sharpe_ratio, probabilistic_sharpe_ratio, sharpe_ratio
-from finlab.trials import TrialRecord, TrialRegistry
+from quantowl.pbo import probability_of_backtest_overfitting
+from quantowl.stats import deflated_sharpe_ratio, probabilistic_sharpe_ratio, sharpe_ratio
+from quantowl.trials import TrialRecord, TrialRegistry
 
 
 def _noise(seed: int, T: int = 64, mean: float = 0.0005) -> np.ndarray:

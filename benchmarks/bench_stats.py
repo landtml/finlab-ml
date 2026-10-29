@@ -1,4 +1,4 @@
-"""Benchmark: naive Python loop vs the numba kernel behind finlab.stats.holding_period.
+"""Benchmark: naive Python loop vs the numba kernel behind quantowl.stats.holding_period.
 
 Not run by CI. Usage:
     PYTHONPATH=src python3 benchmarks/bench_stats.py
@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 
 from _timing import best_of
-from finlab.stats import holding_period
+from quantowl.stats import holding_period
 
 
 def naive_holding_period(positions: list[float], days: list[float]) -> float:

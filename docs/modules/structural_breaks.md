@@ -1,4 +1,4 @@
-# `finlab.structural_breaks`: Structural breaks: CUSUM, SADF, QADF, SMT and Chow-type DF (AFML ch. 17)
+# `quantowl.structural_breaks`: Structural breaks: CUSUM, SADF, QADF, SMT and Chow-type DF (AFML ch. 17)
 
 CUSUM tests detect a change in mean or regression parameters. SADF is the supremum of
 augmented Dickey-Fuller statistics over expanding windows, which flags explosive behaviour.
@@ -14,7 +14,7 @@ Runs as written; `tests/test_doc_examples.py` executes it on every test run.
 
 ```python
 import numpy as np
-from finlab.structural_breaks import cusum_test, chow_dfc, chu_stinchcombe_white, qadf, sadf, sdfc, smt
+from quantowl.structural_breaks import cusum_test, chow_dfc, chu_stinchcombe_white, qadf, sadf, sdfc, smt
 
 rng = np.random.default_rng(9)
 x = np.concatenate([rng.normal(0, 1, 200), rng.normal(2, 1, 200)])
@@ -43,7 +43,7 @@ statistic that flags an explosive episode anywhere in the sample.
 
 ```python
 import numpy as np
-from finlab.structural_breaks import sadf, sadf_null_quantiles
+from quantowl.structural_breaks import sadf, sadf_null_quantiles
 
 pointwise, maximum = sadf_null_quantiles(200, min_length=40, n_sim=200, seed=1)
 boom = np.exp(0.02 * np.arange(200)) * (1 + 0.01 * np.random.default_rng(2).normal(size=200))

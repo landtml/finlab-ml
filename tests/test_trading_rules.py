@@ -1,4 +1,4 @@
-"""Tests for finlab.trading_rules (AFML ch. 13: OU helpers, fit_ou, otr_grid)."""
+"""Tests for quantowl.trading_rules (AFML ch. 13: OU helpers, fit_ou, otr_grid)."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from finlab.trading_rules import (
+from quantowl.trading_rules import (
     OUFit,
     _exits_one_pair,
     _otr_exits_python,
@@ -386,7 +386,7 @@ def test_otr_grid_refuses_exits_that_overflow_float64() -> None:
 
 
 def test_scalar_arguments_accept_zero_dimensional_arrays() -> None:
-    # finlab.strategy_risk takes a 0-d array as a scalar, so this module does too.
+    # quantowl.strategy_risk takes a 0-d array as a scalar, so this module does too.
     assert ou_phi(np.array(5.0)) == ou_phi(5.0)
     assert ou_half_life(np.array(0.5)) == ou_half_life(0.5)
     assert fit_ou([1.0, 2.0, 0.0], np.array(0.0)).phi == fit_ou([1.0, 2.0, 0.0], 0.0).phi

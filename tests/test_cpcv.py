@@ -16,8 +16,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from finlab.cv import CombinatorialPurgedCV, make_t1
-from finlab.cv._cpcv import _end_positions, _make_group_labels
+from quantowl.cv import CombinatorialPurgedCV, make_t1
+from quantowl.cv._cpcv import _end_positions, _make_group_labels
 
 # (n_groups, n_test_groups) configurations exercised across the suite.
 CONFIGS = [(6, 2), (8, 2), (10, 3), (5, 2), (4, 1)]
@@ -611,7 +611,7 @@ def test_missing_t1_warns_and_keeps_embargo_only_split():
     """t1=None must warn (purging skipped) but produce the same folds as before."""
     import warnings
 
-    from finlab.cv import PurgedKFold
+    from quantowl.cv import PurgedKFold
 
     X = pd.DataFrame({"x": np.arange(60.0)}, index=_daily_index(60))
     cv = PurgedKFold(n_splits=4, embargo_pct=0.05)
@@ -637,7 +637,7 @@ def test_cpcv_missing_t1_warns_once_per_split_call():
 def test_t1_given_does_not_warn():
     import warnings
 
-    from finlab.cv import PurgedKFold
+    from quantowl.cv import PurgedKFold
 
     X = pd.DataFrame({"x": np.arange(60.0)}, index=_daily_index(60))
     t1 = make_t1(X.index, 3)
@@ -662,7 +662,7 @@ def test_min_train_size_raises_eagerly_from_split():
 
 def test_make_t1_huge_horizon_clips_to_last_bar_without_overflow() -> None:
     # arange(n) + 2**63 - 1 must not wrap to a negative position and raise IndexError.
-    from finlab.cv import make_t1
+    from quantowl.cv import make_t1
 
     t1 = make_t1(pd.RangeIndex(10), 2**63 - 1)
     assert (t1.to_numpy() == 9).all()
@@ -671,7 +671,7 @@ def test_make_t1_huge_horizon_clips_to_last_bar_without_overflow() -> None:
 
 def test_make_t1_rejects_non_integer_horizon() -> None:
     # A horizon of 2.5 must be refused, not silently used as 2.
-    from finlab.cv import make_t1
+    from quantowl.cv import make_t1
 
     with pytest.raises(ValueError, match="horizon"):
         make_t1(pd.RangeIndex(10), 2.5)
@@ -680,7 +680,7 @@ def test_make_t1_rejects_non_integer_horizon() -> None:
 def test_cpcv_date_t1_with_numpy_x_is_refused_by_name() -> None:
     # A date-labelled t1 with a NumPy X (integer positions) must not raise a raw pandas
     # TypeError from the comparison. It is refused by name, since t1 cannot be aligned to X.
-    from finlab.cv import CombinatorialPurgedCV, make_t1
+    from quantowl.cv import CombinatorialPurgedCV, make_t1
 
     ix = pd.date_range("2021-01-01", periods=40)
     cv = CombinatorialPurgedCV(n_groups=5, n_test_groups=2, t1=make_t1(ix, 3))
@@ -701,7 +701,7 @@ def test_nat_t1_value_is_named_and_a_missing_label_keeps_the_alignment_message()
 
 def test_embargo_size_ignores_float_noise_in_the_product() -> None:
     # 0.07 * 100 is 7.000000000000001, so a bare ceil gave 8 bars.
-    from finlab.cv import PurgedKFold
+    from quantowl.cv import PurgedKFold
 
     n = 100
     assert CombinatorialPurgedCV(n_groups=5, n_test_groups=2, embargo_pct=0.07)._embargo_size(n) == 7
@@ -714,7 +714,7 @@ def test_embargo_size_ignores_float_noise_in_the_product() -> None:
 
 
 def test_non_timestamp_t1_is_refused_with_a_clear_message():
-    from finlab.cv import PurgedKFold
+    from quantowl.cv import PurgedKFold
 
     X = _frame(100)
     as_text = pd.Series(X.index.astype(str), index=X.index)

@@ -48,9 +48,9 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 
-from finlab._checks import _same_index, tz_mismatch_message
-from finlab._fit import fit_model
-from finlab._jit import jit
+from quantowl._checks import _same_index, tz_mismatch_message
+from quantowl._fit import fit_model
+from quantowl._jit import jit
 
 __all__ = [
     "Estimator",
@@ -388,7 +388,7 @@ def mda(
     y : array-like or pd.Series, shape (n_samples,)
     cv : splitter
         Any object with ``split(X)`` yielding ``(train_idx, test_idx)``, such as
-        :class:`finlab.cv.PurgedKFold` or :class:`finlab.cv.CombinatorialPurgedCV`.
+        :class:`quantowl.cv.PurgedKFold` or :class:`quantowl.cv.CombinatorialPurgedCV`.
         Use a purged, embargoed splitter (AFML chapter 7).
     sample_weight : array-like, optional
         Per-sample weights, used in fitting and in weighted scoring.

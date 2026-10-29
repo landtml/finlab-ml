@@ -16,15 +16,15 @@ from scipy.cluster.hierarchy import linkage
 from scipy.spatial.distance import squareform
 from scipy.stats import norm
 
-from finlab.bet_sizing import calibrate_sigmoid_width
-from finlab.cv import PurgedKFold
-from finlab.entropy import kontoyiannis_entropy
-from finlab.importance import mda, sfi
-from finlab.microstructure import becker_parkinson_volatility
-from finlab.monte_carlo import bootstrap_uniqueness_mc, random_t1
-from finlab.pbo import probability_of_backtest_overfitting
-from finlab.stats import expected_max_sharpe, min_track_record_length
-from finlab.structural_breaks import chu_stinchcombe_white, csw_critical_value, cusum_test, sadf
+from quantowl.bet_sizing import calibrate_sigmoid_width
+from quantowl.cv import PurgedKFold
+from quantowl.entropy import kontoyiannis_entropy
+from quantowl.importance import mda, sfi
+from quantowl.microstructure import becker_parkinson_volatility
+from quantowl.monte_carlo import bootstrap_uniqueness_mc, random_t1
+from quantowl.pbo import probability_of_backtest_overfitting
+from quantowl.stats import expected_max_sharpe, min_track_record_length
+from quantowl.structural_breaks import chu_stinchcombe_white, csw_critical_value, cusum_test, sadf
 
 
 # ---------------------------------------------------------------------------
@@ -359,7 +359,7 @@ def test_runs_bars_jensen_equality_for_first_passage() -> None:
 
 
 def test_hrp_scaled_copy_has_zero_correlation_distance() -> None:
-    from finlab.hrp import correlation_distance
+    from quantowl.hrp import correlation_distance
 
     x = np.random.default_rng(0).standard_normal(250)
     cases = {"2x+1": 2.0 * x + 1.0, "0.5x-3": 0.5 * x - 3.0, "-3x": -3.0 * x}
@@ -379,7 +379,7 @@ def test_hrp_scaled_copy_has_zero_correlation_distance() -> None:
 
 
 def test_hrp_bisection_cost_bound_n2_to_30() -> None:
-    from finlab.hrp import _recursive_bisection
+    from quantowl.hrp import _recursive_bisection
 
     def schedule(n: int) -> tuple[int, int]:
         # Split schedule of _recursive_bisection: a block [s, e) with e - s >= 2 is cut at

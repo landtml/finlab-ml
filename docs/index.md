@@ -1,11 +1,11 @@
-# finlab
+# quantowl
 
-finlab is a toolkit for financial machine learning that implements the methods of Marcos López de Prado's *Advances in Financial Machine Learning* (AFML), organised by chapter. Hot loops are compiled to machine code with [numba](https://numba.pydata.org/); there is no scikit-learn dependency. Most methods come with tests that cross-check them against a naive reference, and where the book states a result, a proof note in the Proof notes section marks each claim as proved here, checked by test, measured, or claimed from the book only.
+quantowl is a toolkit for financial machine learning that implements the methods of Marcos López de Prado's *Advances in Financial Machine Learning* (AFML), organised by chapter. Hot loops are compiled to machine code with [numba](https://numba.pydata.org/); there is no scikit-learn dependency. Most methods come with tests that cross-check them against a naive reference, and where the book states a result, a proof note in the Proof notes section marks each claim as proved here, checked by test, measured, or claimed from the book only.
 
 ## Install
 
 ```bash
-pip install "git+https://github.com/landtml/finlab-ml@v0.1.5"
+pip install "git+https://github.com/landtml/quantowl@v0.1.5"
 ```
 
 Requires Python 3.10 to 3.14. From a clone of the repository:
@@ -13,7 +13,7 @@ Requires Python 3.10 to 3.14. From a clone of the repository:
 ```bash
 pip install -e .            # core library
 pip install -e ".[dev]"     # + pytest, ruff and mypy, to run the test suite and lint
-pip install -e ".[plot]"    # + plotly, for the figures in finlab.plot
+pip install -e ".[plot]"    # + plotly, for the figures in quantowl.plot
 pip install -e ".[notebooks]"  # + Jupyter tooling, to run the notebooks in examples/
 pytest                      # run the suite
 ```
@@ -23,10 +23,10 @@ pytest                      # run the suite
 ```python
 import numpy as np
 import pandas as pd
-from finlab.cv import CombinatorialPurgedCV, make_t1
-from finlab.stats import sharpe_ratio, deflated_sharpe_ratio
-from finlab.bet_sizing import prob_bet_size, discretize_signal
-from finlab.hrp import hrp_weights
+from quantowl.cv import CombinatorialPurgedCV, make_t1
+from quantowl.stats import sharpe_ratio, deflated_sharpe_ratio
+from quantowl.bet_sizing import prob_bet_size, discretize_signal
+from quantowl.hrp import hrp_weights
 
 rng = np.random.default_rng(0)
 idx = pd.date_range("2020-01-01", periods=500, freq="B")
@@ -58,15 +58,15 @@ Each row gives a method name, the chapter of the book it comes from, and the mod
 
 | Method | AFML chapter | Module page |
 |---|---|---|
-| Purged k-fold and combinatorial purged cross-validation | 7 | [`finlab.cv`](modules/cv.md) |
-| Triple-barrier labels and meta-labeling | 3 | [`finlab.labeling`](modules/labeling.md) |
-| Fractional differentiation | 5 | [`finlab.fracdiff`](modules/fracdiff.md) |
-| Sequential bootstrap and average uniqueness | 4 | [`finlab.weights`](modules/weights.md) |
-| Deflated Sharpe ratio and probabilistic Sharpe ratio | 14 | [`finlab.stats`](modules/stats.md) |
-| Probability of backtest overfitting (CSCV) | 11 | [`finlab.pbo`](modules/pbo.md) |
-| Hierarchical risk parity | 16 | [`finlab.hrp`](modules/hrp.md) |
-| SADF and other structural break tests | 17 | [`finlab.structural_breaks`](modules/structural_breaks.md) |
-| VPIN and microstructure features | 19 | [`finlab.microstructure`](modules/microstructure.md) |
-| Entropy features | 18 | [`finlab.entropy`](modules/entropy.md) |
-| Bet sizing | 10 | [`finlab.bet_sizing`](modules/bet_sizing.md) |
-| Information-driven bars | 2 | [`finlab.bars`](modules/bars.md) |
+| Purged k-fold and combinatorial purged cross-validation | 7 | [`quantowl.cv`](modules/cv.md) |
+| Triple-barrier labels and meta-labeling | 3 | [`quantowl.labeling`](modules/labeling.md) |
+| Fractional differentiation | 5 | [`quantowl.fracdiff`](modules/fracdiff.md) |
+| Sequential bootstrap and average uniqueness | 4 | [`quantowl.weights`](modules/weights.md) |
+| Deflated Sharpe ratio and probabilistic Sharpe ratio | 14 | [`quantowl.stats`](modules/stats.md) |
+| Probability of backtest overfitting (CSCV) | 11 | [`quantowl.pbo`](modules/pbo.md) |
+| Hierarchical risk parity | 16 | [`quantowl.hrp`](modules/hrp.md) |
+| SADF and other structural break tests | 17 | [`quantowl.structural_breaks`](modules/structural_breaks.md) |
+| VPIN and microstructure features | 19 | [`quantowl.microstructure`](modules/microstructure.md) |
+| Entropy features | 18 | [`quantowl.entropy`](modules/entropy.md) |
+| Bet sizing | 10 | [`quantowl.bet_sizing`](modules/bet_sizing.md) |
+| Information-driven bars | 2 | [`quantowl.bars`](modules/bars.md) |

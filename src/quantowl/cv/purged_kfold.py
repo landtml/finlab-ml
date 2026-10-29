@@ -1,6 +1,6 @@
 """Purged K-fold cross-validation (AFML snippet 7.3).
 
-A single-path alternative to :class:`finlab.cv.CombinatorialPurgedCV`: the
+A single-path alternative to :class:`quantowl.cv.CombinatorialPurgedCV`: the
 timeline is cut into ``n_splits`` contiguous folds, each fold is the test set
 once, and the same purge + forward embargo as CPCV is applied to the training
 side.
@@ -27,7 +27,7 @@ class PurgedKFold:
     n_splits : int, default 5
         Number of contiguous folds (``>= 2``).
     t1 : pd.Series, optional
-        Event-end time per observation (see :func:`finlab.cv.make_t1`).
+        Event-end time per observation (see :func:`quantowl.cv.make_t1`).
         Without it every observation is treated as a one-bar event.
     embargo_pct : float, default 0.0
         Forward embargo as a fraction of the sample length.

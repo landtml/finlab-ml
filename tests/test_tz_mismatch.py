@@ -4,13 +4,13 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from finlab.bars import time_bars, volume_bars
-from finlab.labeling import add_vertical_barrier, get_bins, get_events
-from finlab.bet_sizing import average_active_signals
-from finlab.ensemble import SequentialBootstrapBagging
-from finlab.importance import _check_xy
-from finlab.microstructure import kyle_lambda
-from finlab.structural_breaks import cusum_test
+from quantowl.bars import time_bars, volume_bars
+from quantowl.labeling import add_vertical_barrier, get_bins, get_events
+from quantowl.bet_sizing import average_active_signals
+from quantowl.ensemble import SequentialBootstrapBagging
+from quantowl.importance import _check_xy
+from quantowl.microstructure import kyle_lambda
+from quantowl.structural_breaks import cusum_test
 
 
 class _FrequencyClassifier:
@@ -23,9 +23,9 @@ class _FrequencyClassifier:
 
     def predict_proba(self, X):
         return np.tile(self.freq_, (len(X), 1))
-from finlab._checks import _same_index, tz_mismatch_message
-from finlab.tuning import _as_arrays
-from finlab.weights import num_co_events, sample_weight_by_return
+from quantowl._checks import _same_index, tz_mismatch_message
+from quantowl.tuning import _as_arrays
+from quantowl.weights import num_co_events, sample_weight_by_return
 
 N = 30
 AWARE = pd.date_range("2024-01-01", periods=N, freq="D", tz="America/New_York")

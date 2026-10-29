@@ -16,9 +16,9 @@ import warnings
 import numpy as np
 import pandas as pd
 
-from finlab.cv import make_t1
-from finlab.ensemble import SequentialBootstrapBagging
-from finlab.weights import indicator_matrix, sequential_bootstrap
+from quantowl.cv import make_t1
+from quantowl.ensemble import SequentialBootstrapBagging
+from quantowl.weights import indicator_matrix, sequential_bootstrap
 
 
 def naive_sequential_bootstrap(ind, n_draws, seed):

@@ -1,4 +1,4 @@
-# `finlab.trading_rules`: Optimal trading rules on an Ornstein-Uhlenbeck process (AFML ch. 13)
+# `quantowl.trading_rules`: Optimal trading rules on an Ornstein-Uhlenbeck process (AFML ch. 13)
 
 Half-life conversions and fitting for a mean-reverting (Ornstein-Uhlenbeck) price,
 and the batch simulation that scores profit-taking and stop-loss levels on it:
@@ -10,7 +10,7 @@ Runs as written; `tests/test_doc_examples.py` executes it on every test run.
 
 ```python
 import numpy as np
-from finlab.trading_rules import fit_ou, otr_grid, ou_half_life, ou_phi
+from quantowl.trading_rules import fit_ou, otr_grid, ou_half_life, ou_phi
 
 rng = np.random.default_rng(13)
 phi = ou_phi(5.0)  # half-life of 5 steps

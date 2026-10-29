@@ -1,4 +1,4 @@
-# finlab: Proof of No Data Leakage and Verification Report
+# quantowl: Proof of No Data Leakage and Verification Report
 
 ## Empirical verification in this repository
 
@@ -20,7 +20,7 @@ made in this repository with `python3 tools/verify_leakage.py --synthetic` (exit
 ```
 
 **Not done:** a live-market-data run. Only the
-`--synthetic` run has been made for finlab. Its evidence covers the splitter's logic on random-walk data; it does
+`--synthetic` run has been made for quantowl. Its evidence covers the splitter's logic on random-walk data; it does
 not show behaviour on real price series. Run `python3 tools/verify_leakage.py`
 (needs `pip install yfinance` and network access) to reproduce the live check.
 
@@ -29,7 +29,7 @@ information from the test set into the training set, and (2) an empirical
 certificate from a large-scale run over real market data. It also states the
 confidence level and the scope/limits of the guarantee.
 
-Component under test: [`src/finlab/cv/_cpcv.py`](https://github.com/landtml/finlab-ml/blob/main/src/finlab/cv/_cpcv.py)
+Component under test: [`src/quantowl/cv/_cpcv.py`](https://github.com/landtml/quantowl/blob/main/src/quantowl/cv/_cpcv.py)
 · `CombinatorialPurgedCV` (AFML, López de Prado, ch. 7).
 
 ---
@@ -154,7 +154,7 @@ JNJ PG MSFT AAPL`, each verified over its full history and a recent window.
 
 ```
 ======================================================================
-FINLAB LEAKAGE VERIFICATION CERTIFICATE
+QUANTOWL LEAKAGE VERIFICATION CERTIFICATE
 ======================================================================
   datasets verified      : 20 tickers
   calendar span          : 1927-12-30 -> 2026-05-19
@@ -172,7 +172,7 @@ FINLAB LEAKAGE VERIFICATION CERTIFICATE
 ```
 
 The block is the certificate that `python tools/verify_leakage.py` prints on live data (see
-[tools/verify_leakage.py](https://github.com/landtml/finlab-ml/blob/main/tools/verify_leakage.py)); the tool's `data source` line is not reproduced here. The purge and embargo arithmetic it checks is the arithmetic the theorems describe.
+[tools/verify_leakage.py](https://github.com/landtml/quantowl/blob/main/tools/verify_leakage.py)); the tool's `data source` line is not reproduced here. The purge and embargo arithmetic it checks is the arithmetic the theorems describe.
 
 Unit suite: `tests/test_cpcv.py` collects 102 items (`pytest --collect-only -q tests/test_cpcv.py`; incl. the live-yfinance integration test,
 which skips offline), covering counts, no-leakage, embargo, disjointness, the

@@ -1,4 +1,4 @@
-# Proofs and derivations: `finlab.weights`
+# Proofs and derivations: `quantowl.weights`
 
 Source: AFML Chapter 4 (Sample Weights), Snippets 4.1 to 4.11.
 
@@ -120,8 +120,8 @@ unchanged by a permutation of the draws. *(Proved here.)*
   passed in. Snippet 4.8 applies it to the bootstrapped matrix, so repeats count. This function
   computes that quantity. The check was made by reading the listing; no book figure is reproduced.
 * **Checked by test (two implementations: `test_both_implementations_agree_on_random_samples`, `test_size_corners_agree` in `tests/test_uniqueness_equivalence.py`).** `S` has two implementations, on purpose.
-  `sample_average_uniqueness` in `finlab.weights` is the dense reference: it takes the indicator
-  matrix and the draws. `_sample_uniqueness` in `finlab.monte_carlo` is the numba kernel that the
+  `sample_average_uniqueness` in `quantowl.weights` is the dense reference: it takes the indicator
+  matrix and the draws. `_sample_uniqueness` in `quantowl.monte_carlo` is the numba kernel that the
   Monte Carlo path calls: it takes the bar count and the span of each draw. The test file
   `tests/test_uniqueness_equivalence.py` feeds both the same labels and draws over 200 fixed seeds,
   with duplicate starts, identical spans, length-one spans, spans ending at the last bar and
@@ -183,7 +183,7 @@ order.
   relative). The book's own figures are not reproduced here.
 * **Claimed from the book only.** That the sequential sample is "much closer to
   IID" than the standard bootstrap.
-* **Monte Carlo.** Snippets 4.7-4.9 are implemented in `finlab.monte_carlo`, following the
+* **Monte Carlo.** Snippets 4.7-4.9 are implemented in `quantowl.monte_carlo`, following the
   printed listings, with a seeded numpy Generator in place of numpy's global generator.
   `benchmarks/bench_weights.py` measures speed only. The 0.1963 vs 0.1913 measurement above uses
   a different design and settings, so it is not comparable with the Monte Carlo experiment. See
@@ -206,7 +206,7 @@ the weight `ū^{(k)}_j` as the kernel computes it: the sum of `1/(1 + c_t)` over
 kernel computes from the same `c`.
 
 *Proof.* Both evaluate the same sequence of IEEE-754 double operations on the same inputs.
-This holds if the compiler keeps the source order of those operations. `finlab._jit` disables
+This holds if the compiler keeps the source order of those operations. `quantowl._jit` disables
 fastmath for that reason, and the argument assumes that setting. *(Proved here, given the
 no-fastmath setting. The compiler's behaviour is not checked here beyond the tests below.)*
 
@@ -330,6 +330,6 @@ uniqueness, and the first observation sits at `C_1 = w_1`, not at 0.
 ## Not covered
 
 The multiprocessing engine `mpPandasObj` (Chapter 20), the Monte Carlo study
-(Snippets 4.7-4.9, implemented in `finlab.monte_carlo`, see
+(Snippets 4.7-4.9, implemented in `quantowl.monte_carlo`, see
 [monte_carlo.md](monte_carlo.md)), class weights (end of Section 4.8), the bagging classifier of
 Chapter 6, and the exercises.

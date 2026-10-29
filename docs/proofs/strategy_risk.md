@@ -1,4 +1,4 @@
-# Proofs and derivations: `finlab.strategy_risk` (AFML ch. 15, Snippets 15.1 to 15.5)
+# Proofs and derivations: `quantowl.strategy_risk` (AFML ch. 15, Snippets 15.1 to 15.5)
 
 Status labels used throughout:
 

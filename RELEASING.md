@@ -19,7 +19,7 @@ When the version in `pyproject.toml` has no tag, the workflow:
 
 - tags the commit `vX.Y.Z`;
 - builds the sdist and the wheel;
-- publishes the release "finlab X.Y.Z" with both files attached.
+- publishes the release "quantowl X.Y.Z" with both files attached.
 
 The release notes come from `.github/releases/vX.Y.Z.md`. Without that file, they are an install line
 followed by the `CHANGELOG.md` section.

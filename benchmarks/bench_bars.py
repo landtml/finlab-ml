@@ -1,4 +1,4 @@
-"""Benchmark finlab.bars: naive per-tick Python loops vs the numba kernels.
+"""Benchmark quantowl.bars: naive per-tick Python loops vs the numba kernels.
 
 Not run by CI. Run with:  PYTHONPATH=src python3 benchmarks/bench_bars.py
 
@@ -15,7 +15,7 @@ import time
 
 import numpy as np
 
-from finlab.bars import _cum_boundaries, _imbalance_ends, _tick_rule, imbalance_bars, tick_bars
+from quantowl.bars import _cum_boundaries, _imbalance_ends, _tick_rule, imbalance_bars, tick_bars
 
 
 def naive_tick_ends(x: np.ndarray, threshold: float) -> list[int]:

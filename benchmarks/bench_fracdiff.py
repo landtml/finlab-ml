@@ -1,4 +1,4 @@
-"""Benchmark finlab.fracdiff: naive per-observation dot products vs the numba kernels.
+"""Benchmark quantowl.fracdiff: naive per-observation dot products vs the numba kernels.
 
 Not run by CI. Run with:  PYTHONPATH=src python3 benchmarks/bench_fracdiff.py
 
@@ -13,7 +13,7 @@ import time
 
 import numpy as np
 
-from finlab.fracdiff import frac_diff, frac_diff_ffd, get_weights, get_weights_ffd
+from quantowl.fracdiff import frac_diff, frac_diff_ffd, get_weights, get_weights_ffd
 
 
 def naive_ffd(x: np.ndarray, w_lag: np.ndarray) -> np.ndarray:

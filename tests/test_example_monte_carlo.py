@@ -15,7 +15,7 @@ import sys
 import numpy as np
 import pytest
 
-from finlab.monte_carlo import bootstrap_uniqueness_mc
+from quantowl.monte_carlo import bootstrap_uniqueness_mc
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "examples" / "monte_carlo.py"
@@ -86,7 +86,7 @@ def test_runs_without_plotly(monkeypatch, capsys):
     monkeypatch.setitem(sys.modules, "plotly.graph_objects", None)
     run = runpy.run_path(str(SCRIPT), run_name="example")
     out = capsys.readouterr().out
-    assert "pip install 'finlab[plot]'" in out
+    assert "pip install 'quantowl[plot]'" in out
     assert "Text summary" in out
     assert run["fig"] is None
     assert abs(run["KEY"]["mean_gap"] - MEASURED["mean_gap"]) <= EXACT_TOL

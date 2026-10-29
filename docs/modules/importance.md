@@ -1,4 +1,4 @@
-# `finlab.importance`: Feature importance: MDI, MDA, SFI, orthogonal features (AFML ch. 8)
+# `quantowl.importance`: Feature importance: MDI, MDA, SFI, orthogonal features (AFML ch. 8)
 
 MDI reads tree impurity importances you already have. MDA and SFI measure out-of-sample
 score loss from permuting or isolating a feature under a purged CV. `orthogonal_features`
@@ -10,8 +10,8 @@ Runs as written; `tests/test_doc_examples.py` executes it on every test run.
 
 ```python
 import numpy as np
-from finlab.cv import PurgedKFold
-from finlab.importance import mda, orthogonal_features, mdi_from_matrix
+from quantowl.cv import PurgedKFold
+from quantowl.importance import mda, orthogonal_features, mdi_from_matrix
 
 class Centroid:
     def fit(self, X, y, sample_weight=None):
@@ -35,7 +35,7 @@ P, eigvals, eigvecs = orthogonal_features(X)
 
 `mda` and `sfi` take a model factory that returns a scikit-learn `Pipeline`. With
 `sample_weight` given, the weights go to the final step as `<step>__sample_weight`, as
-AFML Snippet 9.2 does, and the same rules as [`finlab.tuning`](tuning.md#pipeline-weights)
+AFML Snippet 9.2 does, and the same rules as [`quantowl.tuning`](tuning.md#pipeline-weights)
 apply. `tests/test_importance.py` checks the baseline and the single-feature scores against a
 manual loop.
 
