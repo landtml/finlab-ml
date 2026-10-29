@@ -216,8 +216,9 @@ Measured on 2026-10-10 on a shared machine (4 vCPU, Python 3.13.16, numpy 2.5.3,
   ONC clustering is in `finlab.onc`, without the published repair step.
 - **Out-of-bag score.** `SequentialBootstrapBagging(oob_score=True)` is optimistic for
   overlapping labels; it does not replace purged cross-validation.
-- **Break tests without critical values.** QADF, CADF, SMT and the Chow-type statistics
-  return the statistic only, with no critical values or p-values.
+- **Break tests without critical values.** `sadf` has simulated critical values from
+  `sadf_null_quantiles` (a random-walk null). QADF, CADF, SMT and the Chow-type statistics
+  still return the statistic only, with no critical values or p-values.
 - **No purging inside CSCV or importance.** Passing a purged splitter is the
   caller's responsibility for MDA and SFI; CSCV follows the book without purging.
 - **Leakage beyond the splitter.** The CV guarantee covers the split boundary given

@@ -5,6 +5,12 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+### Added
+
+- `sadf_null_quantiles` (`finlab.structural_breaks`, AFML ch. 17): simulated quantiles of `sadf`
+  under a random-walk null, pointwise by end point and for the maximum over end points. The
+  result is reproducible by `seed`; `constant='nc'` is refused.
+
 ## [0.1.5] - 2026-10-14
 
 ### Added

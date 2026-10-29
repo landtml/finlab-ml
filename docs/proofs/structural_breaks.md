@@ -197,6 +197,84 @@ They do not take logs, and the docstrings say so.
 
 ---
 
+### 3.6 Simulated critical values for SADF (`sadf_null_quantiles`)
+
+**Definition [proved here, as a definition].** The null is the driftless random walk
+`y_t = eps_0 + ... + eps_t` with `eps_t` i.i.d. N(0, 1), so `y_{-1} = 0`. For each end point
+`t >= m - 1` the function returns the `q`-quantile of `SADF_t` over simulated walks, and the
+`q`-quantile of `max_{t >= m-1} SADF_t` over each walk. The simulated null follows the Monte Carlo
+practice for supremum ADF statistics in Phillips, Shi and Yu (2015). We did not check the
+paper or its tables.
+
+**Scale and level invariance for `c`, `ct`, `ctt` [proved here].** Fix a window and the ADF
+regression of section 3.1, with design columns `y_{t-1}`, the lagged differences
+`dy_{t-1}, ..., dy_{t-L}`, and the deterministic columns (intercept, trend, trend squared).
+Take `y' = a y + b 1` with `a != 0`. Then `dy' = a dy`, each lagged difference is multiplied
+by `a`, the level column becomes `a y_{t-1} + b 1`, and the deterministic columns do not
+change, since they do not depend on `y`. So `X' = X M`, where `M` is the identity except
+`M[0,0] = a`, `M[k,0] = b` (the intercept row `k`), and `M[l,l] = a` for each lag column `l`.
+The response is `a dy`.
+
+The row of `M^{-1}` for the level column is `(1/a) e_0'`: `(e_0' M^{-1}) M = e_0'` and column
+`j != 0` of `M` has only the diagonal entry `M[j,j]`, so `(e_0' M^{-1})_j = 0` for `j != 0`,
+and `(e_0' M^{-1})_0 a = 1`. The OLS coefficients satisfy `theta' = a M^{-1} theta`, so the
+level coefficient is `theta'_0 = a (M^{-1} theta)_0 = theta_0`. The residuals are `a` times
+the residuals, so `sigma'^2 = a^2 sigma^2`. Using the first row of `M^{-1}`,
+`[(X'X')^{-1}]_{00} = [M^{-1} (X'X)^{-1} M^{-T}]_{00} = (1/a^2) [(X'X)^{-1}]_{00}`. Hence
+`Var' = a^2 sigma^2 (1/a^2) [(X'X)^{-1}]_{00} = Var`, and `tau' = tau` for every window. The
+same holds for each start point, so `SADF_t` and its maximum are unchanged. The walks of the
+simulation therefore give the null for any scale and any starting level. `Checked by test`:
+`test_sadf_is_invariant_to_scale_and_level_for_intercept_specs` (`c`, `ct`, `ctt`, four affine
+maps), `test_sadf_is_scale_invariant_at_extreme_scale` and `test_sadf_is_invariant_to_a_large_level_shift`.
+
+**`nc` is not invariant [measured].** Without an intercept there is no column that absorbs
+`b 1`, so the argument above does not apply. On a random walk with n = 200, a level shift of
++5 changes SADF by up to 2.8 for `nc` and changes the null quantiles (400 walks, seed 123:
+`nc` q99 is 4.37 from start 0 and 4.80 from start 4.6, while `c` gives 2.96 for both). The
+function refuses `constant='nc'` for this reason.
+
+**Monte Carlo error [proved here, first order].** Let `F` be the distribution function of the
+statistic, `g = F'` at its `p`-quantile `q_p`, and `q_hat` the sample `p`-quantile of
+`n` i.i.d. draws. The count of draws below `q_p` is Binomial(n, p), so `Var(F(q_hat)) = p(1-p)/n`
+to first order, and `F(q_hat) - p` is about `g (q_hat - q_p)`. Hence
+`SE(q_hat) = sqrt(p(1-p)/n) / g`, and a test that rejects above `q_hat` has a rejection rate
+with spread `sqrt(p(1-p)/n)` around `1 - p`, from the same term. The formula needs `g > 0`
+at `q_p`.
+
+**Measured check of the formula [measured]** (scripts outside the repository, run on a shared 4-vCPU machine):
+
+- n = 200, min_length = 20, lags = 1, constant = `c`, n_sim = 1000, 20 seeds: across-seed SD of
+  the 95% sup quantile is 0.0574 (mean 2.5945). The density of the sup statistic at its 95%
+  quantile, from 20000 draws, is g = 0.1145, which predicts an SE of 0.0602.
+- Same setting, pointwise 95% quantile at t = 199: across-seed SD 0.0694 (mean 0.7681).
+- n = 100, min_length = 10, 20 seeds per row, sup 95% quantile across seeds:
+  n_sim = 250 gives SD 0.2172; n_sim = 1000 gives 0.1091; n_sim = 4000 (10 seeds) gives 0.0514.
+  The ratio of the first two is 1.99 and of the last two 2.12, against 2.0 for `1/sqrt(n_sim)`.
+- Rejection-rate spread from the formula at n_sim = 1000 and p = 0.05 is 0.0069.
+
+**Size [checked by test, measured].** `test_sadf_null_95_quantile_has_nominal_size_on_fresh_walks`
+(slow, about 7 s): n = 100, min_length = 10, null from 1000 walks (seed 11), 2000 fresh walks
+(seed 12). The rate is 0.0475 (95 of 2000), inside the binomial 3-sigma band [0.0354, 0.0646].
+The same design at n = 200, min_length = 20 gave 0.0565 (113 of 2000) in one run outside the
+suite. The rate includes the Monte Carlo error of the simulated quantile, which is not in the
+band. A single seeded run gives one rate; the spread across seeds is not measured here.
+
+**Power [measured].** An AR(1) with phi = 0.5 for 100 steps, then phi = 1.03 for 100 steps, with
+the same n = 200, min_length = 20 null: 73.5% of 200 paths exceed the 95% sup quantile
+(one run). The fast test `test_sadf_null_quantile_flags_an_explosive_path`
+checks that more than 20 of 40 such paths exceed it. This is not a power curve.
+
+**Runtime [measured]** (shared 4-vCPU machine, one run each):
+`sadf_null_quantiles(200, min_length=20)` with the default `n_sim = 1000` and `seed=None` takes
+13.19 s; with `min_length = 40` it takes 11.03 s. A single `sadf` call on a random walk at
+`n = 200` takes 0.0122 s (`min_length = 20`). Runtime grows as `n^3`, from the `sadf` cost.
+
+**Not checked.** The simulated quantiles are not compared with the published Phillips, Shi and
+Yu (2015) table, because we did not check the paper or its tables. The null is driftless and
+Gaussian; a series with drift or non-Gaussian innovations is not covered by these quantiles.
+
+---
+
 ## 4. Summary
 
 | Result | Status |
@@ -213,6 +291,12 @@ They do not take logs, and the docstrings say so.
 | ADF null distribution | claimed from the book only |
 | SADF definition, regression count `(T-m+1)(T-m+2)/2` | proved here |
 | Explosive tau diverges | claimed from the book only (PWY 2011) |
+| SADF null simulated quantiles (`sadf_null_quantiles`) definition | proved here, as a definition; the null follows PSY (2015) practice, not checked against the paper |
+| Scale and level invariance of `tau` for `c`, `ct`, `ctt` | proved here (section 3.6); checked by test |
+| `nc` not level invariant | measured (section 3.6) |
+| Quantile Monte Carlo error `sqrt(p(1-p)/n_sim)/g` | proved here (first order); matched by measurement (section 3.6) |
+| SADF null size at the 95% sup quantile | checked by test at n = 100 (rate 0.0475 on 2000 walks); measured at n = 200 (0.0565) |
+| SADF simulated quantiles against the PSY (2015) table | not checked |
 | Fast kernels equal literal references | checked by test (`test_cusum_matches_naive_mean_model`, `test_csw_sup_matches_naive`, `test_adf_matches_naive`, `test_sadf_matches_naive`) |
 
 ---
