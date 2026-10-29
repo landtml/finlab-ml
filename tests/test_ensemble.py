@@ -767,8 +767,20 @@ def test_oob_score_must_be_a_bool(value):
         SequentialBootstrapBagging(NearestCentroid, oob_score=value)
 
 
-class _FakePipeline(NearestCentroid):
-    """Duck-typed stand-in for sklearn's Pipeline: steps, named_steps, and a fit that refuses sample_weight."""
+class _PipelineName:
+    pass
+
+
+# sklearn.pipeline.Pipeline's name and module, which is what finlab checks.
+_PipelineName.__name__ = "Pipeline"
+_PipelineName.__module__ = "sklearn.pipeline"
+
+
+class _FakePipeline(NearestCentroid, _PipelineName):
+    """Stand-in for sklearn.pipeline.Pipeline: steps, and a fit that refuses sample_weight.
+
+    finlab recognises a Pipeline by class name and module, so the stand-in declares that module.
+    """
 
     def __init__(self):
         self.steps = [("scale", NearestCentroid()), ("clf", NearestCentroid())]
@@ -791,3 +803,17 @@ def test_bagging_pipeline_base_gets_sample_weight_on_final_step() -> None:
     assert len(bag.estimators_) == 3
     for est, draws in zip(bag.estimators_, bag.draws_):
         np.testing.assert_array_equal(est.fit_params["clf__sample_weight"], w[draws])
+
+
+@pytest.mark.parametrize("final", ["passthrough", None])
+def test_bagging_refuses_pipeline_ending_in_passthrough_or_none(final) -> None:
+    class _Ends(_FakePipeline):
+        def __init__(self) -> None:
+            super().__init__()
+            self.steps = [("scale", NearestCentroid()), ("clf", final)]
+            self.named_steps = dict(self.steps)
+
+    X, y, _ = _data(120)
+    bag = SequentialBootstrapBagging(_Ends, n_estimators=2, sequential=False, seed=0)
+    with pytest.raises(ValueError, match="final step"):
+        bag.fit(X, y, sample_weight=np.ones(len(y)))

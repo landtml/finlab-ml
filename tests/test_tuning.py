@@ -475,8 +475,20 @@ def test_cv_score_fits_kneighbors_base_when_no_weights():
     assert 0.0 <= mean <= 1.0
 
 
-class _FakePipeline:
-    """Duck-typed stand-in for sklearn's Pipeline: steps, named_steps, and a fit that refuses sample_weight."""
+class _PipelineName:
+    pass
+
+
+# sklearn.pipeline.Pipeline's name and module, which is what finlab checks.
+_PipelineName.__name__ = "Pipeline"
+_PipelineName.__module__ = "sklearn.pipeline"
+
+
+class _FakePipeline(_PipelineName):
+    """Stand-in for sklearn.pipeline.Pipeline: steps, and a fit that refuses sample_weight.
+
+    finlab recognises a Pipeline by class name and module, so the stand-in declares that module.
+    """
 
     def __init__(self, threshold=0.0):
         self.threshold = threshold
@@ -540,6 +552,36 @@ def test_pipeline_ending_in_passthrough_or_none_is_refused_when_weighted(final):
         grid_search(_Ends, {"threshold": [0.0]}, X, y, PurgedKFold(n_splits=3), sample_weight=w)
 
 
+class _StepsButNotPipeline:
+    """A user model that happens to have steps and named_steps; it takes sample_weight directly."""
+
+    def __init__(self):
+        self.steps = [("a", Threshold()), ("b", Threshold())]
+        self.named_steps = dict(self.steps)
+        self.fit_params = None
+
+    def fit(self, X, y, **fit_params):
+        self.fit_params = fit_params
+        return self
+
+    def predict(self, X):
+        return (X[:, 0] > 0).astype(int)
+
+
+def test_model_with_steps_that_is_not_a_pipeline_gets_sample_weight_directly():
+    X, y = _data(120)
+    w = np.random.default_rng(4).uniform(0.5, 1.5, len(y))
+    made = []
+
+    def factory(k=0):
+        model = _StepsButNotPipeline()
+        made.append(model)
+        return model
+
+    grid_search(factory, {"k": [0]}, X, y, PurgedKFold(n_splits=3), sample_weight=w)
+    assert made and all(list(m.fit_params) == ["sample_weight"] for m in made)
+
+
 def _sklearn_pipeline_factory():
     from sklearn.linear_model import LogisticRegression
     from sklearn.pipeline import Pipeline
@@ -577,6 +619,23 @@ def test_grid_search_with_sklearn_pipeline_matches_manual_weighted_loop():
     factory = _sklearn_pipeline_factory()
     res = grid_search(factory, {"C": [1.0]}, X, y, cv, sample_weight=w)
     manual = _manual_pipeline_fold_scores(factory, X, y, w, cv, "lr__sample_weight")
+    assert res.best_score == np.mean(manual)
+
+
+def test_grid_search_with_nested_sklearn_pipeline_routes_through_each_final_step():
+    pytest.importorskip("sklearn")
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.pipeline import Pipeline
+    from sklearn.preprocessing import StandardScaler
+
+    def factory(C):
+        inner = Pipeline([("lr", LogisticRegression(C=C))])
+        return Pipeline([("scale", StandardScaler()), ("model", inner)])
+
+    X, y, w = _sklearn_data()
+    cv = PurgedKFold(n_splits=4)
+    res = grid_search(factory, {"C": [1.0]}, X, y, cv, sample_weight=w)
+    manual = _manual_pipeline_fold_scores(factory, X, y, w, cv, "model__lr__sample_weight")
     assert res.best_score == np.mean(manual)
 
 

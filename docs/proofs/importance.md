@@ -131,7 +131,8 @@ features score about 0.47–0.54 across seeds 0–5. The test asserts the rankin
 noise band of $\pm 0.1$ around chance (the test uses data seed 2, and checks the mean noise score). The seeds 0–5 values (feature 0 between 0.975 and 0.992, noise scores between 0.468 and 0.543) are pinned in `tests/test_doc_claims.py::test_importance_sfi_seeds_0_to_5`.
 
 **Checked by test** `test_mda_and_sfi_route_sample_weight_to_pipeline_final_step`: for a
-Pipeline model, each fit receives `clf__sample_weight` equal to the training weights, following
+Pipeline model, every fit (in SFI, the full-feature fit and each single-feature fit) receives
+`clf__sample_weight` equal to the training weights, following
 AFML Snippet 9.2 (`MyPipeline`), which passes the weights to the last step. The routing is a rule
 of this module, not a book result. `test_mda_and_sfi_with_sklearn_pipeline_match_manual_weighted_loop`
 checks the MDA baseline and the SFI baseline exactly against a manual loop, and the SFI

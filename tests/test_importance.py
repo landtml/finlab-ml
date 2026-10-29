@@ -652,8 +652,20 @@ def test_orthogonal_transform_maps_pd_na_to_a_nan_row() -> None:
     assert np.isfinite(out[0]).all() and np.isfinite(out[2]).all()
 
 
-class _FakePipeline(NearestCentroid):
-    """Duck-typed stand-in for sklearn's Pipeline: steps, named_steps, and a fit that refuses sample_weight."""
+class _PipelineName:
+    pass
+
+
+# sklearn.pipeline.Pipeline's name and module, which is what finlab checks.
+_PipelineName.__name__ = "Pipeline"
+_PipelineName.__module__ = "sklearn.pipeline"
+
+
+class _FakePipeline(NearestCentroid, _PipelineName):
+    """Stand-in for sklearn.pipeline.Pipeline: steps, and a fit that refuses sample_weight.
+
+    finlab recognises a Pipeline by class name and module, so the stand-in declares that module.
+    """
 
     def __init__(self):
         self.steps = [("scale", NearestCentroid()), ("clf", NearestCentroid())]
@@ -680,13 +692,27 @@ def test_mda_and_sfi_route_sample_weight_to_pipeline_final_step() -> None:
             return model
 
         run(factory, X, y, cv, sample_weight=w)
-        # Each fold fits the full-feature model, then one single-feature model per feature.
-        full_fits = made[::4] if run is sfi else made
-        expected = [w[train] for train, _ in cv.split(X)]
-        for model in full_fits:
+        # sfi fits the full-feature model, then one single-feature model per feature, in each fold.
+        per_fold = 1 + X.shape[1] if run is sfi else 1
+        expected = [w[train] for train, _ in cv.split(X) for _ in range(per_fold)]
+        assert len(made) == len(expected)
+        for model, want in zip(made, expected):
             assert list(model.fit_params) == ["clf__sample_weight"]
-        for model, want in zip(full_fits, expected):
             np.testing.assert_array_equal(model.fit_params["clf__sample_weight"], want)
+
+
+@pytest.mark.parametrize("run", [mda, sfi])
+@pytest.mark.parametrize("final", ["passthrough", None])
+def test_mda_and_sfi_refuse_pipeline_ending_in_passthrough_or_none(run, final) -> None:
+    class _Ends(_FakePipeline):
+        def __init__(self) -> None:
+            super().__init__()
+            self.steps = [("scale", NearestCentroid()), ("clf", final)]
+            self.named_steps = dict(self.steps)
+
+    X, y = make_data(n=120, p=3, seed=7)
+    with pytest.raises(ValueError, match="final step"):
+        run(_Ends, X, y, PurgedKFold(n_splits=3), sample_weight=np.ones(len(y)))
 
 
 def test_mda_refuses_pipeline_ending_in_passthrough_when_weighted() -> None:
