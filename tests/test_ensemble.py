@@ -765,3 +765,29 @@ def test_oob_refuses_non_finite_out_of_bag_probabilities():
 def test_oob_score_must_be_a_bool(value):
     with pytest.raises(TypeError, match="oob_score"):
         SequentialBootstrapBagging(NearestCentroid, oob_score=value)
+
+
+class _FakePipeline(NearestCentroid):
+    """Duck-typed stand-in for sklearn's Pipeline: steps, named_steps, and a fit that refuses sample_weight."""
+
+    def __init__(self):
+        self.steps = [("scale", NearestCentroid()), ("clf", NearestCentroid())]
+        self.named_steps = dict(self.steps)
+        self.fit_params = None
+
+    def fit(self, X, y, **fit_params):
+        if "sample_weight" in fit_params:
+            raise ValueError("Pipeline.fit does not accept the sample_weight parameter.")
+        self.fit_params = fit_params
+        return super().fit(X, y)
+
+
+def test_bagging_pipeline_base_gets_sample_weight_on_final_step() -> None:
+    X, y, _ = _data(120)
+    w = np.random.default_rng(8).uniform(0.5, 1.5, len(y))
+    bag = SequentialBootstrapBagging(_FakePipeline, n_estimators=3, sequential=False, seed=0).fit(
+        X, y, sample_weight=w
+    )
+    assert len(bag.estimators_) == 3
+    for est, draws in zip(bag.estimators_, bag.draws_):
+        np.testing.assert_array_equal(est.fit_params["clf__sample_weight"], w[draws])

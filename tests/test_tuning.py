@@ -473,3 +473,133 @@ def test_cv_score_fits_kneighbors_base_when_no_weights():
     X, y = _data()
     mean, _ = cv_score(lambda: KNeighborsClassifier(n_neighbors=3), {}, X, y, PurgedKFold(3))
     assert 0.0 <= mean <= 1.0
+
+
+class _FakePipeline:
+    """Duck-typed stand-in for sklearn's Pipeline: steps, named_steps, and a fit that refuses sample_weight."""
+
+    def __init__(self, threshold=0.0):
+        self.threshold = threshold
+        self.steps = [("scale", Threshold()), ("thresh", Threshold(threshold))]
+        self.named_steps = dict(self.steps)
+        self.fit_params = None
+
+    def fit(self, X, y, **fit_params):
+        if "sample_weight" in fit_params:
+            raise ValueError("Pipeline.fit does not accept the sample_weight parameter.")
+        self.fit_params = fit_params
+        return self
+
+    def predict(self, X):
+        return (X[:, 0] > self.threshold).astype(int)
+
+
+def test_pipeline_gets_sample_weight_on_its_final_step():
+    X, y = _data(120)
+    w = np.random.default_rng(3).uniform(0.5, 1.5, len(y))
+    cv = PurgedKFold(n_splits=3)
+    made = []
+
+    def factory(**params):
+        model = _FakePipeline(**params)
+        made.append(model)
+        return model
+
+    grid_search(factory, {"threshold": [0.0]}, X, y, cv, sample_weight=w)
+    expected = [w[train] for train, _ in cv.split(X)]
+    assert len(made) == len(expected)
+    for model, want in zip(made, expected):
+        assert list(model.fit_params) == ["thresh__sample_weight"]
+        np.testing.assert_array_equal(model.fit_params["thresh__sample_weight"], want)
+
+
+def test_pipeline_without_sample_weight_is_fit_with_no_fit_params():
+    X, y = _data(120)
+    made = []
+
+    def factory(**params):
+        model = _FakePipeline(**params)
+        made.append(model)
+        return model
+
+    grid_search(factory, {"threshold": [0.0]}, X, y, PurgedKFold(n_splits=3))
+    assert all(model.fit_params == {} for model in made)
+
+
+@pytest.mark.parametrize("final", ["passthrough", None])
+def test_pipeline_ending_in_passthrough_or_none_is_refused_when_weighted(final):
+    class _Ends(_FakePipeline):
+        def __init__(self, threshold=0.0):
+            super().__init__(threshold)
+            self.steps = [("scale", Threshold()), ("thresh", final)]
+            self.named_steps = dict(self.steps)
+
+    X, y = _data(120)
+    w = np.ones(len(y))
+    with pytest.raises(ValueError, match="final step"):
+        grid_search(_Ends, {"threshold": [0.0]}, X, y, PurgedKFold(n_splits=3), sample_weight=w)
+
+
+def _sklearn_pipeline_factory():
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.pipeline import Pipeline
+    from sklearn.preprocessing import StandardScaler
+
+    def factory(C):
+        return Pipeline([("scale", StandardScaler()), ("lr", LogisticRegression(C=C))])
+
+    return factory
+
+
+def _sklearn_data(n=300, seed=1):
+    rng = np.random.default_rng(seed)
+    X = rng.normal(size=(n, 3))
+    y = (X[:, 0] + 0.5 * rng.normal(size=n) > 0).astype(int)
+    w = rng.uniform(0.5, 1.5, n)
+    return X, y, w
+
+
+def _manual_pipeline_fold_scores(factory, X, y, w, cv, key):
+    """Weighted accuracy per fold, fitting the pipeline with its weight under ``key``."""
+    scores = []
+    for train, test in cv.split(X):
+        model = factory(C=1.0)
+        model.fit(X[train], y[train], **{key: w[train]})
+        hit = (model.predict(X[test]) == y[test]).astype(float)
+        scores.append(float(np.sum(hit * w[test]) / np.sum(w[test])))
+    return scores
+
+
+def test_grid_search_with_sklearn_pipeline_matches_manual_weighted_loop():
+    pytest.importorskip("sklearn")
+    X, y, w = _sklearn_data()
+    cv = PurgedKFold(n_splits=4)
+    factory = _sklearn_pipeline_factory()
+    res = grid_search(factory, {"C": [1.0]}, X, y, cv, sample_weight=w)
+    manual = _manual_pipeline_fold_scores(factory, X, y, w, cv, "lr__sample_weight")
+    assert res.best_score == np.mean(manual)
+
+
+def test_grid_search_with_sklearn_pipeline_and_metadata_routing_matches_manual_loop():
+    pytest.importorskip("sklearn")
+    from sklearn import config_context
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.pipeline import Pipeline
+    from sklearn.preprocessing import StandardScaler
+
+    X, y, w = _sklearn_data()
+    cv = PurgedKFold(n_splits=4)
+
+    def factory(C):
+        # Routing needs an explicit request from every step that takes sample_weight, the scaler too.
+        return Pipeline(
+            [
+                ("scale", StandardScaler().set_fit_request(sample_weight=False)),
+                ("lr", LogisticRegression(C=C).set_fit_request(sample_weight=True)),
+            ]
+        )
+
+    with config_context(enable_metadata_routing=True):
+        res = grid_search(factory, {"C": [1.0]}, X, y, cv, sample_weight=w)
+        manual = _manual_pipeline_fold_scores(factory, X, y, w, cv, "sample_weight")
+    assert res.best_score == np.mean(manual)

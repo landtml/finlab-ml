@@ -36,6 +36,7 @@ import numpy.typing as npt
 import pandas as pd
 
 from ._checks import _same_index, tz_mismatch_message
+from ._fit import fit_model
 from .weights import indicator_matrix, sequential_bootstrap
 
 __all__ = ["SequentialBootstrapBagging"]
@@ -280,11 +281,7 @@ class SequentialBootstrapBagging:
                         "oob_score=True needs predict_proba on the base estimator, but "
                         f"{type(est).__name__} has none. Set oob_score=False or use a base with predict_proba."
                     )
-                if w is None:
-                    # Some bases (KNeighborsClassifier) take no sample_weight keyword at all.
-                    est.fit(Xa[draws], ya[draws])
-                else:
-                    est.fit(Xa[draws], ya[draws], sample_weight=w[draws])
+                fit_model(est, Xa[draws], ya[draws], None if w is None else w[draws])
                 if hasattr(est, "predict_proba") and not hasattr(est, "classes_"):
                     # Without classes_ the columns are taken to be self.classes_, which holds only
                     # if the bag saw every class. Name the problem here, not at predict time.

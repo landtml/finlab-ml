@@ -28,6 +28,16 @@ res = grid_search(Threshold, {"threshold": [-1.0, 0.0, 0.5, 2.0]}, X, y, PurgedK
 print(res.best_params, round(res.best_score, 3))
 ```
 
+## Pipeline weights
+
+A model factory may return a scikit-learn `Pipeline`. A Pipeline refuses a bare `sample_weight`
+keyword, so when weights are given the search passes them to the final step as
+`<step>__sample_weight`, the form AFML Snippet 9.2 uses. The final step must be an estimator; a
+Pipeline ending in `None` or `"passthrough"` raises `ValueError`. With scikit-learn metadata
+routing enabled, the weights go as `sample_weight` instead, and every step that takes them
+must set its request, for example `StandardScaler().set_fit_request(sample_weight=False)`.
+`tests/test_tuning.py` checks both forms against a manual loop.
+
 ## Notes
 
 Proof: [tuning.md](../proofs/tuning.md).
