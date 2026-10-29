@@ -49,6 +49,7 @@ import numpy.typing as npt
 import pandas as pd
 
 from finlab._checks import _same_index, tz_mismatch_message
+from finlab._fit import fit_model
 from finlab._jit import jit
 
 __all__ = [
@@ -152,11 +153,7 @@ def _fit(
     sample_weight: npt.NDArray[np.float64] | None,
 ) -> Estimator:
     model = model_factory()
-    if sample_weight is None:
-        # Some models (KNeighborsClassifier) take no sample_weight keyword at all.
-        model.fit(X, y)
-    else:
-        model.fit(X, y, sample_weight=sample_weight)
+    fit_model(model, X, y, sample_weight)
     return model
 
 

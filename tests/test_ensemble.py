@@ -765,3 +765,55 @@ def test_oob_refuses_non_finite_out_of_bag_probabilities():
 def test_oob_score_must_be_a_bool(value):
     with pytest.raises(TypeError, match="oob_score"):
         SequentialBootstrapBagging(NearestCentroid, oob_score=value)
+
+
+class _PipelineName:
+    pass
+
+
+# sklearn.pipeline.Pipeline's name and module, which is what finlab checks.
+_PipelineName.__name__ = "Pipeline"
+_PipelineName.__module__ = "sklearn.pipeline"
+
+
+class _FakePipeline(NearestCentroid, _PipelineName):
+    """Stand-in for sklearn.pipeline.Pipeline: steps, and a fit that refuses sample_weight.
+
+    finlab recognises a Pipeline by class name and module, so the stand-in declares that module.
+    """
+
+    def __init__(self):
+        self.steps = [("scale", NearestCentroid()), ("clf", NearestCentroid())]
+        self.named_steps = dict(self.steps)
+        self.fit_params = None
+
+    def fit(self, X, y, **fit_params):
+        if "sample_weight" in fit_params:
+            raise ValueError("Pipeline.fit does not accept the sample_weight parameter.")
+        self.fit_params = fit_params
+        return super().fit(X, y)
+
+
+def test_bagging_pipeline_base_gets_sample_weight_on_final_step() -> None:
+    X, y, _ = _data(120)
+    w = np.random.default_rng(8).uniform(0.5, 1.5, len(y))
+    bag = SequentialBootstrapBagging(_FakePipeline, n_estimators=3, sequential=False, seed=0).fit(
+        X, y, sample_weight=w
+    )
+    assert len(bag.estimators_) == 3
+    for est, draws in zip(bag.estimators_, bag.draws_):
+        np.testing.assert_array_equal(est.fit_params["clf__sample_weight"], w[draws])
+
+
+@pytest.mark.parametrize("final", ["passthrough", None])
+def test_bagging_refuses_pipeline_ending_in_passthrough_or_none(final) -> None:
+    class _Ends(_FakePipeline):
+        def __init__(self) -> None:
+            super().__init__()
+            self.steps = [("scale", NearestCentroid()), ("clf", final)]
+            self.named_steps = dict(self.steps)
+
+    X, y, _ = _data(120)
+    bag = SequentialBootstrapBagging(_Ends, n_estimators=2, sequential=False, seed=0)
+    with pytest.raises(ValueError, match="final step"):
+        bag.fit(X, y, sample_weight=np.ones(len(y)))

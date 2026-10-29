@@ -11,6 +11,12 @@ All notable changes to this project are documented in this file. The format foll
 - `CITATION.cff`, so GitHub shows a "Cite this repository" box with APA and BibTeX exports. It
   cites AFML as a reference and carries the package version, which `tests/test_citation.py` checks.
 
+### Fixed
+
+- `grid_search`, `randomized_search`, `mda`, `sfi` and `SequentialBootstrapBagging` now send
+  `sample_weight` to a scikit-learn `Pipeline`'s final step as `<step>__sample_weight`, through
+  any nested Pipelines (AFML Snippet 9.2). Before, a weighted Pipeline raised `ValueError`.
+
 ## [0.1.5] - 2026-10-14
 
 ### Added
