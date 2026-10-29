@@ -5,6 +5,11 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+### Added
+
+- `CITATION.cff`, so GitHub shows a "Cite this repository" box with APA and BibTeX exports. It
+  cites AFML as a reference and carries the package version, which `tests/test_citation.py` checks.
+
 ## [0.1.5] - 2026-10-14
 
 ### Added

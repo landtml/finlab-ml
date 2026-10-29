@@ -271,6 +271,12 @@ Other sources cited in the code and docs include: López de Prado, Lewis and Bou
 (2019) for ONC clustering, and Bailey and López de Prado (2012) for the minimum
 track record length.
 
+## Citing
+
+`CITATION.cff` holds the citation for this library; GitHub's "Cite this repository" button
+exports it as APA or BibTeX. The methods are López de Prado's, so cite the book as well: the
+export does not include it, and [Credits](#credits) gives the full reference.
+
 ## License
 
 MIT; see [`LICENSE`](LICENSE). Parts of the CPCV implementation and its proof are ported from
