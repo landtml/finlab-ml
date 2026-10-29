@@ -5,6 +5,10 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+### Added
+
+- `distance_of_distances` (AFML 16.4.1) and `hrp_weights(cluster_on="distance_of_distances")`: clustering on the distance of distances, which reproduces the printed Snippet 16.1 call. The default `cluster_on="distance"` is unchanged.
+
 ## [0.1.5] - 2026-10-14
 
 ### Added

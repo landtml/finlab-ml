@@ -212,8 +212,7 @@ Measured on 2026-10-10 on a shared machine (4 vCPU, Python 3.13.16, numpy 2.5.3,
   JAX are not used.
 - **Parallel engine.** Snippet 4.9 runs through the book's `mpEngine` (Chapter 20).
   `finlab.monte_carlo` uses `mp_pandas_obj` in `finlab.parallel` instead.
-- **Not implemented:** the distance-of-distances clustering variant of AFML section 16.4.1.
-  ONC clustering is in `finlab.onc`, without the published repair step.
+- **Not implemented:** ONC clustering is in `finlab.onc`, without the published repair step.
 - **Out-of-bag score.** `SequentialBootstrapBagging(oob_score=True)` is optimistic for
   overlapping labels; it does not replace purged cross-validation.
 - **Break tests without critical values.** QADF, CADF, SMT and the Chow-type statistics
