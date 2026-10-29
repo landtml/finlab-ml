@@ -11,6 +11,8 @@ Implements, following the book's notation:
   AFML 17.4.2 on a single window.
 * :func:`sadf` -- the Supremum Augmented Dickey-Fuller series (AFML 17.4.2,
   Snippet 17.1 inner loop wrapped in the outer end-point loop).
+* :func:`sadf_null_quantiles` -- simulated quantiles of :func:`sadf` under a random-walk
+  null, the critical values that :func:`sadf` does not return.
 * :func:`qadf` and :func:`cadf` -- the quantile and conditional ADF series over the
   same ADF statistics that :func:`sadf` maximises (AFML 17.4.2).
 * :func:`chow_dfc` and :func:`sdfc` -- the Chow-type Dickey-Fuller statistic at
@@ -62,6 +64,7 @@ from __future__ import annotations
 
 import math
 import numbers
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -80,6 +83,7 @@ __all__ = [
     "csw_critical_value",
     "adf_stat",
     "sadf",
+    "sadf_null_quantiles",
     "qadf",
     "cadf",
     "chow_dfc",
@@ -880,6 +884,126 @@ def sadf(
     # Rescale as adf_stat does, so windows of values near 1e200 do not silently give NaN.
     out, _ = _sadf_kernel(_center_for_adf(_rescale_for_adf(y), code), min_length, lags, code)
     return _wrap(out, index)
+
+
+def _require_integer_arg(value: Any, name: str, minimum: int) -> int:
+    # Integers only, at or above ``minimum``; the message names the argument and the value.
+    _require_integer(value, f"{name} must be an integer, got {value!r}.")
+    if value < minimum:
+        raise ValueError(f"{name} must be >= {minimum}, got {value!r}.")
+    return int(value)
+
+
+def sadf_null_quantiles(
+    n_obs: int,
+    min_length: int,
+    lags: int = 1,
+    constant: str = "c",
+    quantiles: Sequence[float] = (0.90, 0.95, 0.99),
+    n_sim: int = 1000,
+    seed: int | None = None,
+) -> tuple[pd.DataFrame, pd.Series]:
+    """Simulated critical values for :func:`sadf` under a random-walk null.
+
+    Simulates ``n_sim`` random walks of length ``n_obs`` with N(0, 1) increments, runs
+    :func:`sadf` on each with the same ``min_length``, ``lags`` and ``constant``, and takes
+    quantiles of the results. Phillips, Shi and Yu (2015) obtain critical values for supremum
+    ADF statistics the same way; their published tables are not compared here.
+
+    Parameters
+    ----------
+    n_obs : int
+        Length of the walks, which is the length of the series to be tested. At least 2.
+    min_length : int
+        Smallest window (number of levels), as in :func:`sadf`. At most ``n_obs``.
+    lags : int, default 1
+        ADF lag order ``L``, as in :func:`sadf`.
+    constant : {'c', 'ct', 'ctt'}, default 'c'
+        Deterministic terms, as in :func:`sadf`. ``'nc'`` is refused; see Notes.
+    quantiles : sequence of float, default (0.90, 0.95, 0.99)
+        Quantile levels in ``(0, 1)``, strictly increasing.
+    n_sim : int, default 1000
+        Number of simulated walks, at least 1.
+    seed : int or None, default None
+        Seed of ``np.random.default_rng``. The same seed gives the same output. ``None``
+        draws fresh entropy.
+
+    Returns
+    -------
+    pointwise : pd.DataFrame
+        One row per end point, index ``0 .. n_obs - 1`` as the numpy output of :func:`sadf`,
+        and one column per quantile level. Entry ``(t, q)`` is the ``q``-quantile of
+        ``SADF_t`` over the simulated walks. Rows before ``min_length - 1`` are NaN.
+    maximum : pd.Series
+        Quantiles of ``max_t SADF_t`` over each simulated walk, taken over the end points
+        ``t >= min_length - 1``, indexed by quantile level.
+
+    Raises
+    ------
+    ValueError
+        If an argument is out of range, if ``n_obs`` is too short for ``min_length`` and
+        ``lags``, or if ``constant='nc'``. The message names the value.
+
+    Notes
+    -----
+    A walk is ``y_t = eps_0 + ... + eps_t`` with ``eps`` i.i.d. N(0, 1), that is, a walk that
+    starts at zero before its first step. The null is driftless. Under ``'c'``, ``'ct'`` and
+    ``'ctt'`` the statistic is unchanged by a change of scale and by a change of starting
+    level, so the walks above give the null distribution for any scale and any level. For
+    ``'nc'`` the statistic depends on the level, so no single simulated null applies; it is
+    refused.
+
+    The simulation costs one :func:`sadf` call per walk, which is O(n_obs^3). Each quantile
+    estimate has Monte Carlo error. The standard error of the ``p``-quantile is about
+    ``sqrt(p (1 - p) / n_sim) / g``, where ``g`` is the density of the statistic at that
+    quantile. A test that rejects above the simulated quantile therefore has a rejection
+    rate that varies by about ``sqrt(p (1 - p) / n_sim)`` around ``1 - p`` for the same
+    reason. Increase ``n_sim`` to reduce this error in proportion to ``1 / sqrt(n_sim)``.
+    """
+    n_obs = _require_integer_arg(n_obs, "n_obs", minimum=2)
+    if isinstance(min_length, numbers.Integral) and min_length > n_obs:
+        raise ValueError(f"min_length={min_length} exceeds n_obs={n_obs}.")
+    n_sim = _require_integer_arg(n_sim, "n_sim", minimum=1)
+    if seed is not None:
+        seed = _require_integer_arg(seed, "seed", minimum=0)
+    try:
+        raw_levels = list(quantiles)
+    except TypeError:
+        raise ValueError(f"quantiles must be a sequence of numbers, got {quantiles!r}.") from None
+    levels = [
+        _require_real_in(q, "quantiles", 0.0, 1.0, low_open=True, high_open=True)
+        for q in raw_levels
+    ]
+    if not levels:
+        raise ValueError("quantiles must not be empty.")
+    if any(b <= a for a, b in zip(levels, levels[1:])):
+        raise ValueError(f"quantiles must be strictly increasing, got {quantiles!r}.")
+    # Probe the sadf argument checks on a non-constant series of the right length.
+    _, _, lags, code, min_length = _window_inputs(
+        np.arange(n_obs, dtype=np.float64), min_length, lags, constant, "lags"
+    )
+    if code == _CONSTANT_CODES["nc"]:
+        raise ValueError(
+            "constant='nc' is not supported: the SADF null depends on the starting level, "
+            "so no single simulated null applies. Use 'c', 'ct' or 'ctt'."
+        )
+    rng = np.random.default_rng(seed)
+    sims = np.empty((n_sim, n_obs))
+    for i in range(n_sim):
+        sims[i] = sadf(np.cumsum(rng.standard_normal(n_obs)), min_length, lags, constant)
+    first = min_length - 1
+    if not np.all(np.isfinite(sims[:, first:])):
+        # A NaN would make every quantile NaN, and a test against NaN never rejects.
+        bad = int(np.sum(~np.isfinite(sims[:, first:]).all(axis=1)))
+        raise ValueError(
+            f"{bad} of {n_sim} simulated walks gave a non-finite SADF value; "
+            f"increase min_length={min_length} or reduce lags={lags}."
+        )
+    pointwise = np.full((n_obs, len(levels)), np.nan)
+    pointwise[first:] = np.quantile(sims[:, first:], levels, axis=0).T
+    maximum = np.quantile(sims[:, first:].max(axis=1), levels)
+    frame = pd.DataFrame(pointwise, index=pd.RangeIndex(n_obs), columns=levels)
+    return frame, pd.Series(maximum, index=pd.Index(levels, name="quantile"))
 
 
 def qadf(

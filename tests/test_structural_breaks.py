@@ -21,6 +21,7 @@ from finlab.structural_breaks import (
     cusum_test,
     qadf,
     sadf,
+    sadf_null_quantiles,
     sdfc,
     smt,
 )
@@ -1095,3 +1096,143 @@ def test_smt_refuses_non_integer_min_length(bad):
 def test_smt_refuses_min_length_beyond_the_series():
     with pytest.raises(ValueError, match="exceeds the series length"):
         smt(_positive_growth_series(n=40), 41, "exp")
+
+
+# ---------------------------------------------------------------------------
+# Simulated critical values for SADF (random-walk null)
+# ---------------------------------------------------------------------------
+
+
+def _explosive_path(seed: int, n_calm: int = 100, n_boom: int = 100) -> np.ndarray:
+    """AR(1) with phi = 0.5 for ``n_calm`` steps, then phi = 1.03 for ``n_boom`` steps."""
+    rng = np.random.default_rng(seed)
+    eps = rng.standard_normal(n_calm + n_boom)
+    y = np.zeros(n_calm + n_boom)
+    for i in range(1, y.size):
+        phi = 0.5 if i < n_calm else 1.03
+        y[i] = phi * y[i - 1] + eps[i]
+    return y
+
+
+def test_sadf_null_same_seed_gives_identical_output():
+    first_frame, first_max = sadf_null_quantiles(60, min_length=12, n_sim=40, seed=5)
+    second_frame, second_max = sadf_null_quantiles(60, min_length=12, n_sim=40, seed=5)
+    pd.testing.assert_frame_equal(first_frame, second_frame)
+    pd.testing.assert_series_equal(first_max, second_max)
+
+
+def test_sadf_null_different_seeds_give_different_output():
+    frame_a, max_a = sadf_null_quantiles(60, min_length=12, n_sim=40, seed=5)
+    frame_b, max_b = sadf_null_quantiles(60, min_length=12, n_sim=40, seed=6)
+    assert not frame_a.equals(frame_b)
+    assert not max_a.equals(max_b)
+
+
+def test_sadf_null_shape_and_index_follow_sadf_positions():
+    n_obs, min_length = 60, 12
+    frame, maximum = sadf_null_quantiles(n_obs, min_length=min_length, lags=1, constant="c", n_sim=20, seed=1)
+    assert frame.shape == (n_obs, 3)
+    assert frame.index.equals(pd.RangeIndex(n_obs))
+    assert list(frame.columns) == [0.90, 0.95, 0.99]
+    assert list(maximum.index) == [0.90, 0.95, 0.99]
+    walk = np.cumsum(np.random.default_rng(2).standard_normal(n_obs))
+    sadf_nan = np.isnan(np.asarray(sadf(walk, min_length=min_length, lags=1, constant="c")))
+    np.testing.assert_array_equal(frame[0.95].isna().to_numpy(), sadf_nan)
+
+
+def test_sadf_null_quantile_columns_are_non_decreasing():
+    frame, maximum = sadf_null_quantiles(80, min_length=15, n_sim=200, seed=2)
+    values = frame.to_numpy()
+    rows = ~np.isnan(values[:, 0])
+    assert rows.any()
+    assert np.all(np.diff(values[rows], axis=1) >= 0)
+    assert np.all(np.diff(maximum.to_numpy()) >= 0)
+
+
+def test_sadf_null_matches_a_direct_simulation_loop():
+    n_obs, min_length, n_sim, levels = 50, 12, 30, (0.5, 0.9)
+    frame, maximum = sadf_null_quantiles(
+        n_obs, min_length=min_length, lags=1, constant="c", quantiles=levels, n_sim=n_sim, seed=3
+    )
+    rng = np.random.default_rng(3)
+    sims = np.vstack(
+        [sadf(np.cumsum(rng.standard_normal(n_obs)), min_length=min_length, lags=1, constant="c")
+         for _ in range(n_sim)]
+    )
+    expected = np.full((n_obs, len(levels)), np.nan)
+    expected[min_length - 1 :] = np.quantile(sims[:, min_length - 1 :], levels, axis=0).T
+    np.testing.assert_allclose(frame.to_numpy(), expected, rtol=1e-12, equal_nan=True)
+    expected_max = np.quantile(sims[:, min_length - 1 :].max(axis=1), levels)
+    np.testing.assert_allclose(maximum.to_numpy(), expected_max, rtol=1e-12)
+
+
+def test_sadf_null_refuses_nc_by_name():
+    with pytest.raises(ValueError, match="constant='nc'"):
+        sadf_null_quantiles(60, min_length=12, constant="nc", n_sim=5)
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"n_sim": 0}, "n_sim must be >= 1, got 0"),
+        ({"n_sim": -3}, "n_sim must be >= 1, got -3"),
+        ({"n_sim": 2.5}, "n_sim must be an integer"),
+        ({"quantiles": (0.9, 1.0)}, "quantiles must be in"),
+        ({"quantiles": (0.0, 0.9)}, "quantiles must be in"),
+        ({"quantiles": (0.95, 0.9)}, "strictly increasing"),
+        ({"quantiles": ()}, "must not be empty"),
+        ({"quantiles": 0.95}, "sequence of numbers"),
+        ({"seed": -1}, "seed must be >= 0, got -1"),
+        ({"n_obs": 1}, "n_obs must be >= 2, got 1"),
+        ({"min_length": 40, "n_obs": 30}, "min_length=40 exceeds n_obs=30"),
+        ({"min_length": 5}, "min_length=5 too small"),
+        ({"lags": -1}, "lags must be >= 0"),
+        ({"constant": "trend"}, "constant must be one of"),
+    ],
+)
+def test_sadf_null_rejects_bad_arguments(kwargs, message):
+    args = {"n_obs": 60, "min_length": 12, "n_sim": 5, "seed": 0}
+    args.update(kwargs)
+    with pytest.raises(ValueError, match=message):
+        sadf_null_quantiles(**args)
+
+
+def test_sadf_null_quantile_flags_an_explosive_path():
+    _, maximum = sadf_null_quantiles(200, min_length=20, n_sim=200, seed=7)
+    q95 = maximum[0.95]
+    flagged = 0
+    for k in range(40):
+        s = np.asarray(sadf(_explosive_path(k), min_length=20, lags=1, constant="c"))
+        flagged += bool(np.nanmax(s[19:]) > q95)
+    assert flagged > 20, f"only {flagged} of 40 explosive paths exceeded q95={q95:.3f}"
+
+
+def test_sadf_is_invariant_to_scale_and_level_for_intercept_specs():
+    # The simulated null relies on this: scale and start level of a walk leave SADF unchanged.
+    walk = np.cumsum(np.random.default_rng(4).standard_normal(80))
+    for constant in ("c", "ct", "ctt"):
+        base = np.asarray(sadf(walk, min_length=15, lags=1, constant=constant))
+        for a, b in ((3.0, 0.0), (-0.5, 0.0), (1.0, 50.0), (1e-3, -7.0)):
+            got = np.asarray(sadf(a * walk + b, min_length=15, lags=1, constant=constant))
+            np.testing.assert_allclose(got, base, rtol=1e-6, equal_nan=True)
+
+
+@pytest.mark.slow
+def test_sadf_null_95_quantile_has_nominal_size_on_fresh_walks():
+    n_obs, min_length, n_test = 100, 10, 2000
+    _, maximum = sadf_null_quantiles(n_obs, min_length=min_length, lags=1, constant="c", n_sim=1000, seed=11)
+    q95 = maximum[0.95]
+    rng = np.random.default_rng(12)  # independent of the simulation seed
+    exceed = 0
+    for _ in range(n_test):
+        s = np.asarray(sadf(np.cumsum(rng.standard_normal(n_obs)), min_length=min_length, lags=1, constant="c"))
+        exceed += bool(np.nanmax(s[min_length - 1 :]) > q95)
+    rate = exceed / n_test
+    band = 3 * math.sqrt(0.05 * 0.95 / n_test)
+    assert abs(rate - 0.05) <= band, f"rate {rate:.4f} outside 0.05 +/- {band:.4f} (q95={q95:.3f})"
+
+
+def test_sadf_null_with_min_length_equal_to_n_obs_has_one_end_point():
+    pointwise, maximum = sadf_null_quantiles(40, min_length=40, n_sim=30, seed=3)
+    assert pointwise.dropna().index.tolist() == [39]
+    np.testing.assert_allclose(maximum.to_numpy(), pointwise.loc[39].to_numpy(), rtol=0, atol=1e-12)
