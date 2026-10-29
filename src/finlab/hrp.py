@@ -6,6 +6,8 @@ Implements AFML chapter 16, "Machine Learning Asset Allocation":
   section 16.4.1.
 * Tree clustering with :func:`scipy.cluster.hierarchy.linkage`, section 16.4.1
   and Snippet 16.1. Only the single-linkage default is used in the book.
+  :func:`distance_of_distances` gives the Euclidean distance between columns of
+  ``D``, the clustering of the book's Example 16.2; ``cluster_on`` selects it.
 * :func:`quasi_diagonalize` -- the leaf ordering of Snippet 16.2, section 16.4.2.
 * :func:`hrp_weights` -- the recursive bisection of Snippet 16.3, section 16.4.3,
   with inverse-variance allocation inside each cluster.
@@ -14,10 +16,9 @@ Scope: a single covariance (or correlation) matrix of N assets. Returns
 long-only weights summing to one. The covariance matrix is never inverted,
 so it may be singular; it must have a strictly positive diagonal.
 
-Not covered: the Euclidean "distance of distances" variant of section 16.4.1
-(the book's Example 16.2 clustering), constrained bisection (section 16.4.3's
-closing remark), the out-of-sample Monte Carlo study of section 16.6, and
-the Appendix 16.A.3 data generator.
+Not covered: constrained bisection (section 16.4.3's closing remark), the
+out-of-sample Monte Carlo study of section 16.6, and the Appendix 16.A.3 data
+generator.
 """
 
 from __future__ import annotations
@@ -27,14 +28,15 @@ from typing import Optional, Union
 import numpy as np
 import pandas as pd
 import scipy.cluster.hierarchy as sch
-from scipy.spatial.distance import squareform
+from scipy.spatial.distance import pdist, squareform
 
 from ._checks import _require_real_values
 from ._jit import jit
 
-__all__ = ["correlation_distance", "quasi_diagonalize", "hrp_weights"]
+__all__ = ["correlation_distance", "distance_of_distances", "quasi_diagonalize", "hrp_weights"]
 
 _ALLOWED_METHODS = ("single", "complete", "average", "weighted")
+_ALLOWED_CLUSTER_ON = ("distance", "distance_of_distances")
 
 MatrixLike = Union[np.ndarray, pd.DataFrame]
 
@@ -86,6 +88,47 @@ def correlation_distance(corr: MatrixLike) -> MatrixLike:
     if isinstance(corr, pd.DataFrame):
         return pd.DataFrame(dist, index=corr.index, columns=corr.columns)
     return dist
+
+
+def distance_of_distances(dist: MatrixLike) -> MatrixLike:
+    """Euclidean distance between the columns of a distance matrix (AFML 16.4.1).
+
+    Parameters
+    ----------
+    dist : array-like or pandas.DataFrame, shape (N, N)
+        Symmetric distance matrix, such as the output of :func:`correlation_distance`.
+
+    Returns
+    -------
+    numpy.ndarray or pandas.DataFrame, shape (N, N)
+        ``d~_ij = sqrt(sum_n (dist_ni - dist_nj)^2)`` with a zero diagonal. A
+        DataFrame keeps the labels of ``dist``.
+
+    Notes
+    -----
+    This is the second step of the book's section 16.4.1 and the clustering of
+    Example 16.2. Snippet 16.1 passes the square matrix to
+    :func:`scipy.cluster.hierarchy.linkage`, which computes these Euclidean
+    distances between its rows; for a symmetric ``dist`` the rows and the
+    columns coincide, so ``linkage(squareform(distance_of_distances(D)))``
+    reproduces the printed call (``test_distance_of_distances_linkage_equals_snippet_linkage``).
+
+    The diagonal of ``dist`` takes part in the sum, so pass a zero diagonal, as
+    :func:`hrp_weights` does. Scope: square input with finite, symmetric entries.
+    """
+    raw = np.asarray(dist)
+    _require_real_values("dist", raw)
+    arr = np.asarray(raw, dtype=np.float64)
+    if arr.ndim != 2 or arr.shape[0] != arr.shape[1]:
+        raise ValueError(f"dist must be square, got shape {arr.shape}")
+    if not np.all(np.isfinite(arr)):
+        raise ValueError("dist must contain only finite values")
+    if not np.allclose(arr, arr.T, rtol=0.0, atol=1e-6):
+        raise ValueError("dist must be symmetric")
+    out = squareform(pdist(arr), checks=False)
+    if isinstance(dist, pd.DataFrame):
+        return pd.DataFrame(out, index=dist.index, columns=dist.columns)
+    return out
 
 
 def quasi_diagonalize(link: np.ndarray) -> list[int]:
@@ -213,6 +256,7 @@ def hrp_weights(
     cov: MatrixLike,
     corr: Optional[MatrixLike] = None,
     method: str = "single",
+    cluster_on: str = "distance",
 ) -> Union[np.ndarray, pd.Series]:
     """Hierarchical Risk Parity weights (AFML section 16.4).
 
@@ -229,6 +273,13 @@ def hrp_weights(
         Linkage passed to :func:`scipy.cluster.hierarchy.linkage`. The book
         uses ``"single"``. ``"ward"`` is excluded because it requires
         Euclidean observations, which a distance matrix lacks.
+    cluster_on : {"distance", "distance_of_distances"}, default "distance"
+        Matrix that the linkage clusters. ``"distance"`` clusters on ``D``
+        itself, as this module always has. ``"distance_of_distances"`` clusters
+        on :func:`distance_of_distances` of ``D``, which reproduces the
+        printed Snippet 16.1 call (its linkage on the square ``D``) without the
+        ``ClusterWarning``. The two give different trees, and so different
+        weights, on the same input.
 
     Returns
     -------
@@ -240,7 +291,8 @@ def hrp_weights(
     -----
     Stages (AFML 16.4):
 
-    1. Tree clustering on ``d = sqrt(0.5 (1 - rho))``.
+    1. Tree clustering on ``d = sqrt(0.5 (1 - rho))``, or on its distance of
+       distances when ``cluster_on="distance_of_distances"``.
     2. Quasi-diagonalization: reorder assets by the tree's leaf order.
     3. Recursive bisection: split each block into halves ``L1``, ``L2`` with
        ``|L1| = floor(|L|/2)``. Let ``V_j`` be the variance of the
@@ -256,6 +308,8 @@ def hrp_weights(
     """
     if method not in _ALLOWED_METHODS:
         raise ValueError(f"method must be one of {_ALLOWED_METHODS}, got {method!r}")
+    if cluster_on not in _ALLOWED_CLUSTER_ON:
+        raise ValueError(f"cluster_on must be one of {_ALLOWED_CLUSTER_ON}, got {cluster_on!r}")
     if isinstance(cov, pd.DataFrame):
         labels = cov.index
     else:
@@ -322,6 +376,10 @@ def hrp_weights(
     else:
         D = np.asarray(correlation_distance(R), dtype=np.float64)
         np.fill_diagonal(D, 0.0)
+        if cluster_on == "distance_of_distances":
+            # Near rho = 1 the square root magnifies an asymmetry corr is allowed (1e-6) past
+            # distance_of_distances' own check, so D is symmetrised first.
+            D = np.asarray(distance_of_distances(0.5 * (D + D.T)), dtype=np.float64)
         link = sch.linkage(squareform(D, checks=False), method=method)
         order = np.asarray(quasi_diagonalize(link), dtype=np.int64)
         Cs = np.ascontiguousarray(C[np.ix_(order, order)])

@@ -18,7 +18,11 @@ returns = pd.DataFrame(rng.normal(size=(250, 5)) * [0.01, 0.02, 0.01, 0.015, 0.0
                        columns=list("ABCDE"))
 w = hrp_weights(returns.cov())
 print(w.round(3).to_dict(), round(float(w.sum()), 6))
+w_dd = hrp_weights(returns.cov(), cluster_on="distance_of_distances")
 ```
+
+`cluster_on="distance"` (the default) clusters on the correlation distance. `cluster_on="distance_of_distances"`
+clusters on the distance of distances of AFML section 16.4.1 and reproduces the printed Snippet 16.1 call.
 
 ## Notes
 
