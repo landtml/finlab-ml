@@ -5,6 +5,20 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+### Added
+
+- `SequentialBootstrapBagging` has `get_params`, `set_params`, `score` and the classifier tag, so
+  scikit-learn's `clone`, `cross_val_score` and `GridSearchCV` accept it without finlab importing
+  scikit-learn.
+
+### Changed
+
+- `SequentialBootstrapBagging` checks `n_estimators` and `oob_score` in `fit`, not in the
+  constructor, as scikit-learn's `clone` requires, so a bad value raises at `fit`.
+- `SequentialBootstrapBagging.fit` refuses a `t1` whose values are not datetimes or integer
+  positions. Weights passed as the third argument used to fail inside `finlab.weights` with a
+  pandas `TypeError`, and date strings used to fit; both now raise a `ValueError`.
+
 ## [0.1.5] - 2026-10-14
 
 ### Added

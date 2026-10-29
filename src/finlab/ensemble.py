@@ -9,7 +9,9 @@ estimates are less optimistic.
 
 :class:`SequentialBootstrapBagging` wraps any estimator that follows the duck-typed
 protocol ``fit(X, y, sample_weight=None)`` and ``predict(X)`` (plus optionally
-``predict_proba(X)``). There is no scikit-learn dependency.
+``predict_proba(X)``). There is no scikit-learn dependency. The class has ``get_params``,
+``set_params`` and ``score`` with scikit-learn's meaning, so ``clone``, ``cross_val_score`` and
+``GridSearchCV`` accept it when scikit-learn is installed.
 
 Scope
 -----
@@ -28,6 +30,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+import inspect
 import numbers
 import warnings
 
@@ -60,6 +63,39 @@ def _frame_values(X: pd.DataFrame) -> np.ndarray:
             return X.to_numpy(dtype=float, na_value=np.nan)
         return X.to_numpy(na_value=np.nan)
     return X.to_numpy()
+
+
+def _check_t1_values(t1: Any) -> None:
+    """Refuse a t1 that is not a Series of end times, before any other check reads it."""
+    # Integer values stay accepted as positional end bars. Float weights passed as t1 are the
+    # usual mistake, so the message points at sample_weight when the dtype is numeric.
+    dtype = getattr(t1, "dtype", None)
+    numeric = (
+        dtype is not None
+        and pd.api.types.is_numeric_dtype(dtype)
+        and not pd.api.types.is_bool_dtype(dtype)
+    )
+    hint = (
+        " If these are sample weights, pass them as sample_weight=...; the third argument of fit"
+        " is t1."
+        if numeric
+        else ""
+    )
+    if not isinstance(t1, pd.Series):
+        got = type(t1).__name__ if dtype is None else f"{type(t1).__name__} of dtype {dtype}"
+        raise ValueError(
+            "t1 must be a pandas Series indexed by event start, with event end times as values; "
+            f"got {got}.{hint}"
+        )
+    # An object Series of Timestamps is datetimes too, as the bags have always accepted it.
+    is_datetimes = pd.api.types.is_datetime64_any_dtype(t1) or (
+        pd.api.types.infer_dtype(t1, skipna=False) == "datetime"
+    )
+    if not (is_datetimes or pd.api.types.is_integer_dtype(t1)):
+        raise ValueError(
+            "t1 values must be datetimes (event end times) or integer positions; "
+            f"got a Series of dtype {t1.dtype}.{hint}"
+        )
 
 
 class SequentialBootstrapBagging:
@@ -111,6 +147,8 @@ class SequentialBootstrapBagging:
     ``oob_score_``, and ``fit`` warns with their count.
     """
 
+    _estimator_type = "classifier"
+
     def __init__(
         self,
         base_factory: Callable[[], Any],
@@ -120,16 +158,109 @@ class SequentialBootstrapBagging:
         seed: int | None = 0,
         oob_score: bool = False,
     ) -> None:
-        if n_estimators < 1:
-            raise ValueError(f"n_estimators must be >= 1, got {n_estimators!r}.")
-        if not isinstance(oob_score, (bool, np.bool_)):
-            raise TypeError(f"oob_score must be a bool, got {oob_score!r}.")
+        # Arguments are stored unchanged and checked in fit: scikit-learn's clone calls the
+        # constructor with the stored values, so a check here would run again on every clone.
         self.base_factory = base_factory
         self.n_estimators = n_estimators
         self.sequential = sequential
         self.max_samples = max_samples
         self.seed = seed
         self.oob_score = oob_score
+
+    def get_params(self, deep: bool = True) -> dict[str, Any]:
+        """Constructor arguments by name, as scikit-learn's ``get_params``.
+
+        Parameters
+        ----------
+        deep : bool, default True
+            Accepted for scikit-learn compatibility. The arguments hold no nested
+            estimators, so the result is the same either way.
+
+        Returns
+        -------
+        dict
+            One entry per ``__init__`` argument, holding the value currently set.
+        """
+        return {name: getattr(self, name) for name in self._param_names()}
+
+    def set_params(self, **params: Any) -> "SequentialBootstrapBagging":
+        """Set constructor arguments by name, as scikit-learn's ``set_params``.
+
+        Values are checked when :meth:`fit` runs, not here.
+
+        Parameters
+        ----------
+        **params
+            Names from ``get_params``.
+
+        Returns
+        -------
+        SequentialBootstrapBagging
+            ``self``.
+
+        Raises
+        ------
+        ValueError
+            If a name is not a constructor argument. No argument is changed in that case.
+        """
+        valid = self._param_names()
+        unknown = [name for name in params if name not in valid]
+        if unknown:
+            raise ValueError(
+                f"Invalid parameter(s) {unknown} for SequentialBootstrapBagging; "
+                f"valid parameters are {valid}."
+            )
+        for name, value in params.items():
+            setattr(self, name, value)
+        return self
+
+    @classmethod
+    def _param_names(cls) -> list[str]:
+        return [name for name in inspect.signature(cls.__init__).parameters if name != "self"]
+
+    def score(
+        self,
+        X: npt.ArrayLike | pd.DataFrame,
+        y: npt.ArrayLike | pd.Series,
+        sample_weight: npt.ArrayLike | None = None,
+    ) -> float:
+        """Mean accuracy of :meth:`predict`, as scikit-learn's ``ClassifierMixin.score``.
+
+        Parameters
+        ----------
+        X : array-like or pandas
+            Features, rows aligned with ``y``.
+        y : array-like or pandas
+            True labels.
+        sample_weight : array-like, optional
+            Weight per row. The accuracy is the weighted mean of the per-row hits.
+
+        Returns
+        -------
+        float
+        """
+        correct = np.asarray(self.predict(X)) == np.asarray(y)
+        if sample_weight is None:
+            return float(correct.mean())
+        w = np.asarray(sample_weight, dtype=float)
+        if w.shape != correct.shape:
+            raise ValueError(
+                f"sample_weight has shape {w.shape} but X has {correct.shape[0]} rows; "
+                f"expected length {correct.shape[0]}."
+            )
+        return float(np.average(correct, weights=w))
+
+    def __sklearn_tags__(self) -> Any:
+        # Imported here: scikit-learn calls this only when it is installed, and this module
+        # never imports it. The tags mirror ClassifierMixin.
+        from sklearn.base import BaseEstimator
+        from sklearn.utils import ClassifierTags
+
+        tags = BaseEstimator.__sklearn_tags__(self)
+        tags.estimator_type = "classifier"
+        tags.classifier_tags = ClassifierTags()
+        tags.target_tags.required = True
+        return tags
 
     def fit(
         self,
@@ -146,12 +277,26 @@ class SequentialBootstrapBagging:
             Features and labels, rows aligned.
         t1 : pd.Series, optional
             Event-end time per row, indexed by row start time (see
-            :func:`finlab.cv.make_t1`). Required when ``sequential=True``. A NaT end
-            time is refused; :func:`finlab.labeling.get_events` leaves NaT
-            for unresolved events, so drop those rows before fitting.
+            :func:`finlab.cv.make_t1`). Its values must be datetimes, or integers when
+            they are positional end bars; any other dtype is refused. Required when
+            ``sequential=True``. A NaT end time is refused; :func:`finlab.labeling.get_events`
+            leaves NaT for unresolved events, so drop those rows before fitting.
         sample_weight : array-like, optional
             Weights passed to each base estimator's ``fit``, sliced per bag.
+
+        Raises
+        ------
+        ValueError
+            If ``n_estimators`` is below 1, or ``t1`` is not a Series of end times.
+        TypeError
+            If ``oob_score`` is not a bool.
         """
+        if self.n_estimators < 1:
+            raise ValueError(f"n_estimators must be >= 1, got {self.n_estimators!r}.")
+        if not isinstance(self.oob_score, (bool, np.bool_)):
+            raise TypeError(f"oob_score must be a bool, got {self.oob_score!r}.")
+        if t1 is not None:
+            _check_t1_values(t1)
         Xa = _frame_values(X) if isinstance(X, pd.DataFrame) else np.asarray(X)
         ya = y.to_numpy() if isinstance(y, pd.Series) else np.asarray(y)
         n = Xa.shape[0]
@@ -199,9 +344,6 @@ class SequentialBootstrapBagging:
         if self.sequential:
             if t1 is None:
                 raise ValueError("t1 is required for sequential bootstrap.")
-            if not isinstance(t1, pd.Series):
-                # An ndarray t1 must not reach t1.index, where it fails with an AttributeError.
-                raise ValueError("t1 must be a pandas Series indexed by event start.")
             if len(t1) != n:
                 raise ValueError("t1 must have one entry per row of X.")
             if t1.isna().any():

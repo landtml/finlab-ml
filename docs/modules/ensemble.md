@@ -71,6 +71,31 @@ Labels that overlap in time leak between in-bag and out-of-bag samples, so the O
 is optimistic for overlapping labels. It is no substitute for purged cross-validation
 ([cv](cv.md)). Claimed from the book only (not verified against the text).
 
+## Use with scikit-learn
+
+`SequentialBootstrapBagging` has `get_params`, `set_params`, `score` and the classifier tag, so
+scikit-learn's `clone`, `cross_val_score` and `GridSearchCV` accept it. finlab does not import
+scikit-learn. The block below needs scikit-learn installed, so the test suite does not run it.
+Its `params=` keyword needs scikit-learn 1.4 or later.
+
+```
+from sklearn.model_selection import GridSearchCV, cross_val_score
+from sklearn.tree import DecisionTreeClassifier
+from finlab.cv import PurgedKFold, make_t1
+from finlab.ensemble import SequentialBootstrapBagging
+
+# X is a DataFrame indexed by event start, the same index as t1, so PurgedKFold can align them.
+t1 = make_t1(X.index, horizon=10)
+cv = PurgedKFold(n_splits=5, t1=t1)
+bag = SequentialBootstrapBagging(DecisionTreeClassifier, n_estimators=10, seed=0)
+scores = cross_val_score(bag, X, y, cv=cv, params={"t1": t1})
+search = GridSearchCV(bag, {"n_estimators": [10, 20]}, cv=cv).fit(X, y, t1=t1)
+```
+
+The third argument of `fit` is `t1`, not `sample_weight`. `fit` refuses a `t1` whose values
+are not datetimes or integer positions, so weights passed there, as in scikit-learn's
+`fit(X, y, sample_weight)`, raise a `ValueError` that names `sample_weight`.
+
 ## Notes
 
 Proof: [ensemble.md](../proofs/ensemble.md). Scope: the OOB score uses the draws of one fit
