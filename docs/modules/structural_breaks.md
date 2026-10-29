@@ -88,8 +88,8 @@ at or after `ceil(tau * T)`. It returns the t-statistic of the slope.
 ## Notes
 
 Proof: [structural_breaks.md](../proofs/structural_breaks.md). Scope: no p-values for any statistic.
-Simulated critical values exist for SADF only (`sadf_null_quantiles`); CUSUM, QADF, CADF, SMT
-and the Chow-type statistics have none. The Chu-Stinchcombe-White critical value
+SADF has simulated critical values (`sadf_null_quantiles`); QADF, CADF, SMT and the Chow-type
+statistics have none. The Chu-Stinchcombe-White critical value
 is read from an ambiguous book radical.
 
 Full signatures: [API reference](../API.md).

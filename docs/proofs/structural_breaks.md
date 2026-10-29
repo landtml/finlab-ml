@@ -202,9 +202,9 @@ They do not take logs, and the docstrings say so.
 **Definition [proved here, as a definition].** The null is the driftless random walk
 `y_t = eps_0 + ... + eps_t` with `eps_t` i.i.d. N(0, 1), so `y_{-1} = 0`. For each end point
 `t >= m - 1` the function returns the `q`-quantile of `SADF_t` over simulated walks, and the
-`q`-quantile of `max_{t >= m-1} SADF_t` over each walk. The simulated null follows the Monte Carlo
-practice for supremum ADF statistics in Phillips, Shi and Yu (2015). We did not check the
-paper or its tables.
+`q`-quantile of `max_{t >= m-1} SADF_t` over each walk. Phillips, Shi and Yu (2015) obtain
+critical values for supremum ADF statistics by the same kind of simulation; their paper and
+tables were not checked here.
 
 **Scale and level invariance for `c`, `ct`, `ctt` [proved here].** Fix a window and the ADF
 regression of section 3.1, with design columns `y_{t-1}`, the lagged differences
@@ -225,12 +225,13 @@ the residuals, so `sigma'^2 = a^2 sigma^2`. Using the first row of `M^{-1}`,
 same holds for each start point, so `SADF_t` and its maximum are unchanged. The walks of the
 simulation therefore give the null for any scale and any starting level. `Checked by test`:
 `test_sadf_is_invariant_to_scale_and_level_for_intercept_specs` (`c`, `ct`, `ctt`, four affine
-maps), `test_sadf_is_scale_invariant_at_extreme_scale` and `test_sadf_is_invariant_to_a_large_level_shift`.
+maps), `test_sadf_is_scale_invariant_at_extreme_scale` (`c` only) and `test_sadf_is_invariant_to_a_large_level_shift`.
 
 **`nc` is not invariant [measured].** Without an intercept there is no column that absorbs
-`b 1`, so the argument above does not apply. On a random walk with n = 200, a level shift of
-+5 changes SADF by up to 2.8 for `nc` and changes the null quantiles (400 walks, seed 123:
-`nc` q99 is 4.37 from start 0 and 4.80 from start 4.6, while `c` gives 2.96 for both). The
+`b 1`, so the argument above does not apply. With n = 200, min_length = 20 and lags = 1, a
+level shift of +5 changed `nc` SADF by as much as 3.94 across 20 walks (seeds 100 to 119), and
+it changes the null quantiles (400 walks, seed 123: `nc` q99 is 4.37 from start 0 and 4.80 from
+start 4.6, while `c` gives 2.96 for both). The
 function refuses `constant='nc'` for this reason.
 
 **Monte Carlo error [proved here, first order].** Let `F` be the distribution function of the
@@ -270,8 +271,9 @@ checks that more than 20 of 40 such paths exceed it. This is not a power curve.
 `n = 200` takes 0.0122 s (`min_length = 20`). Runtime grows as `n^3`, from the `sadf` cost.
 
 **Not checked.** The simulated quantiles are not compared with the published Phillips, Shi and
-Yu (2015) table, because we did not check the paper or its tables. The null is driftless and
-Gaussian; a series with drift or non-Gaussian innovations is not covered by these quantiles.
+Yu (2015) table, because the paper and its tables were not checked. The null is driftless and
+Gaussian. Under `c` a series with drift is not covered, and non-Gaussian innovations are not
+covered under any specification.
 
 ---
 
@@ -294,7 +296,7 @@ Gaussian; a series with drift or non-Gaussian innovations is not covered by thes
 | SADF null simulated quantiles (`sadf_null_quantiles`) definition | proved here, as a definition; the null follows PSY (2015) practice, not checked against the paper |
 | Scale and level invariance of `tau` for `c`, `ct`, `ctt` | proved here (section 3.6); checked by test |
 | `nc` not level invariant | measured (section 3.6) |
-| Quantile Monte Carlo error `sqrt(p(1-p)/n_sim)/g` | proved here (first order); matched by measurement (section 3.6) |
+| Quantile Monte Carlo error `sqrt(p(1-p)/n_sim)/g` | proved here (first order); consistent with the measurements in section 3.6 |
 | SADF null size at the 95% sup quantile | checked by test at n = 100 (rate 0.0475 on 2000 walks); measured at n = 200 (0.0565) |
 | SADF simulated quantiles against the PSY (2015) table | not checked |
 | Fast kernels equal literal references | checked by test (`test_cusum_matches_naive_mean_model`, `test_csw_sup_matches_naive`, `test_adf_matches_naive`, `test_sadf_matches_naive`) |

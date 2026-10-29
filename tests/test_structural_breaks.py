@@ -1230,3 +1230,9 @@ def test_sadf_null_95_quantile_has_nominal_size_on_fresh_walks():
     rate = exceed / n_test
     band = 3 * math.sqrt(0.05 * 0.95 / n_test)
     assert abs(rate - 0.05) <= band, f"rate {rate:.4f} outside 0.05 +/- {band:.4f} (q95={q95:.3f})"
+
+
+def test_sadf_null_with_min_length_equal_to_n_obs_has_one_end_point():
+    pointwise, maximum = sadf_null_quantiles(40, min_length=40, n_sim=30, seed=3)
+    assert pointwise.dropna().index.tolist() == [39]
+    np.testing.assert_allclose(maximum.to_numpy(), pointwise.loc[39].to_numpy(), rtol=0, atol=1e-12)

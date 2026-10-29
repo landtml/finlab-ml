@@ -907,8 +907,8 @@ def sadf_null_quantiles(
 
     Simulates ``n_sim`` random walks of length ``n_obs`` with N(0, 1) increments, runs
     :func:`sadf` on each with the same ``min_length``, ``lags`` and ``constant``, and takes
-    quantiles of the results. This follows the usual Monte Carlo practice for supremum ADF
-    statistics (Phillips, Shi and Yu, 2015).
+    quantiles of the results. Phillips, Shi and Yu (2015) obtain critical values for supremum
+    ADF statistics the same way; their published tables are not compared here.
 
     Parameters
     ----------
@@ -992,6 +992,13 @@ def sadf_null_quantiles(
     for i in range(n_sim):
         sims[i] = sadf(np.cumsum(rng.standard_normal(n_obs)), min_length, lags, constant)
     first = min_length - 1
+    if not np.all(np.isfinite(sims[:, first:])):
+        # A NaN would make every quantile NaN, and a test against NaN never rejects.
+        bad = int(np.sum(~np.isfinite(sims[:, first:]).all(axis=1)))
+        raise ValueError(
+            f"{bad} of {n_sim} simulated walks gave a non-finite SADF value; "
+            f"increase min_length={min_length} or reduce lags={lags}."
+        )
     pointwise = np.full((n_obs, len(levels)), np.nan)
     pointwise[first:] = np.quantile(sims[:, first:], levels, axis=0).T
     maximum = np.quantile(sims[:, first:].max(axis=1), levels)
