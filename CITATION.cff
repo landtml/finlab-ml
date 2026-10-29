@@ -11,7 +11,7 @@ abstract: >-
   measured or claimed from the book only.
 authors:
   - alias: landtml
-version: 0.1.5
+version: 0.1.6
 license: MIT
 repository-code: "https://github.com/landtml/quantowl"
 url: "https://github.com/landtml/quantowl"

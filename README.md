@@ -40,7 +40,7 @@ pytest                      # run the suite
 To install a tagged release instead:
 
 ```bash
-pip install "git+https://github.com/landtml/quantowl@v0.1.5"
+pip install "git+https://github.com/landtml/quantowl@v0.1.6"
 ```
 
 Requires Python 3.10 to 3.14.

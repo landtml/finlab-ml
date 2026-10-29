@@ -5,7 +5,7 @@ quantowl is a toolkit for financial machine learning that implements the methods
 ## Install
 
 ```bash
-pip install "git+https://github.com/landtml/quantowl@v0.1.5"
+pip install "git+https://github.com/landtml/quantowl@v0.1.6"
 ```
 
 Requires Python 3.10 to 3.14. From a clone of the repository:
