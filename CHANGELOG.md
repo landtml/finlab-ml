@@ -8,6 +8,8 @@ All notable changes to this project are documented in this file. The format foll
 ### Added
 
 - `distance_of_distances` (AFML 16.4.1) and `hrp_weights(cluster_on="distance_of_distances")`: clustering on the distance of distances, which reproduces the printed Snippet 16.1 call. The default `cluster_on="distance"` is unchanged.
+- `CITATION.cff`, so GitHub shows a "Cite this repository" box with APA and BibTeX exports. It
+  cites AFML as a reference and carries the package version, which `tests/test_citation.py` checks.
 
 ## [0.1.5] - 2026-10-14
 

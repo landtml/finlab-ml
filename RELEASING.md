@@ -7,7 +7,7 @@ CI workflow passes on a push to `main`.
 
 A release pull request to `main` contains:
 
-1. The new version in `pyproject.toml`.
+1. The new version in `pyproject.toml` and in `CITATION.cff` (`tests/test_citation.py` checks they match).
 2. A `## [X.Y.Z] - YYYY-MM-DD` section in `CHANGELOG.md` with the `[Unreleased]` entries moved into it, and the
    updated link references at the end of the file.
 3. The new version in the README install command (`@vX.Y.Z`).
