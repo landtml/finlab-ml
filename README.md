@@ -274,8 +274,8 @@ track record length.
 ## Citing
 
 `CITATION.cff` holds the citation for this library; GitHub's "Cite this repository" button
-exports it as APA or BibTeX. The methods are López de Prado's, so cite the book as well; the
-file lists it under `references`.
+exports it as APA or BibTeX. The methods are López de Prado's, so cite the book as well: the
+export does not include it, and [Credits](#credits) gives the full reference.
 
 ## License
 

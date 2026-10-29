@@ -5,27 +5,21 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-try:
-    import tomllib
-except ModuleNotFoundError:  # Python 3.10
-    tomllib = None
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
 def _top_level_keys(text: str) -> dict[str, str]:
     keys = {}
     for line in text.splitlines():
-        m = re.match(r"^([a-z][a-z-]*):\s*(.*)$", line)
+        m = re.match(r"^([a-z][a-z-]*):\s*([^#]*)", line)
         if m:
-            keys[m.group(1)] = m.group(2).strip().strip('"')
+            keys[m.group(1)] = m.group(2).strip().strip("\"'")
     return keys
 
 
 def _pyproject_version() -> str:
+    # A regex rather than tomllib, which Python 3.10 lacks.
     text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
-    if tomllib is not None:
-        return tomllib.loads(text)["project"]["version"]
     m = re.search(r'^version\s*=\s*"([^"]+)"', text, flags=re.MULTILINE)
     assert m is not None
     return m.group(1)
@@ -40,4 +34,5 @@ def test_citation_has_required_keys() -> None:
 
 def test_citation_version_matches_pyproject() -> None:
     keys = _top_level_keys((ROOT / "CITATION.cff").read_text(encoding="utf-8"))
+    assert "version" in keys, "CITATION.cff has no top-level version"
     assert keys["version"] == _pyproject_version()
