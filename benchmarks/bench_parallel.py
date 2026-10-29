@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 
 from _timing import best_of
-from finlab.parallel import mp_pandas_obj
+from quantowl.parallel import mp_pandas_obj
 
 
 def heavy(molecule, reps=200):

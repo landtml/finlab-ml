@@ -1,4 +1,4 @@
-"""Tests for finlab.structural_breaks (AFML ch. 17).
+"""Tests for quantowl.structural_breaks (AFML ch. 17).
 
 Each fast routine is cross-checked against a brute-force reference written as
 literal loops with ``np.linalg.lstsq`` / explicit sums, on seeded random inputs.
@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from finlab.structural_breaks import (
+from quantowl.structural_breaks import (
     adf_stat,
     cadf,
     chow_dfc,
@@ -448,7 +448,7 @@ def test_sadf_nan_min_length_names_min_length():
 
 def test_csw_critical_value_rejects_b_that_makes_the_root_negative() -> None:
     # b = -10 made every critical value NaN, so the test never rejected.
-    from finlab.structural_breaks import csw_critical_value
+    from quantowl.structural_breaks import csw_critical_value
 
     with pytest.raises(ValueError, match="b"):
         csw_critical_value(np.array([1, 5, 20]), b=-10.0)
@@ -457,7 +457,7 @@ def test_csw_critical_value_rejects_b_that_makes_the_root_negative() -> None:
 
 
 def test_csw_critical_value_valid_b_unchanged() -> None:
-    from finlab.structural_breaks import csw_critical_value
+    from quantowl.structural_breaks import csw_critical_value
 
     np.testing.assert_allclose(
         csw_critical_value(np.array([1, 2]), b=4.6), np.sqrt(4.6 + np.log([1.0, 2.0]))
@@ -467,7 +467,7 @@ def test_csw_critical_value_valid_b_unchanged() -> None:
 def test_adf_stat_constant_series_reports_no_variation() -> None:
     # A constant series must be reported as having no variation, not as too few observations, and
     # constant='nc' must not silently return 0.0.
-    from finlab.structural_breaks import adf_stat
+    from quantowl.structural_breaks import adf_stat
 
     for constant in ("c", "nc"):
         with pytest.raises(ValueError, match="no variation"):
@@ -481,7 +481,7 @@ def _random_walk_levels(seed: int = 0, n: int = 200) -> np.ndarray:
 
 def test_adf_stat_is_scale_invariant_at_extreme_scale() -> None:
     # The Gram matrix overflowed at 1e160, and the error blamed the series length.
-    from finlab.structural_breaks import adf_stat
+    from quantowl.structural_breaks import adf_stat
 
     x = _random_walk_levels()
     base = adf_stat(x, lag=1)
@@ -492,7 +492,7 @@ def test_adf_stat_is_scale_invariant_at_extreme_scale() -> None:
 
 def test_sadf_is_scale_invariant_at_extreme_scale() -> None:
     # Every output was NaN at 1e200 and no error was raised.
-    from finlab.structural_breaks import sadf
+    from quantowl.structural_breaks import sadf
 
     x = _random_walk_levels()
     base = np.asarray(sadf(x, min_length=20))
@@ -505,7 +505,7 @@ def test_sadf_is_scale_invariant_at_extreme_scale() -> None:
 
 def test_sadf_rejects_constant_series_like_adf_stat() -> None:
     # sadf returned NaN silently where adf_stat raises.
-    from finlab.structural_breaks import sadf
+    from quantowl.structural_breaks import sadf
 
     with pytest.raises(ValueError, match="constant"):
         sadf(np.ones(40), min_length=10)
@@ -514,7 +514,7 @@ def test_sadf_rejects_constant_series_like_adf_stat() -> None:
 def test_csw_critical_value_nan_lag_is_named_as_lag() -> None:
     # A NaN lag passed the lag >= 1 check (NaN compares false), then failed the b check, so the error
     # blamed b. A non-finite lag is now reported as a lag.
-    from finlab.structural_breaks import csw_critical_value
+    from quantowl.structural_breaks import csw_critical_value
 
     with pytest.raises(ValueError, match="t - n must be finite"):
         csw_critical_value(np.nan)
@@ -527,8 +527,8 @@ def test_structural_breaks_reject_a_descending_index() -> None:
     # reversed series. bars.py sorts by index; here a non-ascending index is refused.
     import pandas as pd
 
-    from finlab.fracdiff import frac_diff, frac_diff_ffd
-    from finlab.structural_breaks import adf_stat, chu_stinchcombe_white, sadf
+    from quantowl.fracdiff import frac_diff, frac_diff_ffd
+    from quantowl.structural_breaks import adf_stat, chu_stinchcombe_white, sadf
 
     rw = np.cumsum(np.random.default_rng(5).standard_normal(60)) + 10
     s = pd.Series(rw, index=pd.date_range("2024-01-01", periods=60, freq="D"))
@@ -550,7 +550,7 @@ def test_structural_breaks_reject_a_descending_index() -> None:
 def test_cusum_test_and_chu_are_scale_invariant_at_large_magnitude() -> None:
     # adf_stat and sadf rescale their input, but cusum_test and chu_stinchcombe_white refused a series
     # near 1e155 although both statistics are ratios that do not change with scale.
-    from finlab import structural_breaks as sb
+    from quantowl import structural_breaks as sb
 
     y = np.cumsum(np.random.default_rng(0).standard_normal(200))
     big = y * 1e155
@@ -563,7 +563,7 @@ def test_cusum_test_and_chu_are_scale_invariant_at_large_magnitude() -> None:
 
 def test_integer_arguments_refuse_bool() -> None:
     # bool is numbers.Integral, so True was read as 1 (lag and reference).
-    from finlab import structural_breaks as sb
+    from quantowl import structural_breaks as sb
 
     y = np.cumsum(np.random.default_rng(0).standard_normal(60))
     with pytest.raises(ValueError):
@@ -575,7 +575,7 @@ def test_integer_arguments_refuse_bool() -> None:
 def test_cusum_test_refuses_residuals_that_overflow_in_original_units() -> None:
     # The statistic and sigma stayed finite, but residuals = w_s * y_scale overflowed to inf for a
     # series near 1.7e308. The residuals must be refused rather than returned as inf.
-    import finlab.structural_breaks as sb
+    import quantowl.structural_breaks as sb
 
     y = np.random.default_rng(0).choice([-1.0, 1.0], 60) * 1.7e308
     with pytest.raises(ValueError, match="not finite or underflow"):
@@ -584,7 +584,7 @@ def test_cusum_test_refuses_residuals_that_overflow_in_original_units() -> None:
 
 def test_cusum_test_large_series_keeps_finite_residuals() -> None:
     # A series of 1e155 still gives the unscaled statistics, with finite residuals in its units.
-    import finlab.structural_breaks as sb
+    import quantowl.structural_breaks as sb
 
     y = np.cumsum(np.random.default_rng(1).standard_normal(60))
     base = sb.cusum_test(y)
@@ -596,7 +596,7 @@ def test_cusum_test_large_series_keeps_finite_residuals() -> None:
 def test_csw_critical_value_refuses_infinite_b() -> None:
     # b = +inf gave infinite critical values, so chu_stinchcombe_white never rejected. The lag check
     # already refuses a non-finite value, and b now gets the same rule.
-    import finlab.structural_breaks as sb
+    import quantowl.structural_breaks as sb
 
     with pytest.raises(ValueError, match="b must be finite"):
         sb.csw_critical_value(np.array([5.0]), b=np.inf)
@@ -612,7 +612,7 @@ def test_cusum_and_chu_small_scale_match_unit_scale() -> None:
     # The rescale covered only the large side, so a series of magnitude 1e-160 gave chu 1.38622
     # against 1.38505 at scale 1 (8e-4 off) and cusum off by 1e-6. The statistics are scale-invariant,
     # so they must match scale 1 to rounding, as adf_stat already does.
-    from finlab import structural_breaks as sb
+    from quantowl import structural_breaks as sb
 
     y = np.cumsum(np.random.default_rng(0).standard_normal(120)) + 10
     base_chu = sb.chu_stinchcombe_white(y).statistic[2]
@@ -625,7 +625,7 @@ def test_cusum_and_chu_small_scale_match_unit_scale() -> None:
 
 def test_large_side_scale_still_matches_unit_scale() -> None:
     # The large side is unchanged, and the small-side rescale does not touch a normal scale.
-    from finlab import structural_breaks as sb
+    from quantowl import structural_breaks as sb
 
     y = np.cumsum(np.random.default_rng(0).standard_normal(120)) + 10
     base = sb.cusum_test(y).statistic[-1]
@@ -866,7 +866,7 @@ def test_qadf_and_cadf_at_q_one_equal_sadf_exactly():
 
 
 def test_quantile_rule_is_numpy_linear():
-    from finlab.structural_breaks import _quantile_sorted
+    from quantowl.structural_breaks import _quantile_sorted
 
     rng = np.random.default_rng(8)
     for n in [1, 2, 3, 7, 40]:

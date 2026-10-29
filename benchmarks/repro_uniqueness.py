@@ -1,4 +1,4 @@
-"""Reproduce the sequential-versus-standard bootstrap uniqueness means with finlab.weights.
+"""Reproduce the sequential-versus-standard bootstrap uniqueness means with quantowl.weights.
 
 Not run by CI. Usage:
     PYTHONPATH=src python3 benchmarks/repro_uniqueness.py
@@ -23,7 +23,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from finlab.weights import indicator_matrix, sample_average_uniqueness, sequential_bootstrap
+from quantowl.weights import indicator_matrix, sample_average_uniqueness, sequential_bootstrap
 
 N_BARS = 200
 N_LABELS = 60

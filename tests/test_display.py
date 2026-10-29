@@ -1,4 +1,4 @@
-"""Tests for finlab._display and the _repr_html_ methods of PBOResult and DeflatedSharpeResult."""
+"""Tests for quantowl._display and the _repr_html_ methods of PBOResult and DeflatedSharpeResult."""
 
 from __future__ import annotations
 
@@ -10,9 +10,9 @@ import sys
 import numpy as np
 import pytest
 
-from finlab._display import html_table
-from finlab.pbo import PBOResult, probability_of_backtest_overfitting
-from finlab.stats import DeflatedSharpeResult, deflated_sharpe
+from quantowl._display import html_table
+from quantowl.pbo import PBOResult, probability_of_backtest_overfitting
+from quantowl.stats import DeflatedSharpeResult, deflated_sharpe
 
 
 def _cell(page: str, label: str) -> str:
@@ -132,7 +132,7 @@ def test_repr_is_still_the_dataclass_repr() -> None:
 
 def test_importing_public_modules_prints_nothing() -> None:
     proc = subprocess.run(
-        [sys.executable, "-c", "import finlab, finlab.pbo, finlab.stats, finlab.trials"],
+        [sys.executable, "-c", "import quantowl, quantowl.pbo, quantowl.stats, quantowl.trials"],
         capture_output=True,
         text=True,
         timeout=300,

@@ -1,6 +1,6 @@
-# Proof notes: finlab.ensemble (AFML ch. 6)
+# Proof notes: quantowl.ensemble (AFML ch. 6)
 
-Module: `src/finlab/ensemble.py`. Tests: `tests/test_ensemble.py`.
+Module: `src/quantowl/ensemble.py`. Tests: `tests/test_ensemble.py`.
 
 ## What is proved here
 

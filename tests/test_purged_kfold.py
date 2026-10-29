@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from finlab.cv import PurgedKFold, make_t1
+from quantowl.cv import PurgedKFold, make_t1
 
 
 def _frame(n: int) -> pd.DataFrame:
@@ -65,7 +65,7 @@ def test_refuses_a_fold_with_no_training_observation_by_name():
 
 
 def test_t1_ending_before_its_start_is_refused_by_both_splitters():
-    from finlab.cv import CombinatorialPurgedCV
+    from quantowl.cv import CombinatorialPurgedCV
 
     X = _frame(60)
     t1 = make_t1(X.index, 3)

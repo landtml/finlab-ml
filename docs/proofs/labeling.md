@@ -1,4 +1,4 @@
-# Proofs and derivations: `finlab.labeling`
+# Proofs and derivations: `quantowl.labeling`
 
 Source: AFML Chapter 3 (Labeling), Snippets 3.1 to 3.8, and trend scanning
 (not in AFML Chapter 3; see Section 6).

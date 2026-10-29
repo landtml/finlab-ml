@@ -1,6 +1,6 @@
 """Shared numba compilation settings.
 
-Every hot loop in finlab is compiled to machine code with numba. Functions are
+Every hot loop in quantowl is compiled to machine code with numba. Functions are
 compiled lazily on first call and cached on disk (``cache=True``). ``fastmath``
 is deliberately *off*: reassociating floating-point operations would make the
 results depend on the compiler and the thread count, and the proofs in

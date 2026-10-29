@@ -85,7 +85,7 @@ def handle_message(msg: Any) -> dict[str, Any] | None:
         result = {
             "protocolVersion": PROTOCOL_VERSION,
             "capabilities": {"tools": {}},
-            "serverInfo": {"name": "finlab", "version": __version__},
+            "serverInfo": {"name": "quantowl", "version": __version__},
         }
         return None if is_notification else _ok(req_id, result)
     if is_notification and (method == "notifications/initialized" or method.startswith("notifications/")):

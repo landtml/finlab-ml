@@ -27,7 +27,7 @@
 # 4. Register 40 more pure-noise strategies and deflate again.
 # 5. Round-trip the registry through JSON and check that nothing changed.
 #
-# Run it from a checkout with `finlab` installed (`pip install -e .`).
+# Run it from a checkout with `quantowl` installed (`pip install -e .`).
 
 # %% [markdown]
 # ## Setup
@@ -40,8 +40,8 @@ from __future__ import annotations
 import numpy as np
 from scipy.stats import kurtosis, skew
 
-from finlab.stats import expected_max_sharpe, probabilistic_sharpe_ratio, sharpe_ratio
-from finlab.trials import TrialRegistry
+from quantowl.stats import expected_max_sharpe, probabilistic_sharpe_ratio, sharpe_ratio
+from quantowl.trials import TrialRegistry
 
 SEED = 20261010
 T = 500  # daily return observations per strategy
@@ -172,12 +172,12 @@ print("round trip equal:", roundtrip_ok)
 # %% [markdown]
 # ## Plot
 #
-# `finlab.plot.deflated_sharpe_comparison` shows the observed and benchmark Sharpe
+# `quantowl.plot.deflated_sharpe_comparison` shows the observed and benchmark Sharpe
 # ratios for 40 and for 80 trials, with the deflated Sharpe ratio of each. It needs
 # plotly; without it the cell prints the install hint.
 
 # %%
-from finlab.stats import deflated_sharpe
+from quantowl.stats import deflated_sharpe
 
 after_returns = np.asarray(reg.records[best_after].returns)
 g3_after = float(skew(after_returns))
@@ -191,7 +191,7 @@ assert abs(res_40.dsr - dsr) < 1e-12
 assert abs(res_80.dsr - dsr_after_80) < 1e-12
 
 try:
-    from finlab.plot import deflated_sharpe_comparison
+    from quantowl.plot import deflated_sharpe_comparison
 
     fig = deflated_sharpe_comparison([res_40, res_80], title="Deflated Sharpe: 40 and 80 trials")
 except ImportError as exc:

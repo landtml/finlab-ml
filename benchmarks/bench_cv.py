@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 
 from _timing import best_of
-from finlab.cv import CombinatorialPurgedCV, make_t1
+from quantowl.cv import CombinatorialPurgedCV, make_t1
 
 
 def naive_split(n, t1_pos, n_groups, combo, embargo):

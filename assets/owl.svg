@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 300" role="img" aria-labelledby="owl-title owl-desc">
-  <title id="owl-title">finlab owl mascot</title>
+  <title id="owl-title">quantowl owl mascot</title>
   <desc id="owl-desc">An owl that blinks and glances between two candlestick charts.</desc>
   <style>
     .bob    { animation: bob 3.2s ease-in-out infinite; }

@@ -1,14 +1,14 @@
 <h1 align="center">
-  <img src="assets/icon.svg" width="40" alt="" align="absmiddle"> finlab
+  <img src="assets/icon.svg" width="40" alt="" align="absmiddle"> quantowl
 </h1>
 
 <p align="center">
-  <img src="assets/owl.svg" width="460" alt="finlab mascot: an owl that blinks and glances at candlestick charts">
+  <img src="assets/owl.svg" width="460" alt="quantowl mascot: an owl that blinks and glances at candlestick charts">
 </p>
 
 <p align="center">
-  <a href="https://github.com/landtml/finlab-ml/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/landtml/finlab-ml/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://github.com/landtml/finlab-ml/tags"><img alt="Latest tag" src="https://img.shields.io/github/v/tag/landtml/finlab-ml?label=version&color=2f5d8c"></a>
+  <a href="https://github.com/landtml/quantowl/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/landtml/quantowl/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/landtml/quantowl/tags"><img alt="Latest tag" src="https://img.shields.io/github/v/tag/landtml/quantowl?label=version&color=2f5d8c"></a>
   <img alt="Python 3.10 to 3.14" src="https://img.shields.io/badge/python-3.10%20to%203.14-3776ab">
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-2a9d8f"></a>
 </p>
@@ -17,6 +17,11 @@ A toolkit for financial machine learning that implements the methods of
 Marcos López de Prado's *Advances in Financial Machine Learning* (AFML),
 organised by chapter. Hot loops are compiled to machine code with
 [numba](https://numba.pydata.org/); there is no scikit-learn dependency.
+
+quantowl was called finlab up to version 0.1.5, at `landtml/finlab-ml`. To move over, run
+`pip uninstall finlab`, install quantowl, and replace `finlab` with `quantowl` in imports and
+`finlab-mcp` with `quantowl-mcp`. quantowl is not affiliated with Marcos López de Prado or
+with Wiley, the publisher of *Advances in Financial Machine Learning*.
 
 Most methods come with tests that cross-check them against a naive reference, and
 where the book states a result, a proof note under `docs/proofs/` that marks each
@@ -27,7 +32,7 @@ claim as proved here, checked by test, measured, or claimed from the book only.
 ```bash
 pip install -e .            # core library
 pip install -e ".[dev]"     # + pytest and ruff, to run the test suite and lint
-pip install -e ".[plot]"    # + plotly, for the figures in finlab.plot
+pip install -e ".[plot]"    # + plotly, for the figures in quantowl.plot
 pip install -e ".[notebooks]"  # + Jupyter tooling, to run the notebooks in examples/
 pytest                      # run the suite
 ```
@@ -35,7 +40,7 @@ pytest                      # run the suite
 To install a tagged release instead:
 
 ```bash
-pip install "git+https://github.com/landtml/finlab-ml@v0.1.5"
+pip install "git+https://github.com/landtml/quantowl@v0.1.5"
 ```
 
 Requires Python 3.10 to 3.14.
@@ -47,10 +52,10 @@ These examples run as written (checked against the current code).
 ```python
 import numpy as np
 import pandas as pd
-from finlab.cv import CombinatorialPurgedCV, make_t1
-from finlab.stats import sharpe_ratio, deflated_sharpe_ratio
-from finlab.bet_sizing import prob_bet_size, discretize_signal
-from finlab.hrp import hrp_weights
+from quantowl.cv import CombinatorialPurgedCV, make_t1
+from quantowl.stats import sharpe_ratio, deflated_sharpe_ratio
+from quantowl.bet_sizing import prob_bet_size, discretize_signal
+from quantowl.hrp import hrp_weights
 
 rng = np.random.default_rng(0)
 idx = pd.date_range("2020-01-01", periods=500, freq="B")
@@ -78,7 +83,7 @@ print(hrp_weights(cov).round(3).to_dict())
 
 ## For AI agents
 
-`finlab-mcp` is a local MCP server that exposes the main computations as typed
+`quantowl-mcp` is a local MCP server that exposes the main computations as typed
 tools with compact JSON output. See [`docs/AGENTS.md`](docs/AGENTS.md).
 
 ## Modules
@@ -88,29 +93,29 @@ tools with compact JSON output. See [`docs/AGENTS.md`](docs/AGENTS.md).
 
 | Module | Chapter | What it provides |
 |---|---|---|
-| `finlab.cv` | 7 | `CombinatorialPurgedCV`, `PurgedKFold`, `make_t1` (purge and embargo) |
-| `finlab.bars` | 2 | time, tick, volume, dollar, imbalance and run bars; CUSUM filter |
-| `finlab.labeling` | 3 | daily volatility, triple-barrier events, bin labels, meta-labels, rare-label dropping, trend-scanning labels (not in AFML) |
-| `finlab.weights` | 4 | concurrency, average uniqueness, sequential bootstrap, return attribution, time decay |
-| `finlab.monte_carlo` | 4 | seeded Monte Carlo trial runner (`run_trials`), random label sets, standard vs sequential bootstrap uniqueness experiment |
-| `finlab.fracdiff` | 5 | fixed-width and expanding-window fractional differentiation, minimum-d search |
-| `finlab.ensemble` | 6 | `SequentialBootstrapBagging`, with an optional out-of-bag score |
-| `finlab.importance` | 8 | MDI, MDA, SFI, orthogonal features |
-| `finlab.tuning` | 9 | grid and randomized search scored by purged CV |
-| `finlab.bet_sizing` | 10 | probability and sigmoid bet sizing, target positions, limit prices, discretisation |
-| `finlab.pbo` | 11 | probability of backtest overfitting by CSCV |
-| `finlab.trading_rules` | 13 | Ornstein-Uhlenbeck half-life and fit, optimal profit-taking and stop-loss grid |
-| `finlab.trials` | not AFML (feeds 11 and 14) | trial registry (`TrialRegistry`) that supplies the number of trials and the performance matrix to PBO and deflated Sharpe |
-| `finlab.onc` | not AFML | ONC correlation clustering, without the repair step |
-| `finlab.agent` | not AFML | MCP server exposing selected computations as tools (see [`docs/AGENTS.md`](docs/AGENTS.md)) |
-| `finlab.stats` | 14 | Sharpe, probabilistic and deflated Sharpe, minimum track record length, bet timing, holding period, return concentration, drawdown and time under water |
-| `finlab.strategy_risk` | 15 | binomial Sharpe ratio, implied precision and frequency, probability of strategy failure |
-| `finlab.plot` | optional | plotly figures for PBO, deflated Sharpe and the Monte Carlo experiment (needs the `plot` extra) |
-| `finlab.hrp` | 16 | hierarchical risk parity |
-| `finlab.structural_breaks` | 17 | CUSUM tests, Chu-Stinchcombe-White, SADF, QADF, CADF, sub- and super-martingale tests, Chow-type DFC and SDFC |
-| `finlab.entropy` | 18 | plug-in, Lempel-Ziv and Kontoyiannis entropy; encoders |
-| `finlab.microstructure` | 19 | tick rule, Roll, Corwin-Schultz, Becker-Parkinson, Kyle and Hasbrouck lambda, Amihud, VPIN |
-| `finlab.parallel` | 20 | molecule partitioning and `mp_pandas_obj` on `concurrent.futures` |
+| `quantowl.cv` | 7 | `CombinatorialPurgedCV`, `PurgedKFold`, `make_t1` (purge and embargo) |
+| `quantowl.bars` | 2 | time, tick, volume, dollar, imbalance and run bars; CUSUM filter |
+| `quantowl.labeling` | 3 | daily volatility, triple-barrier events, bin labels, meta-labels, rare-label dropping, trend-scanning labels (not in AFML) |
+| `quantowl.weights` | 4 | concurrency, average uniqueness, sequential bootstrap, return attribution, time decay |
+| `quantowl.monte_carlo` | 4 | seeded Monte Carlo trial runner (`run_trials`), random label sets, standard vs sequential bootstrap uniqueness experiment |
+| `quantowl.fracdiff` | 5 | fixed-width and expanding-window fractional differentiation, minimum-d search |
+| `quantowl.ensemble` | 6 | `SequentialBootstrapBagging`, with an optional out-of-bag score |
+| `quantowl.importance` | 8 | MDI, MDA, SFI, orthogonal features |
+| `quantowl.tuning` | 9 | grid and randomized search scored by purged CV |
+| `quantowl.bet_sizing` | 10 | probability and sigmoid bet sizing, target positions, limit prices, discretisation |
+| `quantowl.pbo` | 11 | probability of backtest overfitting by CSCV |
+| `quantowl.trading_rules` | 13 | Ornstein-Uhlenbeck half-life and fit, optimal profit-taking and stop-loss grid |
+| `quantowl.trials` | not AFML (feeds 11 and 14) | trial registry (`TrialRegistry`) that supplies the number of trials and the performance matrix to PBO and deflated Sharpe |
+| `quantowl.onc` | not AFML | ONC correlation clustering, without the repair step |
+| `quantowl.agent` | not AFML | MCP server exposing selected computations as tools (see [`docs/AGENTS.md`](docs/AGENTS.md)) |
+| `quantowl.stats` | 14 | Sharpe, probabilistic and deflated Sharpe, minimum track record length, bet timing, holding period, return concentration, drawdown and time under water |
+| `quantowl.strategy_risk` | 15 | binomial Sharpe ratio, implied precision and frequency, probability of strategy failure |
+| `quantowl.plot` | optional | plotly figures for PBO, deflated Sharpe and the Monte Carlo experiment (needs the `plot` extra) |
+| `quantowl.hrp` | 16 | hierarchical risk parity |
+| `quantowl.structural_breaks` | 17 | CUSUM tests, Chu-Stinchcombe-White, SADF, QADF, CADF, sub- and super-martingale tests, Chow-type DFC and SDFC |
+| `quantowl.entropy` | 18 | plug-in, Lempel-Ziv and Kontoyiannis entropy; encoders |
+| `quantowl.microstructure` | 19 | tick rule, Roll, Corwin-Schultz, Becker-Parkinson, Kyle and Hasbrouck lambda, Amihud, VPIN |
+| `quantowl.parallel` | 20 | molecule partitioning and `mp_pandas_obj` on `concurrent.futures` |
 
 Each module in the map has its own page with a runnable example in
 [`docs/modules/`](docs/modules/) (the examples are executed by
@@ -174,7 +179,7 @@ from the repository root (see the script for the Chrome requirement).
 | Entropy | Tested on known cases. The Lempel-Ziv normalisation is the standard LZ78 one, not from AFML. |
 | Trend-scanning labels | Implemented from the literal definition. Not in AFML ch. 3; the t-threshold of 1.96 is a design choice and the citation is not verified against a primary source. |
 | Time decay | Proved and tested: the oldest observation's weight is `c + (1-c)·w1/T`, not exactly `c`. |
-| Monte Carlo trials and bootstrap uniqueness (`finlab.monte_carlo`) | Tested against a dense reference (rtol 1e-12), with worker-count invariance and determinism checked by test; proofs and measurements in [`docs/proofs/monte_carlo.md`](docs/proofs/monte_carlo.md). Follows the printed listings of Snippets 4.7-4.8, checked by reading the book, not by a test against its output. Random numbers come from a numpy Generator, so runs are not the book's. The statistical gap is measured, not proved. |
+| Monte Carlo trials and bootstrap uniqueness (`quantowl.monte_carlo`) | Tested against a dense reference (rtol 1e-12), with worker-count invariance and determinism checked by test; proofs and measurements in [`docs/proofs/monte_carlo.md`](docs/proofs/monte_carlo.md). Follows the printed listings of Snippets 4.7-4.8, checked by reading the book, not by a test against its output. Random numbers come from a numpy Generator, so runs are not the book's. The statistical gap is measured, not proved. |
 
 
 </details>
@@ -211,8 +216,8 @@ Measured on 2026-10-10 on a shared machine (4 vCPU, Python 3.13.16, numpy 2.5.3,
 - **Implementation.** Numba (LLVM machine code) is used for the hot loops. Rust and
   JAX are not used.
 - **Parallel engine.** Snippet 4.9 runs through the book's `mpEngine` (Chapter 20).
-  `finlab.monte_carlo` uses `mp_pandas_obj` in `finlab.parallel` instead.
-- **Not implemented:** ONC clustering is in `finlab.onc`, without the published repair step.
+  `quantowl.monte_carlo` uses `mp_pandas_obj` in `quantowl.parallel` instead.
+- **Not implemented:** ONC clustering is in `quantowl.onc`, without the published repair step.
 - **Out-of-bag score.** `SequentialBootstrapBagging(oob_score=True)` is optimistic for
   overlapping labels; it does not replace purged cross-validation.
 - **Break tests without critical values.** `sadf` has simulated critical values from
@@ -241,7 +246,7 @@ Measured on 2026-10-10 on a shared machine (4 vCPU, Python 3.13.16, numpy 2.5.3,
 - **Sample size.** Average uniqueness and sequential-bootstrap gains are modest in
   practice (one measured setting gave 0.1963 vs 0.1913 over 200 seeds; that run is
   recorded in `docs/proofs/weights.md`, and `benchmarks/repro_uniqueness.py` reruns it). The
-  Monte Carlo experiment in `finlab.monte_carlo` follows Snippets 4.7-4.8 at the Snippet
+  Monte Carlo experiment in `quantowl.monte_carlo` follows Snippets 4.7-4.8 at the Snippet
   4.9 sizes. Its paired gap is about 0.084 (`bootstrap_uniqueness_mc(n_iter=2000, seed=0)`,
   see `docs/proofs/monte_carlo.md` section 4). Its medians of 0.6 and 0.7 at 20,000
   trials match the medians the book states after Figure 4.2 (p. 68, as quoted in that
@@ -255,8 +260,8 @@ Measured on 2026-10-10 on a shared machine (4 vCPU, Python 3.13.16, numpy 2.5.3,
 
 Each module has a test file in `tests/` and a page in `docs/modules/`. Most also have a
 benchmark in `benchmarks/` and a proof note in `docs/proofs/` (no benchmark for
-`finlab.strategy_risk`, `finlab.trials` and `finlab.plot`; no proof note for `finlab.trials`
-and `finlab.plot`). Keep claims in the
+`quantowl.strategy_risk`, `quantowl.trials` and `quantowl.plot`; no proof note for `quantowl.trials`
+and `quantowl.plot`). Keep claims in the
 proof notes to four kinds: proved here, checked by test, measured, or claimed from the
 book only.
 

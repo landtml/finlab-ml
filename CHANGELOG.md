@@ -11,12 +11,12 @@ All notable changes to this project are documented in this file. The format foll
 - `CITATION.cff`, so GitHub shows a "Cite this repository" box with APA and BibTeX exports. It
   cites AFML as a reference and carries the package version, which `tests/test_citation.py` checks.
 - `SequentialBootstrapBagging` has `get_params`, `set_params`, `score` and the classifier tag, so
-  scikit-learn's `clone`, `cross_val_score` and `GridSearchCV` accept it without finlab importing
+  scikit-learn's `clone`, `cross_val_score` and `GridSearchCV` accept it without quantowl importing
   scikit-learn.
 - A documentation site built from `docs/` and `mkdocs.yml` by `.github/workflows/docs.yml`. The
   build runs `mkdocs build --strict` on every pull request; the site is served from GitHub Pages
   once the repository's Pages source is set to GitHub Actions.
-- `sadf_null_quantiles` (`finlab.structural_breaks`, AFML ch. 17): simulated quantiles of `sadf`
+- `sadf_null_quantiles` (`quantowl.structural_breaks`, AFML ch. 17): simulated quantiles of `sadf`
   under a random-walk null, pointwise by end point and for the maximum over end points. The
   result is reproducible by `seed`; `constant='nc'` is refused.
 
@@ -27,8 +27,13 @@ All notable changes to this project are documented in this file. The format foll
   arguments, so a bad value raises at `fit`.
 - `SequentialBootstrapBagging.fit` refuses a `t1` whose values are not datetimes or integer
   positions, also when `sequential=False`, where `t1` used to be ignored. Weights passed as the
-  third argument used to fail with an error from inside `finlab.weights`, and date strings used
+  third argument used to fail with an error from inside `quantowl.weights`, and date strings used
   to fit; both now raise a `ValueError` that names the problem.
+- The package is renamed `quantowl`: `import quantowl`, distribution name `quantowl`, and the
+  `quantowl-mcp` command. There is no `finlab` module any more; replace `finlab` with
+  `quantowl` in imports, and uninstall the old distribution with `pip uninstall finlab`. The
+  repository moves to `landtml/quantowl`, and the test variable `FINLAB_TEST_NUMBA_CACHE` is
+  now `QUANTOWL_TEST_NUMBA_CACHE`.
 
 ### Fixed
 

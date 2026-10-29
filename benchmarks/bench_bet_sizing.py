@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 
 from _timing import best_of
-from finlab.bet_sizing import average_active_signals
+from quantowl.bet_sizing import average_active_signals
 
 
 def naive_average(signals, t1, grid):

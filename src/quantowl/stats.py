@@ -56,9 +56,9 @@ import numpy as np
 import pandas as pd
 from scipy.stats import norm
 
-from finlab._checks import _require_real_values, _require_type, as_datetime_index
-from finlab._display import html_table
-from finlab._jit import jit
+from quantowl._checks import _require_real_values, _require_type, as_datetime_index
+from quantowl._display import html_table
+from quantowl._jit import jit
 
 __all__ = [
     "sharpe_ratio",
@@ -562,7 +562,7 @@ def holding_period(positions: pd.Series) -> float:
     Only closed size counts. A position still open at the end adds nothing to the
     average. Time is in float days, so a 36-hour holding period is 1.5.
 
-    The loop runs in a numba kernel (``finlab._jit.jit``), with fastmath off.
+    The loop runs in a numba kernel (``quantowl._jit.jit``), with fastmath off.
     """
     values, index = _timed_values("positions", positions)
     # The average is unchanged by a common scale of the sizes. Dividing by the largest size keeps

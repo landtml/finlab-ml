@@ -1,7 +1,7 @@
 """Hyper-parameter tuning with purged cross-validation (AFML ch. 9).
 
 Grid and randomized search over a model factory, where every candidate is scored
-by a purged, embargoed splitter (see :mod:`finlab.cv`) rather than by a plain
+by a purged, embargoed splitter (see :mod:`quantowl.cv`) rather than by a plain
 K-fold. Using the leakage-free splitter inside the search prevents the tuner from
 selecting hyper-parameters that only look good because of label overlap.
 
@@ -13,7 +13,7 @@ Scope
 -----
 Each candidate is evaluated over every split the CV yields and the mean score is
 reported. The sample weights are passed to ``fit`` and to the scorer, so
-concurrency-aware weights from :mod:`finlab.weights` are respected.
+concurrency-aware weights from :mod:`quantowl.weights` are respected.
 
 Not covered
 -----------
@@ -198,7 +198,7 @@ def cv_score(
     X, y : array-like or pandas
         Features and labels.
     cv : iterable of (train_idx, test_idx)
-        Any purged splitter from :mod:`finlab.cv`, or a list of index pairs.
+        Any purged splitter from :mod:`quantowl.cv`, or a list of index pairs.
     sample_weight : array-like, optional
         Per-sample weights used for fitting and scoring.
     scoring : callable, optional

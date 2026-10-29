@@ -1,10 +1,10 @@
-# `finlab.trials`: Trial registry for PBO and the deflated Sharpe ratio (not AFML)
+# `quantowl.trials`: Trial registry for PBO and the deflated Sharpe ratio (not AFML)
 
 Records each trial a research project runs, once, with its parameters and its return
 series. `TrialRegistry` builds the performance matrix for PBO and the inputs of the
 deflated Sharpe ratio from that record, so the number of trials N and the matrix are
 never typed in by hand. The record is not an AFML construct; it feeds
-[`finlab.pbo`](pbo.md) (AFML ch. 11) and [`finlab.stats`](stats.md) (AFML ch. 14).
+[`quantowl.pbo`](pbo.md) (AFML ch. 11) and [`quantowl.stats`](stats.md) (AFML ch. 14).
 
 ## Example
 
@@ -12,7 +12,7 @@ Runs as written; `tests/test_doc_examples.py` executes it on every test run.
 
 ```python
 import numpy as np
-from finlab.trials import TrialRegistry
+from quantowl.trials import TrialRegistry
 
 rng = np.random.default_rng(3)
 reg = TrialRegistry()

@@ -29,7 +29,7 @@ uses the event lifespans ``t1`` and is a plain sweep over positions.
 Not covered
 -----------
 The mixture-of-Gaussians budgeting approach [10.2] (it needs a fitted mixture
-model) and the meta-labeling pipeline itself (see :mod:`finlab.labeling`).
+model) and the meta-labeling pipeline itself (see :mod:`quantowl.labeling`).
 """
 
 from __future__ import annotations

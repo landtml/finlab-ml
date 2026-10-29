@@ -1,11 +1,11 @@
-"""Benchmark: wall time of finlab.tuning.grid_search over a small grid.
+"""Benchmark: wall time of quantowl.tuning.grid_search over a small grid.
 
 Not run by CI. Usage:
     PYTHONPATH=src python3 benchmarks/bench_tuning.py
 
 The estimator is a nearest-centroid classifier written in NumPy, so no scikit-learn is
 needed. The script has no reference implementation, so it prints times and no speedup.
-Each time covers the search loop, the purged splits from finlab.cv, the model's fit and
+Each time covers the search loop, the purged splits from quantowl.cv, the model's fit and
 predict, and the accuracy scorer, all for this one cheap model. A heavier model changes
 the time per fit and predict, so these numbers do not carry over to it.
 Each timing is the best of 3 runs; the search is warmed up once before timing.
@@ -17,8 +17,8 @@ import numpy as np
 import pandas as pd
 
 from _timing import best_of
-from finlab.cv import PurgedKFold, make_t1
-from finlab.tuning import grid_search
+from quantowl.cv import PurgedKFold, make_t1
+from quantowl.tuning import grid_search
 
 SHRINK_GRID = {"shrink": [0.0, 0.25, 0.5, 0.9]}
 N_SPLITS = 5

@@ -1,7 +1,7 @@
-# finlab: Proofs and Checks for `finlab.microstructure` (AFML ch. 19)
+# quantowl: Proofs and Checks for `quantowl.microstructure` (AFML ch. 19)
 
-Component: [`src/finlab/microstructure.py`](https://github.com/landtml/finlab-ml/blob/main/src/finlab/microstructure.py).
-Tests: [`tests/test_microstructure.py`](https://github.com/landtml/finlab-ml/blob/main/tests/test_microstructure.py).
+Component: [`src/quantowl/microstructure.py`](https://github.com/landtml/quantowl/blob/main/src/quantowl/microstructure.py).
+Tests: [`tests/test_microstructure.py`](https://github.com/landtml/quantowl/blob/main/tests/test_microstructure.py).
 
 Every result is tagged with one of three statuses:
 

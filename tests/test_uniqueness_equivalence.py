@@ -3,14 +3,14 @@
 Sample average uniqueness (AFML Snippet 4.4, repeats counted) has two implementations
 in the package, on purpose:
 
-* :func:`finlab.weights.sample_average_uniqueness`, the dense reference. It takes a
+* :func:`quantowl.weights.sample_average_uniqueness`, the dense reference. It takes a
   bar-by-label indicator matrix and the draws, and uses one matrix product.
-* :func:`finlab.monte_carlo._sample_uniqueness`, the numba kernel used by the Monte
+* :func:`quantowl.monte_carlo._sample_uniqueness`, the numba kernel used by the Monte
   Carlo path. It takes the number of bars and the span of each draw.
 
 The tests feed both the same labels and draws and require equal results. The dense
 matrix is built here with numpy, independently of either library function, and is
-checked against :func:`finlab.weights.indicator_matrix` in every case.
+checked against :func:`quantowl.weights.indicator_matrix` in every case.
 
 Fixed seeds: ``range(200)`` for the randomized sweep and ``range(30)`` for the
 edge-case sweeps. In the sweep, ``n_bars = 1 + seed % 40`` so every size from 1 to 40
@@ -23,8 +23,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from finlab.monte_carlo import _sample_uniqueness
-from finlab.weights import indicator_matrix, sample_average_uniqueness
+from quantowl.monte_carlo import _sample_uniqueness
+from quantowl.weights import indicator_matrix, sample_average_uniqueness
 
 MAX_BARS = 40
 MAX_LABELS = 30

@@ -1,4 +1,4 @@
-"""Benchmark: naive Python CSCV loop vs the numba kernel in finlab.pbo.
+"""Benchmark: naive Python CSCV loop vs the numba kernel in quantowl.pbo.
 
 Not run by CI. Usage:
     PYTHONPATH=src python3 benchmarks/bench_pbo.py
@@ -12,7 +12,7 @@ import time
 
 import numpy as np
 
-from finlab.pbo import probability_of_backtest_overfitting
+from quantowl.pbo import probability_of_backtest_overfitting
 
 
 def naive_cscv_logits(M: np.ndarray, S: int) -> np.ndarray:

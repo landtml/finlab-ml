@@ -1,6 +1,6 @@
 """Internal implementation of Combinatorial Purged Cross-Validation.
 
-Import from :mod:`finlab.cv` (the package's public ``__init__.py``), not this
+Import from :mod:`quantowl.cv` (the package's public ``__init__.py``), not this
 module directly; this file is the private implementation detail, kept
 separate from the public API so it can be reorganized without breaking users.
 
@@ -152,7 +152,7 @@ def _end_positions(index: pd.Index, t1: pd.Series | None) -> npt.NDArray[np.int_
         warnings.warn(
             "t1 is None: purging is skipped and every observation is treated as "
             "a one-bar event, so overlapping labels can leak across the train/test "
-            "boundary. The embargo is still applied. Pass t1 (see finlab.cv.make_t1) "
+            "boundary. The embargo is still applied. Pass t1 (see quantowl.cv.make_t1) "
             "to purge.",
             UserWarning,
             stacklevel=3,
@@ -161,7 +161,7 @@ def _end_positions(index: pd.Index, t1: pd.Series | None) -> npt.NDArray[np.int_
     if not isinstance(t1, pd.Series):
         raise TypeError(
             f"t1 must be a pandas Series mapping event start -> event end; "
-            f"got {type(t1).__name__}. Build one with finlab.make_t1()."
+            f"got {type(t1).__name__}. Build one with quantowl.cv.make_t1()."
         )
     if not index.is_monotonic_increasing:
         raise ValueError("X.index must be sorted ascending for purge/embargo.")

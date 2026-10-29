@@ -1,6 +1,6 @@
 """Benchmark: numba OTR grid vs a pure-Python loop over the same paths.
 
-The naive loop is the transcription in ``finlab.trading_rules``, run on the same
+The naive loop is the transcription in ``quantowl.trading_rules``, run on the same
 normals the kernel draws. The kernel draws its normals inside the timed call. The
 naive loop reads normals drawn before timing, so its timing leaves out the draws.
 The reported speedup is therefore a lower bound for a naive loop that draws its
@@ -15,7 +15,7 @@ from __future__ import annotations
 import numpy as np
 
 from _timing import best_of
-from finlab.trading_rules import (
+from quantowl.trading_rules import (
     _otr_exits_python,
     _pair_seeds,
     _standard_normals,

@@ -1,4 +1,4 @@
-# `finlab.tuning`: Hyper-parameter search with purged CV (AFML ch. 9)
+# `quantowl.tuning`: Hyper-parameter search with purged CV (AFML ch. 9)
 
 Grid and randomized search where each candidate is scored by a leakage-free splitter.
 The reported best score is optimistically biased; nested CV is needed for an unbiased
@@ -10,8 +10,8 @@ Runs as written; `tests/test_doc_examples.py` executes it on every test run.
 
 ```python
 import numpy as np
-from finlab.cv import PurgedKFold
-from finlab.tuning import grid_search
+from quantowl.cv import PurgedKFold
+from quantowl.tuning import grid_search
 
 class Threshold:
     def __init__(self, threshold=0.0):

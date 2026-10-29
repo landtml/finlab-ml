@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-REPO = "https://github.com/landtml/finlab-ml"
+REPO = "https://github.com/landtml/quantowl"
 
 
 def changelog_section(text: str, version: str) -> str | None:

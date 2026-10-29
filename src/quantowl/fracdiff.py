@@ -53,7 +53,7 @@ import pandas as pd
 from numba import prange
 from numpy.typing import ArrayLike, NDArray
 
-from finlab._jit import jit, pjit
+from quantowl._jit import jit, pjit
 
 __all__ = [
     "get_weights",
@@ -457,7 +457,7 @@ def find_min_d(
     adf_test : callable
         **Required.** ``adf_test(x) -> float`` takes the finite FFD values as a 1-D
         float array and returns the p-value of a unit-root test (ADF, with the
-        null of a unit root). finlab does not bundle one: the book's ADF
+        null of a unit root). quantowl does not bundle one: the book's ADF
         critical values (MacKinnon) are not in the text, so an ADF implementation
         must be injected, e.g. ``statsmodels.tsa.stattools.adfuller(x, maxlag=1,
         regression="c", autolag=None)[1]``. That is not a dependency here.
@@ -486,7 +486,7 @@ def find_min_d(
     """
     if adf_test is None:
         raise TypeError(
-            "find_min_d needs an adf_test callable (x -> p-value); finlab does not bundle an ADF test."
+            "find_min_d needs an adf_test callable (x -> p-value); quantowl does not bundle an ADF test."
         )
     if not 0.0 < adf_pvalue < 1.0:
         raise ValueError(f"adf_pvalue must be in (0, 1), got {adf_pvalue!r}.")

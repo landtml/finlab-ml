@@ -1,9 +1,9 @@
-"""Tests for finlab.onc. ONC is from López de Prado, Lewis and Boudt (2019), not AFML."""
+"""Tests for quantowl.onc. ONC is from López de Prado, Lewis and Boudt (2019), not AFML."""
 import numpy as np
 import pandas as pd
 import pytest
 
-from finlab.onc import onc, silhouette_scores
+from quantowl.onc import onc, silhouette_scores
 
 
 def _block_corr(sizes, within=0.9, between=0.05, seed=0):

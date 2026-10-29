@@ -1,4 +1,4 @@
-# `finlab.stats`: Backtest statistics: Sharpe, PSR, DSR, minTRL, bets and drawdown (AFML ch. 14)
+# `quantowl.stats`: Backtest statistics: Sharpe, PSR, DSR, minTRL, bets and drawdown (AFML ch. 14)
 
 Sharpe ratio, probabilistic Sharpe ratio (adjusted for skew and kurtosis), deflated
 Sharpe ratio (corrected for the number of trials), and minimum track record length.
@@ -11,7 +11,7 @@ Runs as written; `tests/test_doc_examples.py` executes it on every test run.
 
 ```python
 import numpy as np
-from finlab.stats import sharpe_ratio, probabilistic_sharpe_ratio, deflated_sharpe, deflated_sharpe_ratio, min_track_record_length
+from quantowl.stats import sharpe_ratio, probabilistic_sharpe_ratio, deflated_sharpe, deflated_sharpe_ratio, min_track_record_length
 
 rng = np.random.default_rng(8)
 r = rng.normal(0.0005, 0.01, 500)
@@ -39,7 +39,7 @@ Series of pnl or an equity curve.
 ```python
 import numpy as np
 import pandas as pd
-from finlab.stats import bet_timing, holding_period, return_concentration, drawdown_time_under_water
+from quantowl.stats import bet_timing, holding_period, return_concentration, drawdown_time_under_water
 
 days = pd.date_range("2024-01-01", periods=7, freq="D")
 positions = pd.Series([1, 1, -1, -1, 0, 1, 1], index=days, dtype=float)

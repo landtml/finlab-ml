@@ -1,4 +1,4 @@
-# `finlab.monte_carlo`: Seeded Monte Carlo trials and bootstrap uniqueness (AFML ch. 4)
+# `quantowl.monte_carlo`: Seeded Monte Carlo trials and bootstrap uniqueness (AFML ch. 4)
 
 `run_trials` runs a user function many times, giving each trial its own random stream.
 The results do not depend on the number of worker processes, and a longer run extends a
@@ -11,7 +11,7 @@ label sets.
 Runs as written; `tests/test_doc_examples.py` executes it on every test run.
 
 ```python
-from finlab.monte_carlo import bootstrap_uniqueness_mc, run_trials
+from quantowl.monte_carlo import bootstrap_uniqueness_mc, run_trials
 
 df = bootstrap_uniqueness_mc(n_iter=200, num_threads=1)
 print(df.shape, "trials")
@@ -39,7 +39,7 @@ print(res.shape, round(float(res["heads"].mean()), 2))
   are not clipped.
 - **Experiment (AFML Snippet 4.8).** The bar grid runs from 0 to the last label end. Each
   bootstrap sample has one draw per label. The standard sample is drawn with replacement,
-  and the sequential sample uses the inverse-CDF rule of `finlab.weights.sequential_bootstrap`.
+  and the sequential sample uses the inverse-CDF rule of `quantowl.weights.sequential_bootstrap`.
 - **Random numbers.** The draws come from a seeded `numpy.random.Generator`, not numpy's
   global generator. So the same integer seed does not reproduce the book's random stream.
 - **Draw order.** Each trial draws the start bars, then the lengths, then the standard
@@ -49,7 +49,7 @@ print(res.shape, round(float(res["heads"].mean()), 2))
   The book runs `numIters=1E6`. The default `n_iter` here is 10,000, for speed. Its medians
   match the medians the book states in the text after Figure 4.2 to one decimal place (see the proof note).
 - **Parallel runs.** `num_threads > 1` uses a process pool through
-  `finlab.parallel.mp_pandas_obj`, so the function must be defined at module level.
+  `quantowl.parallel.mp_pandas_obj`, so the function must be defined at module level.
 
 ## Notes
 

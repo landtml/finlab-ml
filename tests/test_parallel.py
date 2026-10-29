@@ -1,4 +1,4 @@
-"""Tests for finlab.parallel (AFML ch. 20)."""
+"""Tests for quantowl.parallel (AFML ch. 20)."""
 import sys
 import threading
 import warnings
@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from finlab.parallel import lin_parts, mp_pandas_obj, nested_parts
+from quantowl.parallel import lin_parts, mp_pandas_obj, nested_parts
 
 
 def _square(molecule, offset=0):

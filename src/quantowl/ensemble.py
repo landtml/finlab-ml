@@ -2,7 +2,7 @@
 
 Standard bagging draws observations i.i.d., so when labels overlap in time the
 bootstrap samples are highly redundant and the ensemble's trees are almost
-identical. Sequential bootstrap (Snippet 4.5, see :mod:`finlab.weights`) draws
+identical. Sequential bootstrap (Snippet 4.5, see :mod:`quantowl.weights`) draws
 each observation with probability proportional to its uniqueness given the
 observations already drawn, so the bags are more diverse and the out-of-bag
 estimates are less optimistic.
@@ -287,9 +287,9 @@ class SequentialBootstrapBagging:
             Features and labels, rows aligned.
         t1 : pd.Series, optional
             Event-end time per row, indexed by row start time (see
-            :func:`finlab.cv.make_t1`). Its values must be datetimes, or integers when
+            :func:`quantowl.cv.make_t1`). Its values must be datetimes, or integers when
             they are positional end bars; any other dtype is refused. Required when
-            ``sequential=True``. A NaT end time is refused; :func:`finlab.labeling.get_events`
+            ``sequential=True``. A NaT end time is refused; :func:`quantowl.labeling.get_events`
             leaves NaT for unresolved events, so drop those rows before fitting.
         sample_weight : array-like, optional
             Weights passed to each base estimator's ``fit``, sliced per bag.

@@ -1,4 +1,4 @@
-# `finlab.ensemble`: Bagging with sequential bootstrap (AFML ch. 6)
+# `quantowl.ensemble`: Bagging with sequential bootstrap (AFML ch. 6)
 
 Ordinary bagging draws overlapping labels redundantly. `SequentialBootstrapBagging` draws
 each bag with sequential bootstrap, so the trees see more distinct information.
@@ -10,8 +10,8 @@ Runs as written; `tests/test_doc_examples.py` executes it on every test run.
 ```python
 import numpy as np
 import pandas as pd
-from finlab.cv import make_t1
-from finlab.ensemble import SequentialBootstrapBagging
+from quantowl.cv import make_t1
+from quantowl.ensemble import SequentialBootstrapBagging
 
 class Centroid:
     def fit(self, X, y, sample_weight=None):
@@ -38,8 +38,8 @@ The base estimator needs `predict_proba`; without it, `fit` refuses by name befo
 ```python
 import numpy as np
 import pandas as pd
-from finlab.cv import make_t1
-from finlab.ensemble import SequentialBootstrapBagging
+from quantowl.cv import make_t1
+from quantowl.ensemble import SequentialBootstrapBagging
 
 class Proba:
     def fit(self, X, y, sample_weight=None):
@@ -74,15 +74,15 @@ is optimistic for overlapping labels. It is no substitute for purged cross-valid
 ## Use with scikit-learn
 
 `SequentialBootstrapBagging` has `get_params`, `set_params`, `score` and the classifier tag, so
-scikit-learn's `clone`, `cross_val_score` and `GridSearchCV` accept it. finlab does not import
+scikit-learn's `clone`, `cross_val_score` and `GridSearchCV` accept it. quantowl does not import
 scikit-learn. The block below needs scikit-learn installed, so the test suite does not run it.
 Its `params=` keyword needs scikit-learn 1.4 or later.
 
 ```
 from sklearn.model_selection import GridSearchCV, cross_val_score
 from sklearn.tree import DecisionTreeClassifier
-from finlab.cv import PurgedKFold, make_t1
-from finlab.ensemble import SequentialBootstrapBagging
+from quantowl.cv import PurgedKFold, make_t1
+from quantowl.ensemble import SequentialBootstrapBagging
 
 # X is a DataFrame indexed by event start, the same index as t1, so PurgedKFold can align them.
 t1 = make_t1(X.index, horizon=10)

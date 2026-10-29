@@ -1,13 +1,13 @@
-# Using finlab from an AI agent
+# Using quantowl from an AI agent
 
-finlab ships an MCP server (`finlab-mcp`) that exposes its main computations as
+quantowl ships an MCP server (`quantowl-mcp`) that exposes its main computations as
 typed tools. An agent calls a tool with JSON arguments and gets compact JSON back.
 The server needs no extra dependency and runs locally over stdio.
 
 ## Install and register
 
 ```bash
-pip install -e .            # provides the finlab-mcp command
+pip install -e .            # provides the quantowl-mcp command
 ```
 
 Add it to an MCP client's configuration, for example:
@@ -15,12 +15,12 @@ Add it to an MCP client's configuration, for example:
 ```json
 {
   "mcpServers": {
-    "finlab": { "command": "finlab-mcp" }
+    "quantowl": { "command": "quantowl-mcp" }
   }
 }
 ```
 
-Or run it directly: `python -m finlab.agent` (reads JSON-RPC lines on stdin).
+Or run it directly: `python -m quantowl.agent` (reads JSON-RPC lines on stdin).
 
 ## Tools
 

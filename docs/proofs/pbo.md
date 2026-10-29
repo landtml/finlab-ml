@@ -1,4 +1,4 @@
-# Proofs and derivations: `finlab.pbo` (AFML ch. 11 section 11.6, CSCV)
+# Proofs and derivations: `quantowl.pbo` (AFML ch. 11 section 11.6, CSCV)
 
 Status labels:
 

@@ -17,7 +17,7 @@
 # # Fractional differentiation (AFML chapter 5)
 #
 # This notebook applies the fixed-width-window (FFD) fractional difference from
-# `finlab.fracdiff` to a seeded random walk, and checks two closed-form facts:
+# `quantowl.fracdiff` to a seeded random walk, and checks two closed-form facts:
 #
 # 1. **Weights.** For fractional order `d`, the lag weights satisfy `w_0 = 1` and
 #    `w_k = -w_{k-1} (d - k + 1) / k`. Section 1 computes the first five weights
@@ -26,7 +26,7 @@
 # 2. **d = 1.** The weights are then `[1, -1, 0, ...]`, so the FFD output is the
 #    first difference of the series. Section 3 checks this.
 #
-# Run it after installing finlab (`pip install -e .`), or with `PYTHONPATH=src`
+# Run it after installing quantowl (`pip install -e .`), or with `PYTHONPATH=src`
 # from the repository root. The run is seeded and takes a few seconds.
 
 # %%
@@ -34,7 +34,7 @@ import time
 
 import numpy as np
 
-from finlab.fracdiff import frac_diff_ffd, get_weights, get_weights_ffd
+from quantowl.fracdiff import frac_diff_ffd, get_weights, get_weights_ffd
 
 SEED = 20260101  # seed for the random walk
 N_OBS = 3000  # length of the random walk

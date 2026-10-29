@@ -1,4 +1,4 @@
-# Proofs and derivations: `finlab.importance` (AFML chapter 8)
+# Proofs and derivations: `quantowl.importance` (AFML chapter 8)
 
 Every claim below is tagged with one of three labels:
 

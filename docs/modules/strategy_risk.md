@@ -1,4 +1,4 @@
-# `finlab.strategy_risk`: Binomial Sharpe, implied precision and frequency, failure probability (AFML ch. 15)
+# `quantowl.strategy_risk`: Binomial Sharpe, implied precision and frequency, failure probability (AFML ch. 15)
 
 For a strategy that makes a fixed number of IID bets a year, these functions give the Sharpe
 ratio of the bet sequence, the hit rate or bet frequency that reaches a target Sharpe ratio, the
@@ -9,7 +9,7 @@ probability that a return sample falls short of a target, and a two-Gaussian mix
 Runs as written; `tests/test_doc_examples.py` executes it on every test run.
 
 ```python
-from finlab.strategy_risk import binomial_sharpe, implied_frequency, implied_precision, mixture_returns, probability_of_failure
+from quantowl.strategy_risk import binomial_sharpe, implied_frequency, implied_precision, mixture_returns, probability_of_failure
 
 print(round(binomial_sharpe(0.55, 52), 4))
 print(round(implied_precision(-1.0, 1.0, 52, 1.0), 4))

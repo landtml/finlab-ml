@@ -53,8 +53,8 @@ import numpy as np
 import pandas as pd
 from numpy.typing import ArrayLike, NDArray
 
-from finlab._checks import _same_index
-from finlab._jit import jit
+from quantowl._checks import _same_index
+from quantowl._jit import jit
 
 __all__ = [
     "OHLCV_COLUMNS",

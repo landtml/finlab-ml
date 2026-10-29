@@ -17,7 +17,7 @@
 # # Standard versus sequential bootstrap: average uniqueness
 #
 # Monte Carlo comparison from chapter 4 (Snippets 4.7 and 4.8), run with
-# `finlab.monte_carlo.bootstrap_uniqueness_mc`.
+# `quantowl.monte_carlo.bootstrap_uniqueness_mc`.
 #
 # Each trial does three steps:
 #
@@ -39,7 +39,7 @@
 # %%
 import numpy as np
 
-from finlab.monte_carlo import bootstrap_uniqueness_mc
+from quantowl.monte_carlo import bootstrap_uniqueness_mc
 
 N_OBS, N_BARS, MAX_H = 10, 100, 5
 N_ITER, SEED = 2_000, 0
@@ -91,18 +91,18 @@ print(f"trials within TIE_TOL (ties): {int((np.abs(d) <= TIE_TOL).sum())}")
 # ## Histogram
 #
 # With plotly installed, the next cell draws both columns as overlaid histograms
-# (`finlab.plot.monte_carlo_histogram`). Without plotly it prints the install hint and a text
+# (`quantowl.plot.monte_carlo_histogram`). Without plotly it prints the install hint and a text
 # summary instead, so the notebook runs either way.
 
 # %%
 try:
-    from finlab.plot import monte_carlo_histogram
+    from quantowl.plot import monte_carlo_histogram
 
     fig = monte_carlo_histogram(
         frame, title="Average uniqueness: standard and sequential bootstrap samples"
     )
 except ImportError as exc:
-    # plotly is missing. The message is the install hint from finlab.plot.
+    # plotly is missing. The message is the install hint from quantowl.plot.
     print(exc)
     fig = None
     both = frame[["std_u", "seq_u"]].to_numpy()

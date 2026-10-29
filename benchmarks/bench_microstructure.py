@@ -1,4 +1,4 @@
-"""Benchmark: naive reference vs the fast paths in finlab.microstructure.
+"""Benchmark: naive reference vs the fast paths in quantowl.microstructure.
 
 The fast paths are jitted kernels, except hasbrouck_lambda, which uses numpy dot products.
 
@@ -21,7 +21,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tests"))
 
-from finlab.microstructure import corwin_schultz_spread, hasbrouck_lambda, tick_rule, vpin  # noqa: E402
+from quantowl.microstructure import corwin_schultz_spread, hasbrouck_lambda, tick_rule, vpin  # noqa: E402
 from test_microstructure import (  # noqa: E402
     naive_corwin_schultz,
     naive_hasbrouck_lambda,

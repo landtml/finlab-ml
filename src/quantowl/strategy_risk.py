@@ -25,7 +25,7 @@ import numbers
 import numpy as np
 from scipy.stats import norm
 
-from finlab._checks import _require_real_values
+from quantowl._checks import _require_real_values
 
 __all__ = [
     "binomial_sharpe",

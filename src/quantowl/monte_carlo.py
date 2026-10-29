@@ -14,10 +14,10 @@ workers, or with ``n_iter`` (a longer run extends a shorter one).
 
 Scope
 -----
-Trials run through :func:`finlab.parallel.mp_pandas_obj`, so ``num_threads > 1``
+Trials run through :func:`quantowl.parallel.mp_pandas_obj`, so ``num_threads > 1``
 uses a process pool and requires ``func`` to be defined at module level. All
 random draws are made by numpy. The bootstrap trial below also calls numba
-kernels from :mod:`finlab.weights`, but those take the uniforms as input and
+kernels from :mod:`quantowl.weights`, but those take the uniforms as input and
 draw nothing themselves.
 
 Bootstrap uniqueness experiment
@@ -272,7 +272,7 @@ def _spans_to_csc(starts: np.ndarray, ends: np.ndarray) -> tuple:
 def _sample_uniqueness(n_bars: int, starts: np.ndarray, ends: np.ndarray) -> float:
     """Average uniqueness of a sample given the spans of its draws, repeats kept.
 
-    Same quantity as :func:`finlab.weights.sample_average_uniqueness`, computed
+    Same quantity as :func:`quantowl.weights.sample_average_uniqueness`, computed
     from spans. Needs at least one draw.
     """
     n = starts.shape[0]
@@ -300,7 +300,7 @@ def _trial_uniqueness(
 
     ``starts`` and ``ends`` give each label's span in bars. ``std_draws`` holds
     label positions (repeats allowed). The sequential sample is drawn by
-    :func:`finlab.weights._seq_bootstrap_kernel` with one entry of ``uniforms``
+    :func:`quantowl.weights._seq_bootstrap_kernel` with one entry of ``uniforms``
     per draw. Returns ``(std_u, seq_u)``.
     """
     # An empty sample has no average uniqueness. The division in _sample_uniqueness
@@ -354,7 +354,7 @@ def bootstrap_uniqueness_trial(
     3. ``uniforms = rng.random(m)``: one uniform per sequential draw.
 
     The sequential sample uses ``uniforms`` through the same inverse-CDF rule as
-    :func:`finlab.weights.sequential_bootstrap`. Both averages keep repeated
+    :func:`quantowl.weights.sequential_bootstrap`. Both averages keep repeated
     draws. Both lie in ``(0, 1]``.
     """
     _check_label_args(n_obs, n_bars, max_h)

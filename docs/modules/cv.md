@@ -1,4 +1,4 @@
-# `finlab.cv`: Purged and embargoed cross-validation (AFML ch. 7)
+# `quantowl.cv`: Purged and embargoed cross-validation (AFML ch. 7)
 
 Splitters for label-overlapping time series. Training observations whose labels
 overlap the test window are purged, and an embargo removes a buffer after each test
@@ -12,7 +12,7 @@ Runs as written; `tests/test_doc_examples.py` executes it on every test run.
 ```python
 import numpy as np
 import pandas as pd
-from finlab.cv import CombinatorialPurgedCV, PurgedKFold, make_t1
+from quantowl.cv import CombinatorialPurgedCV, PurgedKFold, make_t1
 
 idx = pd.date_range("2020-01-01", periods=120, freq="B")
 t1 = make_t1(idx, horizon=5)            # each label resolves 5 bars later

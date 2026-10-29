@@ -1,4 +1,4 @@
-"""Benchmark finlab.structural_breaks against literal naive loops (not run by CI).
+"""Benchmark quantowl.structural_breaks against literal naive loops (not run by CI).
 
 Usage: PYTHONPATH=src python3 benchmarks/bench_structural_breaks.py
 """
@@ -10,7 +10,7 @@ import time
 
 import numpy as np
 
-from finlab.structural_breaks import adf_stat, cadf, chu_stinchcombe_white, cusum_test, qadf, sadf, smt
+from quantowl.structural_breaks import adf_stat, cadf, chu_stinchcombe_white, cusum_test, qadf, sadf, smt
 
 
 def best_of(fn, repeat: int = 3) -> float:

@@ -1,4 +1,4 @@
-"""Benchmark finlab.labeling against brute-force references.
+"""Benchmark quantowl.labeling against brute-force references.
 
 Not run by CI. Usage:
 
@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
-from finlab.labeling import add_vertical_barrier, get_events, trend_scanning_labels
+from quantowl.labeling import add_vertical_barrier, get_events, trend_scanning_labels
 
 REPEATS = 3
 

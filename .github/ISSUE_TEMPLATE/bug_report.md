@@ -15,6 +15,6 @@ labels: bug
 
 ## Environment
 
-- finlab version:
+- quantowl version:
 - Python version:
 - Operating system:

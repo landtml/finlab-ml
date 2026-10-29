@@ -1,10 +1,10 @@
-"""Tests for finlab.tuning (AFML ch. 9)."""
+"""Tests for quantowl.tuning (AFML ch. 9)."""
 import numpy as np
 import pandas as pd
 import pytest
 
-from finlab.cv import PurgedKFold, make_t1
-from finlab.tuning import cv_score, grid_search, randomized_search
+from quantowl.cv import PurgedKFold, make_t1
+from quantowl.tuning import cv_score, grid_search, randomized_search
 
 
 class Threshold:
@@ -226,7 +226,7 @@ def test_y_none_raises_value_error_naming_y(call):
 
 def test_grid_search_rejects_parameter_named_like_a_result_column() -> None:
     # A parameter called mean_score was overwritten by the score in the table.
-    from finlab.tuning import grid_search
+    from quantowl.tuning import grid_search
 
     class C:
         def __init__(self, mean_score=0):
@@ -275,7 +275,7 @@ def test_cv_score_accepts_unlabelled_y_by_position() -> None:
         def predict(self, X):
             return np.full(len(X), self.v)
 
-    from finlab.tuning import cv_score
+    from quantowl.tuning import cv_score
 
     Xd = pd.DataFrame(np.arange(12.0).reshape(6, 2), index=pd.date_range("2020", periods=6))
     folds = [(np.arange(0, 3), np.arange(3, 6))]
@@ -288,7 +288,7 @@ def test_cv_score_accepts_unlabelled_y_by_position() -> None:
 def test_cv_score_one_column_dataframe_label_matches_series() -> None:
     # A (n, 1) label stayed 2-D, so the accuracy compared every row's label with every prediction and
     # a perfect model scored 26/36. A one-column label is a 1-D label.
-    from finlab.tuning import cv_score
+    from quantowl.tuning import cv_score
 
     class Echo:
         def fit(self, X, y, sample_weight=None):
@@ -316,7 +316,7 @@ def test_unlabelled_y_does_not_match_a_shifted_integer_index_by_position() -> No
         def predict(self, X):
             return np.full(len(X), self.v)
 
-    from finlab.tuning import cv_score
+    from quantowl.tuning import cv_score
 
     X = pd.DataFrame(np.arange(120.0).reshape(60, 2), index=pd.RangeIndex(5, 65))
     y = pd.Series(np.repeat([0, 1], 30), index=pd.RangeIndex(0, 60))
@@ -327,7 +327,7 @@ def test_unlabelled_y_does_not_match_a_shifted_integer_index_by_position() -> No
 
 def test_randomized_search_refuses_an_empty_value_list() -> None:
     # An empty list reached rng.integers(0) and failed with "high <= 0".
-    from finlab.tuning import randomized_search
+    from quantowl.tuning import randomized_search
 
     class Thr:
         def __init__(self, t=0.5):
@@ -357,7 +357,7 @@ def test_tuning_refuses_a_two_column_label_by_name() -> None:
         def predict(self, X):
             return np.zeros(len(X), dtype=int)
 
-    from finlab.tuning import cv_score
+    from quantowl.tuning import cv_score
 
     X = np.random.default_rng(0).normal(size=(20, 2))
     y2 = np.c_[np.arange(20) % 2, np.arange(20) % 2]
@@ -369,7 +369,7 @@ def test_tuning_refuses_a_two_column_label_by_name() -> None:
 def test_unlabelled_int64_index_matches_date_x_by_position_as_rangeindex() -> None:
     # An Int64 Index 0..n-1 was refused against a date-indexed X, while a RangeIndex 0..n-1 was
     # matched by position. The two are the same unlabelled index.
-    from finlab.tuning import _matches_by_position
+    from quantowl.tuning import _matches_by_position
 
     dates = pd.date_range("2021-01-01", periods=60)
     assert _matches_by_position(pd.RangeIndex(60), dates, 60)
@@ -479,7 +479,7 @@ class _PipelineName:
     pass
 
 
-# sklearn.pipeline.Pipeline's name and module, which is what finlab checks.
+# sklearn.pipeline.Pipeline's name and module, which is what quantowl checks.
 _PipelineName.__name__ = "Pipeline"
 _PipelineName.__module__ = "sklearn.pipeline"
 
@@ -487,7 +487,7 @@ _PipelineName.__module__ = "sklearn.pipeline"
 class _FakePipeline(_PipelineName):
     """Stand-in for sklearn.pipeline.Pipeline: steps, and a fit that refuses sample_weight.
 
-    finlab recognises a Pipeline by class name and module, so the stand-in declares that module.
+    quantowl recognises a Pipeline by class name and module, so the stand-in declares that module.
     """
 
     def __init__(self, threshold=0.0):

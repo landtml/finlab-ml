@@ -2,8 +2,8 @@
 
 Every trial a researcher runs is registered with its parameters and its return
 series. :class:`TrialRegistry` then builds the performance matrix for
-:func:`finlab.pbo.probability_of_backtest_overfitting` and the inputs of
-:func:`finlab.stats.deflated_sharpe_ratio` from that record, so N and the
+:func:`quantowl.pbo.probability_of_backtest_overfitting` and the inputs of
+:func:`quantowl.stats.deflated_sharpe_ratio` from that record, so N and the
 performance matrix never come from a typed-in number. The record itself is not an
 AFML construct; it supplies the inputs that AFML chapter 11 (PBO) and chapter 14
 (deflated Sharpe) need::
@@ -28,8 +28,8 @@ from typing import Any, Optional, Union, cast
 import numpy as np
 from scipy.stats import kurtosis, skew
 
-from finlab.pbo import PBOResult, probability_of_backtest_overfitting
-from finlab.stats import deflated_sharpe_ratio, sharpe_ratio
+from quantowl.pbo import PBOResult, probability_of_backtest_overfitting
+from quantowl.stats import deflated_sharpe_ratio, sharpe_ratio
 
 __all__ = ["TrialRecord", "TrialRegistry"]
 
@@ -192,7 +192,7 @@ class TrialRegistry:
     def pbo(self, n_partitions: int = 16) -> PBOResult:
         """Probability of backtest overfitting over the registered trials.
 
-        Calls :func:`finlab.pbo.probability_of_backtest_overfitting` on
+        Calls :func:`quantowl.pbo.probability_of_backtest_overfitting` on
         :meth:`performance_matrix`, so N is :attr:`n_trials`.
         """
         return probability_of_backtest_overfitting(

@@ -1,7 +1,7 @@
-site_name: finlab
-site_url: https://landtml.github.io/finlab-ml/
+site_name: quantowl
+site_url: https://landtml.github.io/quantowl/
 site_description: Python implementations of the methods in López de Prado's Advances in Financial Machine Learning, with tests and proof notes.
-repo_url: https://github.com/landtml/finlab-ml
+repo_url: https://github.com/landtml/quantowl
 edit_uri: edit/main/docs/
 
 theme:
@@ -51,51 +51,51 @@ validation:
 nav:
   - Home: index.md
   - Modules:
-      - finlab.cv (ch. 7): modules/cv.md
-      - finlab.bars (ch. 2): modules/bars.md
-      - finlab.labeling (ch. 3): modules/labeling.md
-      - finlab.weights (ch. 4): modules/weights.md
-      - finlab.monte_carlo (ch. 4): modules/monte_carlo.md
-      - finlab.fracdiff (ch. 5): modules/fracdiff.md
-      - finlab.ensemble (ch. 6): modules/ensemble.md
-      - finlab.importance (ch. 8): modules/importance.md
-      - finlab.tuning (ch. 9): modules/tuning.md
-      - finlab.bet_sizing (ch. 10): modules/bet_sizing.md
-      - finlab.pbo (ch. 11): modules/pbo.md
-      - finlab.trading_rules (ch. 13): modules/trading_rules.md
-      - finlab.trials (not AFML): modules/trials.md
-      - finlab.onc (not AFML): modules/onc.md
-      - finlab.agent (not AFML): modules/agent.md
-      - finlab.stats (ch. 14): modules/stats.md
-      - finlab.strategy_risk (ch. 15): modules/strategy_risk.md
-      - finlab.plot (optional): modules/plot.md
-      - finlab.hrp (ch. 16): modules/hrp.md
-      - finlab.structural_breaks (ch. 17): modules/structural_breaks.md
-      - finlab.entropy (ch. 18): modules/entropy.md
-      - finlab.microstructure (ch. 19): modules/microstructure.md
-      - finlab.parallel (ch. 20): modules/parallel.md
+      - quantowl.cv (ch. 7): modules/cv.md
+      - quantowl.bars (ch. 2): modules/bars.md
+      - quantowl.labeling (ch. 3): modules/labeling.md
+      - quantowl.weights (ch. 4): modules/weights.md
+      - quantowl.monte_carlo (ch. 4): modules/monte_carlo.md
+      - quantowl.fracdiff (ch. 5): modules/fracdiff.md
+      - quantowl.ensemble (ch. 6): modules/ensemble.md
+      - quantowl.importance (ch. 8): modules/importance.md
+      - quantowl.tuning (ch. 9): modules/tuning.md
+      - quantowl.bet_sizing (ch. 10): modules/bet_sizing.md
+      - quantowl.pbo (ch. 11): modules/pbo.md
+      - quantowl.trading_rules (ch. 13): modules/trading_rules.md
+      - quantowl.trials (not AFML): modules/trials.md
+      - quantowl.onc (not AFML): modules/onc.md
+      - quantowl.agent (not AFML): modules/agent.md
+      - quantowl.stats (ch. 14): modules/stats.md
+      - quantowl.strategy_risk (ch. 15): modules/strategy_risk.md
+      - quantowl.plot (optional): modules/plot.md
+      - quantowl.hrp (ch. 16): modules/hrp.md
+      - quantowl.structural_breaks (ch. 17): modules/structural_breaks.md
+      - quantowl.entropy (ch. 18): modules/entropy.md
+      - quantowl.microstructure (ch. 19): modules/microstructure.md
+      - quantowl.parallel (ch. 20): modules/parallel.md
   - Proof notes:
-      - finlab.cv (CPCV): proofs/cpcv.md
-      - finlab.bars: proofs/bars.md
-      - finlab.labeling: proofs/labeling.md
-      - finlab.weights: proofs/weights.md
-      - finlab.monte_carlo: proofs/monte_carlo.md
-      - finlab.fracdiff: proofs/fracdiff.md
-      - finlab.ensemble: proofs/ensemble.md
-      - finlab.importance: proofs/importance.md
-      - finlab.tuning: proofs/tuning.md
-      - finlab.bet_sizing: proofs/bet_sizing.md
-      - finlab.pbo: proofs/pbo.md
-      - finlab.trading_rules: proofs/trading_rules.md
-      - finlab.onc: proofs/onc.md
-      - finlab.agent: proofs/agent.md
-      - finlab.stats: proofs/stats.md
-      - finlab.strategy_risk: proofs/strategy_risk.md
-      - finlab.hrp: proofs/hrp.md
-      - finlab.structural_breaks: proofs/structural_breaks.md
-      - finlab.entropy: proofs/entropy.md
-      - finlab.microstructure: proofs/microstructure.md
-      - finlab.parallel: proofs/parallel.md
+      - quantowl.cv (CPCV): proofs/cpcv.md
+      - quantowl.bars: proofs/bars.md
+      - quantowl.labeling: proofs/labeling.md
+      - quantowl.weights: proofs/weights.md
+      - quantowl.monte_carlo: proofs/monte_carlo.md
+      - quantowl.fracdiff: proofs/fracdiff.md
+      - quantowl.ensemble: proofs/ensemble.md
+      - quantowl.importance: proofs/importance.md
+      - quantowl.tuning: proofs/tuning.md
+      - quantowl.bet_sizing: proofs/bet_sizing.md
+      - quantowl.pbo: proofs/pbo.md
+      - quantowl.trading_rules: proofs/trading_rules.md
+      - quantowl.onc: proofs/onc.md
+      - quantowl.agent: proofs/agent.md
+      - quantowl.stats: proofs/stats.md
+      - quantowl.strategy_risk: proofs/strategy_risk.md
+      - quantowl.hrp: proofs/hrp.md
+      - quantowl.structural_breaks: proofs/structural_breaks.md
+      - quantowl.entropy: proofs/entropy.md
+      - quantowl.microstructure: proofs/microstructure.md
+      - quantowl.parallel: proofs/parallel.md
   - API reference: API.md
   - MCP server: AGENTS.md
-  - Changelog: https://github.com/landtml/finlab-ml/blob/main/CHANGELOG.md
+  - Changelog: https://github.com/landtml/quantowl/blob/main/CHANGELOG.md

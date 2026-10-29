@@ -1,6 +1,6 @@
-# Proof notes: finlab.onc (ONC, López de Prado, Lewis & Boudt 2019)
+# Proof notes: quantowl.onc (ONC, López de Prado, Lewis & Boudt 2019)
 
-Module: `src/finlab/onc.py`. Tests: `tests/test_onc.py`. Not part of AFML's text.
+Module: `src/quantowl/onc.py`. Tests: `tests/test_onc.py`. Not part of AFML's text.
 The implementation is the simplified version described in the module: k-means on the
 correlation rows, with `k` chosen by mean silhouette, and no repair step.
 

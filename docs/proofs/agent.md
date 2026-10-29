@@ -1,6 +1,6 @@
-# Proofs and derivations: `finlab.agent` (not AFML)
+# Proofs and derivations: `quantowl.agent` (not AFML)
 
-Code: `src/finlab/agent/server.py` (JSON-RPC over stdio) and `src/finlab/agent/tools.py`
+Code: `src/quantowl/agent/server.py` (JSON-RPC over stdio) and `src/quantowl/agent/tools.py`
 (tool registry and argument checks). Tests: `tests/test_agent.py`. The page describes what
 the server guarantees and names the test that checks each guarantee. The user-facing guide
 is [AGENTS.md](../AGENTS.md).
@@ -19,7 +19,7 @@ No claim here comes from the book. The server is not an AFML construct.
 ## 1. Lifecycle and methods
 
 - **`initialize`** returns protocol version `2024-11-05`, the capability `{"tools": {}}`, and
-  server info with name `finlab` and the package version. **Checked by test**
+  server info with name `quantowl` and the package version. **Checked by test**
   `test_initialize_reports_protocol_and_tools_capability`. The version equals the one in
   `pyproject.toml`: **Checked by test** `test_version_strings_match_pyproject`.
 - **`ping`** returns an empty result whatever its `params` (the test covers `[]`, `0`, `""`,

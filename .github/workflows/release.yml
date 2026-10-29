@@ -91,7 +91,7 @@ jobs:
         run: |
           gh release create "v$VERSION" dist/* \
             --target "$SHA" \
-            --title "finlab $VERSION" \
+            --title "quantowl $VERSION" \
             --notes-file "$RUNNER_TEMP/notes.md"
 
       - name: Upload the sdist and wheel to the existing release

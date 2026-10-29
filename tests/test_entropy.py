@@ -1,4 +1,4 @@
-"""Tests for finlab.entropy (AFML ch. 18).
+"""Tests for quantowl.entropy (AFML ch. 18).
 
 Fast kernels are cross-checked against literal transcriptions of Snippets 18.1-18.4
 on seeded random inputs. The book's worked numbers from 18.4 are checked as well.
@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from finlab.entropy import (
+from quantowl.entropy import (
     _match_length,
     encode_binary,
     encode_quantile,
@@ -287,7 +287,7 @@ def test_encode_sigma_large_alphabet_within_exact_range_unchanged() -> None:
 
 def test_kontoyiannis_infinite_window_is_value_error() -> None:
     # An infinite window must give a ValueError, not an OverflowError from int(inf).
-    from finlab.entropy import kontoyiannis_entropy
+    from quantowl.entropy import kontoyiannis_entropy
 
     with pytest.raises(ValueError, match="window"):
         kontoyiannis_entropy("abcabcabab", window=float("inf"))
@@ -296,7 +296,7 @@ def test_kontoyiannis_infinite_window_is_value_error() -> None:
 @pytest.mark.parametrize("bad_word_length", [2.5, float("nan"), float("inf")])
 def test_plug_in_entropy_rejects_non_integer_word_length(bad_word_length: float) -> None:
     # A fractional word_length must be refused, not truncated to 2.
-    from finlab.entropy import plug_in_entropy
+    from quantowl.entropy import plug_in_entropy
 
     with pytest.raises(ValueError, match="word_length"):
         plug_in_entropy("aabbabab", word_length=bad_word_length)
@@ -304,7 +304,7 @@ def test_plug_in_entropy_rejects_non_integer_word_length(bad_word_length: float)
 
 def test_kontoyiannis_rejects_fractional_window() -> None:
     # A fractional window must be refused, not truncated to 5.
-    from finlab.entropy import kontoyiannis_entropy
+    from quantowl.entropy import kontoyiannis_entropy
 
     msg = "abcabcabcabcabcabcab"
     with pytest.raises(ValueError, match="window"):
@@ -314,7 +314,7 @@ def test_kontoyiannis_rejects_fractional_window() -> None:
 
 def test_encode_sigma_empty_input_raises_clear_error() -> None:
     # An empty input must raise a clear error, not numpy's "zero-size array" error.
-    from finlab.entropy import encode_sigma
+    from quantowl.entropy import encode_sigma
 
     with pytest.raises(ValueError, match="empty"):
         encode_sigma([], 0.1)
@@ -323,7 +323,7 @@ def test_encode_sigma_empty_input_raises_clear_error() -> None:
 def test_encode_sigma_maximum_on_a_bin_edge_gets_its_own_code() -> None:
     # With (max - min) / sigma an integer s, the maximum sits on the edge of code s, but only s codes
     # were allocated, so np.clip folded it into code s - 1 and distinct bins merged.
-    from finlab.entropy import encode_sigma
+    from quantowl.entropy import encode_sigma
 
     assert encode_sigma(np.array([0.0, 1.0, 2.0]), 1.0).tolist() == [0, 1, 2]
     assert encode_sigma(np.array([0.0, 2.0]), 1.0).tolist() == [0, 2]
@@ -334,7 +334,7 @@ def test_encode_sigma_maximum_on_a_bin_edge_gets_its_own_code() -> None:
 def test_entropy_rejects_nan_in_message() -> None:
     # np.unique counted NaN as a third symbol, so a message with a missing value gave a biased
     # estimate with no error. The encode_* functions already refuse non-finite input.
-    from finlab.entropy import lempel_ziv_entropy, plug_in_entropy
+    from quantowl.entropy import lempel_ziv_entropy, plug_in_entropy
 
     with pytest.raises(ValueError, match="NaN or infinite"):
         plug_in_entropy([1.0, np.nan, 2.0])
@@ -346,7 +346,7 @@ def test_entropy_rejects_nan_in_message() -> None:
 def test_encode_sigma_rejects_infinite_sigma() -> None:
     # sigma = inf passed the "sigma > 0" check, the span became 0, and every return got code 0
     # silently. A non-finite sigma is refused.
-    from finlab.entropy import encode_sigma
+    from quantowl.entropy import encode_sigma
 
     with pytest.raises(ValueError, match="sigma must be"):
         encode_sigma(np.array([0.0, 1.0, 2.0]), float("inf"))
@@ -356,7 +356,7 @@ def test_encode_sigma_rejects_infinite_sigma() -> None:
 
 def test_plug_in_entropy_refuses_bool_word_length() -> None:
     # A bool word_length must be refused, not read as 1.
-    from finlab.entropy import plug_in_entropy
+    from quantowl.entropy import plug_in_entropy
 
     with pytest.raises(ValueError, match="word_length"):
         plug_in_entropy([0, 1, 1, 0, 1, 0], word_length=True)
@@ -365,7 +365,7 @@ def test_plug_in_entropy_refuses_bool_word_length() -> None:
 def test_encode_quantile_bounds_n_bins() -> None:
     # n_bins had no upper bound, so 1e9 bins allocated about 7 GiB of edges.
     # The cap is 1e6 (a provisional choice); 1e6 bins still work.
-    from finlab.entropy import encode_quantile
+    from quantowl.entropy import encode_quantile
 
     with pytest.raises(ValueError, match="n_bins must be <="):
         encode_quantile([1.0, 2.0, 3.0], 10**9)
@@ -376,7 +376,7 @@ def test_encode_quantile_bounds_n_bins() -> None:
 def test_entropy_refuses_object_nan_as_float_nan_does() -> None:
     # The NaN refusal ran only for float dtypes, so an object array of the same values counted each
     # NaN as its own symbol (2.0), while the float form was refused.
-    from finlab.entropy import lempel_ziv_entropy, plug_in_entropy
+    from quantowl.entropy import lempel_ziv_entropy, plug_in_entropy
 
     n = np.nan
     with pytest.raises(ValueError, match="NaN or infinite"):
@@ -391,7 +391,7 @@ def test_entropy_refuses_object_nan_as_float_nan_does() -> None:
 
 def test_entropy_object_string_messages_are_unchanged() -> None:
     # A non-numeric object message of strings is still a valid message.
-    from finlab.entropy import plug_in_entropy
+    from quantowl.entropy import plug_in_entropy
 
     msg = np.array(["a", "b", "a", "b"], dtype=object)
     assert plug_in_entropy(msg, 1) == pytest.approx(1.0)
@@ -400,7 +400,7 @@ def test_entropy_object_string_messages_are_unchanged() -> None:
 def test_kontoyiannis_refuses_bool_window() -> None:
     # window=True was read as 1. Bool is refused by name, as plug_in_entropy refuses bool
     # word_length.
-    from finlab.entropy import kontoyiannis_entropy
+    from quantowl.entropy import kontoyiannis_entropy
 
     msg = [1, 2, 1, 3, 2, 1, 1, 2, 3, 1, 2, 2, 1, 3] * 2
     with pytest.raises(ValueError, match="got True"):
@@ -411,7 +411,7 @@ def test_kontoyiannis_refuses_bool_window() -> None:
 def test_encode_sigma_decimal_grid_gives_distinct_codes() -> None:
     # 0.3 / 0.1 = 2.9999999999999996 in float, so floor() put the value 0.3 one step too low and
     # merged it with 0.2. Values one sigma apart need distinct codes.
-    from finlab.entropy import encode_sigma
+    from quantowl.entropy import encode_sigma
 
     assert np.asarray(encode_sigma(np.array([0.2, 0.3]), 0.1)).tolist() == [0, 1]
     grid = np.round(np.arange(0, 1.01, 0.1), 10)
@@ -424,7 +424,7 @@ def test_encode_sigma_decimal_grid_gives_distinct_codes() -> None:
 
 def test_encode_sigma_integer_span_keeps_maximum_code() -> None:
     # The maximum of an integer span keeps its own code.
-    from finlab.entropy import encode_sigma
+    from quantowl.entropy import encode_sigma
 
     assert np.asarray(encode_sigma(np.array([0.0, 1.0, 2.0]), 1.0)).tolist() == [0, 1, 2]
     assert np.asarray(encode_sigma(np.array([0.0, 0.5, 1.0, 1.5]), 0.5)).tolist() == [0, 1, 2, 3]
@@ -456,7 +456,7 @@ def test_untied_input_does_not_warn():
 def test_plug_in_entropy_refuses_nan_list_symbol() -> None:
     # A list that mixes strings with NaN or inf was coerced to the strings "nan" and "inf", which were
     # then counted as symbols. Such a message is now refused by name; clean string messages are unchanged.
-    from finlab.entropy import lempel_ziv_entropy, plug_in_entropy
+    from quantowl.entropy import lempel_ziv_entropy, plug_in_entropy
 
     with pytest.raises(ValueError, match="NaN or infinite"):
         plug_in_entropy(["a", np.nan, "b", "a"], 1)
@@ -472,7 +472,7 @@ def test_plug_in_entropy_refuses_nan_list_symbol() -> None:
 def test_plug_in_entropy_refuses_nat_message() -> None:
     # NaT in a datetime message was counted as a symbol, and in an object array it split equal dates
     # into different codes. It is now refused by name as a missing value.
-    from finlab.entropy import plug_in_entropy
+    from quantowl.entropy import plug_in_entropy
 
     d1, d2 = pd.Timestamp("2024-01-01"), pd.Timestamp("2024-01-02")
     with pytest.raises(ValueError, match="missing values"):

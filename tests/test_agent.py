@@ -7,27 +7,27 @@ import sys
 import numpy as np
 import pytest
 
-from finlab.agent import server as srv
-from finlab.agent import tools as tl
-from finlab.bars import cusum_filter
-from finlab.bet_sizing import prob_bet_size
-from finlab.entropy import kontoyiannis_entropy
-from finlab.fracdiff import frac_diff_ffd
-from finlab.hrp import hrp_weights
-from finlab.onc import onc
-from finlab.stats import (
+from quantowl.agent import server as srv
+from quantowl.agent import tools as tl
+from quantowl.bars import cusum_filter
+from quantowl.bet_sizing import prob_bet_size
+from quantowl.entropy import kontoyiannis_entropy
+from quantowl.fracdiff import frac_diff_ffd
+from quantowl.hrp import hrp_weights
+from quantowl.onc import onc
+from quantowl.stats import (
     deflated_sharpe_ratio,
     min_track_record_length,
     probabilistic_sharpe_ratio,
     sharpe_ratio,
 )
-from finlab.strategy_risk import (
+from quantowl.strategy_risk import (
     binomial_sharpe,
     implied_frequency,
     implied_precision,
     probability_of_failure,
 )
-from finlab.structural_breaks import sadf
+from quantowl.structural_breaks import sadf
 
 
 def _rpc(method, params=None, req_id=1):
@@ -47,7 +47,7 @@ def test_initialize_reports_protocol_and_tools_capability():
     reply = _rpc("initialize", {})
     assert reply["result"]["protocolVersion"] == srv.PROTOCOL_VERSION
     assert "tools" in reply["result"]["capabilities"]
-    assert reply["result"]["serverInfo"]["name"] == "finlab"
+    assert reply["result"]["serverInfo"]["name"] == "quantowl"
 
 
 def test_tools_list_schemas_are_well_formed():
@@ -210,7 +210,7 @@ def test_subprocess_round_trip():
     """The real entry point, over real pipes, as an agent would run it."""
     req = json.dumps({"jsonrpc": "2.0", "id": 7, "method": "tools/call",
                       "params": {"name": "sharpe_ratio", "arguments": {"returns": [0.01, -0.005, 0.02]}}})
-    proc = subprocess.run([sys.executable, "-m", "finlab.agent"], input=req + "\n",
+    proc = subprocess.run([sys.executable, "-m", "quantowl.agent"], input=req + "\n",
                           capture_output=True, text=True, timeout=120)
     assert proc.returncode == 0, proc.stderr
     reply = json.loads(proc.stdout.splitlines()[0])
@@ -547,7 +547,7 @@ def test_cpcv_split_summary_description_states_the_work_limit() -> None:
     # The work cap (n_samples x splits <= 20,000,000) refuses some requests, so the tool schema
     # must say so. The cap stays (it bounds server work); the limit is stated in the tool
     # description, so the refusal is not a surprise.
-    from finlab.agent.tools import MAX_CPCV_WORK, list_tools
+    from quantowl.agent.tools import MAX_CPCV_WORK, list_tools
 
     tool = next(t for t in list_tools() if t["name"] == "cpcv_split_summary")
     assert f"{MAX_CPCV_WORK:,}" in tool["description"]
@@ -557,7 +557,7 @@ def test_cpcv_split_summary_description_states_the_work_limit() -> None:
 def test_server_rejects_request_id_that_is_not_string_number_or_null(bad_id) -> None:
     # Ids of other types must be refused: the reply echoed any type, so a client could not match it.
     # JSON-RPC allows a string, a number or null; anything else is an invalid request.
-    from finlab.agent.server import handle_message
+    from quantowl.agent.server import handle_message
 
     reply = handle_message({"jsonrpc": "2.0", "id": bad_id, "method": "ping"})
     assert reply["error"]["code"] == -32600
@@ -565,7 +565,7 @@ def test_server_rejects_request_id_that_is_not_string_number_or_null(bad_id) -> 
 
 
 def test_server_still_echoes_valid_request_ids() -> None:
-    from finlab.agent.server import handle_message
+    from quantowl.agent.server import handle_message
 
     assert handle_message({"jsonrpc": "2.0", "id": "x", "method": "ping"})["id"] == "x"
     assert handle_message({"jsonrpc": "2.0", "id": 7, "method": "ping"})["id"] == 7
@@ -575,7 +575,7 @@ def test_server_still_echoes_valid_request_ids() -> None:
 def test_ragged_matrix_gets_the_named_rectangular_error() -> None:
     # A ragged matrix must get the named rectangular error, not numpy's inhomogeneous-shape message.
     # _mat already names the rectangular rule for the same input, and the tool error names it too.
-    from finlab.agent.tools import call_tool
+    from quantowl.agent.tools import call_tool
 
     result, is_error = call_tool("hrp_weights", {"cov": [[1, 0], [0]]})
     assert is_error is True
@@ -602,7 +602,7 @@ def test_batch_of_only_notifications_gets_no_reply() -> None:
     # batch error is kept for batches that contain requests, and for an empty batch.
     import io
 
-    from finlab.agent import server
+    from quantowl.agent import server
 
     out = io.StringIO()
     server.main(stdin=io.StringIO('[{"jsonrpc":"2.0","method":"notifications/initialized"}]\n'), stdout=out)
@@ -616,8 +616,8 @@ def test_plug_in_entropy_tool_description_names_bits_per_symbol() -> None:
     # The tool must not say "bits per word": plug_in_entropy divides by word_length, so the value
     # is bits per symbol (the library docstring). An agent that reads the schema gets the unit
     # wrong by a factor of word_length. The description matches the value.
-    from finlab.agent.tools import list_tools
-    from finlab.entropy import plug_in_entropy
+    from quantowl.agent.tools import list_tools
+    from quantowl.entropy import plug_in_entropy
 
     tool = next(t for t in list_tools() if t["name"] == "plug_in_entropy")
     assert "bits per symbol" in tool["description"]
@@ -629,7 +629,7 @@ def test_plug_in_entropy_tool_description_names_bits_per_symbol() -> None:
 
 def test_psr_and_dsr_tool_descriptions_state_per_period_input() -> None:
     # The sharpe_ratio tool annualises by default, so chaining it unchanged inflates sr_hat.
-    from finlab.agent.tools import list_tools
+    from quantowl.agent.tools import list_tools
 
     for name in ("probabilistic_sharpe_ratio", "deflated_sharpe_ratio"):
         tool = next(t for t in list_tools() if t["name"] == name)
@@ -700,11 +700,11 @@ def test_version_strings_match_pyproject():
     import re
     from pathlib import Path
 
-    import finlab
+    import quantowl
 
     pyproject = (Path(__file__).resolve().parents[1] / "pyproject.toml").read_text(encoding="utf-8")
     declared = re.search(r'^version = "([^"]+)"', pyproject, re.MULTILINE).group(1)
-    assert finlab.__version__ == declared
+    assert quantowl.__version__ == declared
     result = _rpc("initialize")["result"]
     assert result["serverInfo"]["version"] == declared
 

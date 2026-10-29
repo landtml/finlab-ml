@@ -20,7 +20,7 @@ Implements:
 
 Not covered: the multiprocessing engine ``mpPandasObj`` (Chapter 20), class weights
 (end of Section 4.8), and the bagging classifier of Chapter 6. The Monte Carlo study of
-Snippets 4.7-4.9 is in :mod:`finlab.monte_carlo`, with its claims in
+Snippets 4.7-4.9 is in :mod:`quantowl.monte_carlo`, with its claims in
 docs/proofs/monte_carlo.md. ``benchmarks/bench_weights.py`` measures speed only.
 
 Conventions: ``index`` is the sorted grid of bars. ``t1`` is a Series whose
@@ -394,7 +394,7 @@ def _seq_bootstrap_kernel(
     whose cumulative weight exceeds ``uniforms[k] * total``.
 
     This full-recompute kernel is the reference for :func:`_seq_bootstrap_kernel_incremental`,
-    which returns the same draws. :mod:`finlab.monte_carlo` calls this one directly.
+    which returns the same draws. :mod:`quantowl.monte_carlo` calls this one directly.
     """
     n_ev = ptr.shape[0] - 1
     n_draw = uniforms.shape[0]

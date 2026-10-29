@@ -1,4 +1,4 @@
-"""Tests for finlab.strategy_risk (AFML ch. 15: binomial Sharpe, implied precision and frequency, failure)."""
+"""Tests for quantowl.strategy_risk (AFML ch. 15: binomial Sharpe, implied precision and frequency, failure)."""
 
 from __future__ import annotations
 
@@ -9,8 +9,8 @@ import pandas as pd
 import pytest
 from scipy.stats import norm
 
-import finlab.strategy_risk as sr
-from finlab.strategy_risk import (
+import quantowl.strategy_risk as sr
+from quantowl.strategy_risk import (
     binomial_sharpe,
     implied_frequency,
     implied_precision,

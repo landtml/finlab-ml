@@ -1,4 +1,4 @@
-# `finlab.bet_sizing`: Bet sizing from probabilities and forecasts (AFML ch. 10)
+# `quantowl.bet_sizing`: Bet sizing from probabilities and forecasts (AFML ch. 10)
 
 Turns model output into a position in [-1, 1] or an integer target position. Includes the
 sigmoid sizing with its calibration, breakeven limit prices, averaging of overlapping
@@ -10,7 +10,7 @@ Runs as written; `tests/test_doc_examples.py` executes it on every test run.
 
 ```python
 import pandas as pd
-from finlab.bet_sizing import prob_bet_size, calibrate_sigmoid_width, target_position, limit_price, discretize_signal
+from quantowl.bet_sizing import prob_bet_size, calibrate_sigmoid_width, target_position, limit_price, discretize_signal
 
 print(prob_bet_size([0.7, 0.5, 0.1]).round(3))    # probability to bet size
 

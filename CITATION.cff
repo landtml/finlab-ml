@@ -3,7 +3,7 @@ message: >-
   If you use this software, please cite it as below. For the methods themselves,
   please also cite the book listed under references.
 type: software
-title: "finlab: financial machine learning in Python"
+title: "quantowl: financial machine learning in Python"
 abstract: >-
   Python implementations of the methods in Marcos López de Prado's Advances in
   Financial Machine Learning, organised by chapter. Most methods are tested
@@ -13,8 +13,8 @@ authors:
   - alias: landtml
 version: 0.1.5
 license: MIT
-repository-code: "https://github.com/landtml/finlab-ml"
-url: "https://github.com/landtml/finlab-ml"
+repository-code: "https://github.com/landtml/quantowl"
+url: "https://github.com/landtml/quantowl"
 keywords:
   - financial machine learning
   - purged cross-validation

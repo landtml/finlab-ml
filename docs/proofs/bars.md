@@ -1,7 +1,7 @@
-# finlab.bars: derivations and status of each claim
+# quantowl.bars: derivations and status of each claim
 
-Component under test: [`src/finlab/bars.py`](https://github.com/landtml/finlab-ml/blob/main/src/finlab/bars.py) (AFML ch. 2).
-Tests: [`tests/test_bars.py`](https://github.com/landtml/finlab-ml/blob/main/tests/test_bars.py). Benchmark: [`benchmarks/bench_bars.py`](https://github.com/landtml/finlab-ml/blob/main/benchmarks/bench_bars.py).
+Component under test: [`src/quantowl/bars.py`](https://github.com/landtml/quantowl/blob/main/src/quantowl/bars.py) (AFML ch. 2).
+Tests: [`tests/test_bars.py`](https://github.com/landtml/quantowl/blob/main/tests/test_bars.py). Benchmark: [`benchmarks/bench_bars.py`](https://github.com/landtml/quantowl/blob/main/benchmarks/bench_bars.py).
 
 Every claim below carries one tag:
 

@@ -33,8 +33,8 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
-from finlab.cv import CombinatorialPurgedCV, make_t1
-from finlab.cv._cpcv import _contiguous_blocks, _end_positions, _make_group_labels
+from quantowl.cv import CombinatorialPurgedCV, make_t1
+from quantowl.cv._cpcv import _contiguous_blocks, _end_positions, _make_group_labels
 
 # Long-history, liquid names (period="max" pulls their full available history).
 TICKERS = ["^GSPC", "^DJI", "IBM", "KO", "GE", "XOM", "JNJ", "PG", "MSFT", "AAPL"]
@@ -214,7 +214,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     print("\n" + "=" * 70)
-    print("FINLAB LEAKAGE VERIFICATION CERTIFICATE")
+    print("QUANTOWL LEAKAGE VERIFICATION CERTIFICATE")
     print("=" * 70)
     print(f"  data source            : {source}")
     earliest = min(s[2] for s in tally.spans)

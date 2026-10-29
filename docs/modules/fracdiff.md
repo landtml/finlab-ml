@@ -1,4 +1,4 @@
-# `finlab.fracdiff`: Fractionally differentiated features (AFML ch. 5)
+# `quantowl.fracdiff`: Fractionally differentiated features (AFML ch. 5)
 
 Differencing of order d in [0, 1] makes a price series stationary while keeping memory.
 Fixed-width differencing (`frac_diff_ffd`) uses a window of weights; `frac_diff` is the
@@ -11,7 +11,7 @@ Runs as written; `tests/test_doc_examples.py` executes it on every test run.
 
 ```python
 import numpy as np
-from finlab.fracdiff import frac_diff, get_weights
+from quantowl.fracdiff import frac_diff, get_weights
 
 rng = np.random.default_rng(3)
 log_price = np.cumsum(rng.normal(0, 0.01, 500))
