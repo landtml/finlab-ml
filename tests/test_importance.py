@@ -650,3 +650,111 @@ def test_orthogonal_transform_maps_pd_na_to_a_nan_row() -> None:
     out = np.asarray(model.transform(new), dtype=float)
     assert np.isnan(out[1]).all()
     assert np.isfinite(out[0]).all() and np.isfinite(out[2]).all()
+
+
+class _PipelineName:
+    pass
+
+
+# sklearn.pipeline.Pipeline's name and module, which is what finlab checks.
+_PipelineName.__name__ = "Pipeline"
+_PipelineName.__module__ = "sklearn.pipeline"
+
+
+class _FakePipeline(NearestCentroid, _PipelineName):
+    """Stand-in for sklearn.pipeline.Pipeline: steps, and a fit that refuses sample_weight.
+
+    finlab recognises a Pipeline by class name and module, so the stand-in declares that module.
+    """
+
+    def __init__(self):
+        self.steps = [("scale", NearestCentroid()), ("clf", NearestCentroid())]
+        self.named_steps = dict(self.steps)
+        self.fit_params = None
+
+    def fit(self, X, y, **fit_params):
+        if "sample_weight" in fit_params:
+            raise ValueError("Pipeline.fit does not accept the sample_weight parameter.")
+        self.fit_params = fit_params
+        return super().fit(X, y)
+
+
+def test_mda_and_sfi_route_sample_weight_to_pipeline_final_step() -> None:
+    X, y = make_data(n=300, p=3, seed=6)
+    w = np.random.default_rng(6).uniform(0.5, 1.5, len(y))
+    cv = PurgedKFold(n_splits=3)
+    for run in (mda, sfi):
+        made: list[_FakePipeline] = []
+
+        def factory() -> _FakePipeline:
+            model = _FakePipeline()
+            made.append(model)
+            return model
+
+        run(factory, X, y, cv, sample_weight=w)
+        # sfi fits the full-feature model, then one single-feature model per feature, in each fold.
+        per_fold = 1 + X.shape[1] if run is sfi else 1
+        expected = [w[train] for train, _ in cv.split(X) for _ in range(per_fold)]
+        assert len(made) == len(expected)
+        for model, want in zip(made, expected):
+            assert list(model.fit_params) == ["clf__sample_weight"]
+            np.testing.assert_array_equal(model.fit_params["clf__sample_weight"], want)
+
+
+@pytest.mark.parametrize("run", [mda, sfi])
+@pytest.mark.parametrize("final", ["passthrough", None])
+def test_mda_and_sfi_refuse_pipeline_ending_in_passthrough_or_none(run, final) -> None:
+    class _Ends(_FakePipeline):
+        def __init__(self) -> None:
+            super().__init__()
+            self.steps = [("scale", NearestCentroid()), ("clf", final)]
+            self.named_steps = dict(self.steps)
+
+    X, y = make_data(n=120, p=3, seed=7)
+    with pytest.raises(ValueError, match="final step"):
+        run(_Ends, X, y, PurgedKFold(n_splits=3), sample_weight=np.ones(len(y)))
+
+
+def test_mda_refuses_pipeline_ending_in_passthrough_when_weighted() -> None:
+    class _Ends(_FakePipeline):
+        def __init__(self) -> None:
+            super().__init__()
+            self.steps = [("scale", NearestCentroid()), ("clf", "passthrough")]
+            self.named_steps = dict(self.steps)
+
+    X, y = make_data(n=120, p=3, seed=7)
+    with pytest.raises(ValueError, match="final step"):
+        mda(_Ends, X, y, PurgedKFold(n_splits=3), sample_weight=np.ones(len(y)))
+
+
+def _sklearn_pipeline_factory():
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.pipeline import Pipeline
+    from sklearn.preprocessing import StandardScaler
+
+    return lambda: Pipeline([("scale", StandardScaler()), ("lr", LogisticRegression())])
+
+
+def test_mda_and_sfi_with_sklearn_pipeline_match_manual_weighted_loop() -> None:
+    pytest.importorskip("sklearn")
+    X, y = make_data(n=300, p=3, seed=8)
+    w = np.random.default_rng(8).uniform(0.5, 1.5, len(y))
+    cv = PurgedKFold(n_splits=4)
+    factory = _sklearn_pipeline_factory()
+
+    manual_full: list[float] = []
+    manual_single = np.zeros((4, 3))
+    for fold, (train, test) in enumerate(cv.split(X)):
+        model = factory().fit(X[train], y[train], lr__sample_weight=w[train])
+        hit = (model.predict(X[test]) == y[test]).astype(float)
+        manual_full.append(float(np.sum(hit * w[test]) / np.sum(w[test])))
+        for j in range(3):
+            single = factory().fit(X[train][:, [j]], y[train], lr__sample_weight=w[train])
+            hit = (single.predict(X[test][:, [j]]) == y[test]).astype(float)
+            manual_single[fold, j] = float(np.sum(hit * w[test]) / np.sum(w[test]))
+
+    baseline, _ = mda(factory, X, y, cv, sample_weight=w)
+    np.testing.assert_array_equal(baseline, manual_full)
+    baseline, imp = sfi(factory, X, y, cv, sample_weight=w)
+    np.testing.assert_array_equal(baseline, manual_full)
+    np.testing.assert_allclose(imp["mean"].to_numpy(), manual_single.mean(axis=0), rtol=0, atol=1e-12)

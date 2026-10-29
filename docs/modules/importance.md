@@ -31,6 +31,14 @@ print(mdi_from_matrix(rng.random((20, 3)), names=["a", "b", "c"]).shape)
 P, eigvals, eigvecs = orthogonal_features(X)
 ```
 
+## Pipeline models
+
+`mda` and `sfi` take a model factory that returns a scikit-learn `Pipeline`. With
+`sample_weight` given, the weights go to the final step as `<step>__sample_weight`, as
+AFML Snippet 9.2 does, and the same rules as [`finlab.tuning`](tuning.md#pipeline-weights)
+apply. `tests/test_importance.py` checks the baseline and the single-feature scores against a
+manual loop.
+
 ## Notes
 
 Proof: [importance.md](../proofs/importance.md). Scope: MDA and SFI purge only if you pass a purged splitter; MDI is in-sample.
