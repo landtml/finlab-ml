@@ -13,6 +13,9 @@ All notable changes to this project are documented in this file. The format foll
 - `SequentialBootstrapBagging` has `get_params`, `set_params`, `score` and the classifier tag, so
   scikit-learn's `clone`, `cross_val_score` and `GridSearchCV` accept it without finlab importing
   scikit-learn.
+- A documentation site built from `docs/` and `mkdocs.yml` by `.github/workflows/docs.yml`. The
+  build runs `mkdocs build --strict` on every pull request; the site is served from GitHub Pages
+  once the repository's Pages source is set to GitHub Actions.
 
 ### Changed
 

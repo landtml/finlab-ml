@@ -1,7 +1,7 @@
 # finlab.fracdiff: derivations and status of each claim
 
-Component under test: [`src/finlab/fracdiff.py`](../../src/finlab/fracdiff.py) (AFML ch. 5).
-Tests: [`tests/test_fracdiff.py`](../../tests/test_fracdiff.py). Benchmark: [`benchmarks/bench_fracdiff.py`](../../benchmarks/bench_fracdiff.py).
+Component under test: [`src/finlab/fracdiff.py`](https://github.com/landtml/finlab-ml/blob/main/src/finlab/fracdiff.py) (AFML ch. 5).
+Tests: [`tests/test_fracdiff.py`](https://github.com/landtml/finlab-ml/blob/main/tests/test_fracdiff.py). Benchmark: [`benchmarks/bench_fracdiff.py`](https://github.com/landtml/finlab-ml/blob/main/benchmarks/bench_fracdiff.py).
 
 Tags used below:
 

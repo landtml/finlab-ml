@@ -1,8 +1,8 @@
 # finlab.structural_breaks: derivations and status (AFML ch. 17)
 
-Component under test: [`src/finlab/structural_breaks.py`](../../src/finlab/structural_breaks.py).
-Tests: [`tests/test_structural_breaks.py`](../../tests/test_structural_breaks.py).
-Benchmark: [`benchmarks/bench_structural_breaks.py`](../../benchmarks/bench_structural_breaks.py).
+Component under test: [`src/finlab/structural_breaks.py`](https://github.com/landtml/finlab-ml/blob/main/src/finlab/structural_breaks.py).
+Tests: [`tests/test_structural_breaks.py`](https://github.com/landtml/finlab-ml/blob/main/tests/test_structural_breaks.py).
+Benchmark: [`benchmarks/bench_structural_breaks.py`](https://github.com/landtml/finlab-ml/blob/main/benchmarks/bench_structural_breaks.py).
 
 Each result below carries one status tag:
 
